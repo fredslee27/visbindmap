@@ -29,10 +29,11 @@ class KbTop (gtk.Button):
         else:
             self.ksym = self.label
 
-        if len(self.label) > 2:
-            self.inp_lbl.set_markup("<small>%s</small>" % self.label)
-        else:
-            self.inp_lbl.set_text("%s" % self.label)
+#        if len(self.label) > 2:
+#            self.inp_lbl.set_markup("<small>%s</small>" % self.label)
+#        else:
+#            self.inp_lbl.set_text("%s" % self.label)
+        self.set_keytop(self.label)
 
 #        if 1:
 #            style = self.inp_bind.get_style().copy()
@@ -111,6 +112,13 @@ class KbTop (gtk.Button):
 
         self.add(self.plane)
         #self.add(self.evbox)
+
+    def set_keytop (self, disp):
+        if len(disp) > 2:
+            self.inp_lbl.set_markup("<small>%s</small>" % disp)
+        else:
+            self.inp_lbl.set_text("%s" % disp)
+        return
 
     def get_bind (self):
         return self._bind

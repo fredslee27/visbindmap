@@ -11,6 +11,7 @@ import kblayout
 
 
 BASENAME="factorio"
+DEFAULT_DBNAME="cmds"
 
 
 def crumb (x):
@@ -168,18 +169,23 @@ class Glyphs:
 
 # Persistant storage.
 class Store (object):
-    DEFAULT_FILENAME = "factorio.cfg"
+    DEFAULT_FILENAME = BASENAME + ".cfg"
 
     def reset (self):
         self.binddata = []
-        for n in range(self._numlayers):
-            self.binddata.append({})
+#        for n in range(self._numlayers):
+#            self.binddata.append({})
+        for n in range(self._numlevels):
+            self.binddata.append([])
+            for m in range(self._numlayers):
+                self.binddata[n].append({})
 
 #    def __init__ (self, backingFileName=None):
     def __init__ (self, numlayers=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
         # bindings are mapping SDL_binding => command
         self._numlayers = numlayers
+        self._numlevels = numlayers
 #        self.binddata = []
 #        for n in range(numlayers):
 #            self.binddata.append({})
@@ -865,47 +871,6 @@ class PadLayouts:
 
 class PadGlyph (gtk.HBox):
     # (row, column, text, name)
-#    LAYOUT=[
-#        (1, 1, Glyphs.yawL, 'rL'),
-#        (1, 6, Glyphs.fF, 'fF'),
-#        (1, 11, Glyphs.yawR, 'rR'),
-#        (3, 5, Glyphs.fU, 'fU'),
-#        (3, 7, Glyphs.fD, 'fD'),
-#        (9, 6, Glyphs.fB, 'fB'),
-#        (3, 1, Glyphs.fL, 'fL'),
-#        (3, 11, Glyphs.fR, 'fR'),
-#
-#        (1, 3, Glyphs.L2, 'L2'),
-#        (1, 9, Glyphs.R2, 'R2'),
-#        (2, 2, Glyphs.L1, 'L1'),
-#        (2, 10, Glyphs.R1, 'R1'),
-#
-#        (4, 2, Glyphs.u, 'u'),
-#        (5, 1, Glyphs.l, 'l'),
-#        (5, 3, Glyphs.r, 'r'),
-#        (6, 2, Glyphs.d, 'd'),
-#
-#        (5, 5, Glyphs.SELECT, 'SEL'),
-#        (5, 7, Glyphs.START, 'STA'),
-#        (6, 6, Glyphs.HOME, 'HOME'),
-#
-#        (4, 10, Glyphs.T, 'T'),
-#        (5, 9, Glyphs.S, 'S'),
-#        (5, 11, Glyphs.O, 'O'),
-#        (6, 10, Glyphs.X, 'X'),
-#
-#        (8, 4, Glyphs.L3, 'L3'),
-#        (8, 5, Glyphs.Lx, 'Lx+'),
-#        (9, 4, Glyphs.Ly, 'Ly+'),
-#        (8, 3, Glyphs.xL, 'Lx-'),
-#        (7, 4, Glyphs.yL, 'Ly-'),
-#
-#        (8, 8, Glyphs.R3, "R3"),
-#        (8, 9, Glyphs.Rx, "Rx+"),
-#        (9, 8, Glyphs.Ry, "Ry+"),
-#        (8, 7, Glyphs.xR, "Rx-"),
-#        (7, 8, Glyphs.yR, "Ry-"),
-#      ]
 
     def __init__ (self, data=None):
         gtk.HBox.__init__(self, 10, 12)
@@ -955,18 +920,6 @@ class PadGlyph (gtk.HBox):
             self.on_click(w, *args)
             self.clicking = 0
 
-#    def on_button_press (self, w, evt, *args):
-#        #print("button_press(%s)" % (args[0]))
-#        self.clicking |= 1
-#
-#    def on_button_release (self, w, evt, *args):
-#        self.clicking |= 2
-#        if self.clicking == 3:
-#            #print("clicked %r" % w)
-#            self.on_click(w, *args)
-#        else:
-#            self.clicking = 0
-
     def on_leave (self, w, evt, *args):
         #print("pointer leave")
         self.clicking = 0
@@ -986,12 +939,13 @@ class PadGlyph_XB360 (PadGlyph):
 
 
 
+
 class Commands (object):
+    """Database of game commands."""
     def __init__ (self, dbname):
         self.dbname = dbname
 #        self.db = [(0, "", "", "(none)", None)]
         # Open DB.
-        #self.conn = sqlite3.connect("cmds_goio.sqlite")
         self.conn = sqlite3.connect(dbname)
         # Pull relevant rows.
         cursor = self.conn.cursor()
@@ -1112,11 +1066,11 @@ class Commands (object):
             treeiter = store.append(grpiter, (cmdid, cmd, desc, hint, self))
 
 
+
+
 class VisCmds (gtk.VBox):
     """Visual presentation of commands: a tree of group and the commands."""
-    #DEFAULT_DATASOURCE = "cmds_goio.sqlite3"
-    #DEFAULT_DATASOURCE = "cmds_q3.sqlite3"
-    DEFAULT_DATASOURCE = "cmds_factorio.sqlite3"
+    DEFAULT_DATASOURCE = DEFAULT_DBNAME + ".sqlite3"
 
     def __init__ (self, datasrc=None):
         gtk.VBox.__init__(self)
@@ -1167,7 +1121,7 @@ class VisCmds (gtk.VBox):
 
 #            print("using val=%r" % val)
             #sel.set_text(val, len(val))
-            sel.set("STRING", 8, val)
+            sel.set("STRING", 8, val)  # 8 bits per unit.
         elif sel.target == "bindid":
 #            print("+++ target is bind")
             srcw = ctx.get_source_widget()
@@ -1185,19 +1139,24 @@ class VisCmds (gtk.VBox):
 
 #            print("using val=%r" % val)
             #sel.set_text(val, len(val))
-            sel.set("STRING", 8, str(val))
+            sel.set("STRING", 8, str(val))  # 8 bits per unit.
 
 
 
 # Graphically lay out bindings meanings.
 class VisBind (gtk.VBox):
+    """Graphical layout of bindings; "central pane" of main window."""
     #LAYOUT = PadLayouts.PS3.FULL
     LAYOUT = PadLayouts.ClassicPC.FULL
     #LAYOUT = PadLayouts.XB360.FULL
 
     @property
-    def bindlayers (self):
+    def bindlevels (self):
         return self.store.binddata
+
+    @property
+    def bindlayers (self):
+        return self.store.binddata[self.levelnum]
 
     @property
     def bindentry (self):
@@ -1205,6 +1164,8 @@ class VisBind (gtk.VBox):
 
     def reset (self):
         #self.store.reset()
+        self.levelnum = 0
+
         self.bindmap = self.bindlayers[0]  # active bindmap.
 
         self.layernum = 0  # current layer number.
@@ -1214,15 +1175,7 @@ class VisBind (gtk.VBox):
     def __init__ (self, store, paddata=None, cmds=None):
         gtk.VBox.__init__(self)
 
-#        if paddata is not None:
-#            self.LAYOUT = paddata.FULL
         self.store = store
-#        self.bindmap = self.bindlayers[0]  # active bindmap.
-#
-##        self.bindentry = {}  # Map ksym to entry.
-#        self.cmds = None  # commands db.
-#        self.layernum = 0  # current layer number.
-
         self.cmds = cmds
 
         self.shiftrow = self.InpSelectLevel()
@@ -1248,6 +1201,7 @@ class VisBind (gtk.VBox):
         print("key-selected: %s" % ksym)
 
     def on_layout_changed (self, w, layoutname, *args):
+        self.relabel_keys(self.levelnum)
         self.load_bindmap(self.layernum)
 
     def on_bind_changed (self, w, keytop, *args):
@@ -1259,14 +1213,9 @@ class VisBind (gtk.VBox):
         #print("VisBind.bindid-changed: %r" % keytop)
         cmdinfo = self.cmds[keytop.bindid]
         if cmdinfo:
-            #cmdtext = cmdinfo[4]
-            #cmdtext = cmdinfo[3]
-            #cmdlayer = cmdinfo[1]
-            #keytop.bind = cmdtext
             self.bind_cmd(keytop.ksym, cmdinfo)
         else:
             cmdtext = None
-            #del keytop.bind
             self.unbind_cmd(keytop.ksym)
         pass
 
@@ -1276,42 +1225,9 @@ class VisBind (gtk.VBox):
 
         moderow.lbl = gtk.Label("MODE:")
         # "Select Layer" radio buttons.
-        # TODO: from db
-        #modes = [ "*GLOBAL", "Game", "Inventory", "Crafting", "Editor" ]
+        #modes = [ "(GLOBAL)", "Game", "Inventory", "Crafting", "Editor" ]
         modes = [ "*GLOBAL" ] + self.cmds.get_modes()
             
-#        moderow.btn_global = gtk.RadioButton(None, "Global")
-#        moderow.btn_gun = gtk.RadioButton(moderow.btn_global, "Game")
-#        moderow.btn_helm = gtk.RadioButton(moderow.btn_global, "Ctrl")
-#        moderow.btn_player = gtk.RadioButton(moderow.btn_global, "Alt")
-#        moderow.btn_signal = gtk.RadioButton(moderow.btn_global, "Super")
-#        moderow.btn_spectator = gtk.RadioButton(moderow.btn_global, "Hyper")
-#
-#        moderow.btn_global.layernum = 0
-#        moderow.btn_gun.layernum = 2
-#        moderow.btn_helm.layernum = 3
-#        moderow.btn_player.layernum = 1
-#        moderow.btn_signal.layernum = 4
-#        moderow.btn_spectator.layernum = 5
-#
-#        for btn in [
-#          moderow.btn_global,
-#          moderow.btn_gun,
-#          moderow.btn_helm,
-#          moderow.btn_player,
-#          moderow.btn_signal,
-#          moderow.btn_spectator ]:
-#            btn.connect('clicked', self.on_button_toggle)
-#
-#        modebtns.add(moderow.lbl)
-#        modebtns.add(moderow.btn_global)
-#        modebtns.add(moderow.btn_gun)
-#        modebtns.add(moderow.btn_helm)
-#        modebtns.add(moderow.btn_player)
-#        modebtns.add(moderow.btn_signal)
-#        modebtns.add(moderow.btn_spectator)
-#        moderow.pack_start(modebtns, expand=False)
-
         moderow.btns = []  # private data.
         #moderow.pack_start(moderow.lbl, expand=False)
         for modeid in range(0, len(modes)):
@@ -1343,7 +1259,7 @@ class VisBind (gtk.VBox):
                 if (lvlnum & (1 << b)):
                     sh.append("^%s" % (b+1))
             if sh:
-                lbl = " + ".join(sh)
+                lbl = "%d " % lvlnum + ("(" + " + ".join(sh) + ")")
             else:
                 lbl = "base"
             grp = btns and btns[0] or None
@@ -1364,6 +1280,7 @@ class VisBind (gtk.VBox):
         pass
 
     def load_bindmap (self, layernum):
+        """Load binding map: update visual keys with bindings from given layer."""
         srcmap = self.bindlayers[layernum]
         self.layernum = layernum
         self.bindmap = srcmap
@@ -1380,6 +1297,16 @@ class VisBind (gtk.VBox):
         crumb("of full %r" % self.bindlayers)
         return
 
+    def relabel_keys (self, levelnum):
+        for k in self.bindentry.keys():
+            w = self.bindentry[k]
+            if levelnum:
+                lbl = "%s^%d" % (w.label, levelnum)
+            else:
+                lbl = w.label
+            #w.inp_lbl.set_text(lbl)
+            w.set_keytop(lbl)
+
     def on_mode_toggle (self, w, *args):
         self.layernum = w.layernum
         self.load_bindmap(w.layernum)
@@ -1387,7 +1314,8 @@ class VisBind (gtk.VBox):
 
     def on_shifter_toggle (self, w, *args):
         self.levelnum = w.levelnum
-        # self.load_bindmap(....)
+        self.load_bindmap(self.layernum)
+        self.relabel_keys(self.levelnum)
         return
 
     def bind_cmd (self, ksym, cmdinfo):
@@ -1397,23 +1325,21 @@ class VisBind (gtk.VBox):
         if cmdinfo:
             layernum = cmdinfo[1]
             self.bindlayers[layernum][ksym] = cmd
-#            if self.layernum == layernum:
-#                self.bindentry[ksym].bind = cmd
             if self.layernum != layernum:
                 self.bindentry[ksym].bind = "<i>%s</i>" % cmd
             else:
                 self.bindentry[ksym].bind = cmd
-#            if not self.bindentry[ksym].bind:
-#                self.bindentry[ksym].bind = cmd
-        pass
+        return
 
     def unbind_cmd (self, ksym):
         self.bindlayers[self.layernum][ksym] = None
         del self.bindentry[ksym].bind
 
 
-# Main window.
+
+
 class VisMapperWindow (gtk.Window):
+    """Main window, majority of state information."""
     def reset (self):
         self.bindpad.reset()
 
@@ -1430,7 +1356,6 @@ class VisMapperWindow (gtk.Window):
         self.add(self.panes)
 
         self.spans = gtk.HBox()
-        #self.add(self.spans)
 
         self.padpane = gtk.VBox()
 
@@ -1448,7 +1373,6 @@ class VisMapperWindow (gtk.Window):
         self.padrow.pack_start(gtk.Label(), expand=True)
         self.padrow.pack_start(self.vispad, expand=False)
         self.padrow.pack_start(gtk.Label(), expand=True)
-        #self.spans.pack_start(self.padrow, expand=False)
         self.padpane.pack_start(self.padrow, expand=False)
 
         self.connect("delete-event", self.on_quit)
@@ -1456,25 +1380,17 @@ class VisMapperWindow (gtk.Window):
         self.cmdcol = VisCmds()
 
         self.bindrow = gtk.VBox()
-        #self.bindpad = VisBind(self.store)
         self.bindpad = VisBind(self.store, self.padlayout, self.cmdcol.cmds)
         self.bindrow.pack_start(self.bindpad)
-        #self.spans.pack_start(self.bindrow)
         self.padpane.pack_start(self.bindrow)
 
-#        self.bindpad.cmds = self.cmdcol.cmds
-
-        #self.spans.pack_start(self.padpane, expand=False)
-        #self.spans.pack_start(self.cmdcol, expand=True)
         self.spans = gtk.HPaned()
         self.spans.add(self.padpane)
         self.spans.add(self.cmdcol)
 
-        #self.menubar = gtk.MenuBar()
         self.menubar = self.MakeMenubar()
         self.statusbar = gtk.Statusbar()
         self.panes.pack_start(self.menubar, expand=False, fill=True)
-        #self.panes.pack_start(self.spans, expand=True, fill=True)
         self.panes.pack_start(self.spans, expand=False)
 
         if 1:
@@ -1523,35 +1439,6 @@ class VisMapperWindow (gtk.Window):
           ]
 
         return BuildMenuBar(menu_desc)
-
-#        menu_f = gtk.Menu()
-#        menu_f.append(gtk.MenuItem("_Open"))
-#        menu_f.append(gtk.MenuItem("_Save"))
-#        menu_f.append(gtk.MenuItem("Save _As"))
-#        menu_f.append(gtk.SeparatorMenuItem())
-#        menu_f.append(gtk.MenuItem("_Quit"))
-#
-#        menu_e = gtk.Menu()
-#        menu_e.append(gtk.MenuItem("_Copy"))
-#        menu_e.append(gtk.MenuItem("C_ut"))
-#        menu_e.append(gtk.MenuItem("_Paste"))
-#        menu_e.append(gtk.SeparatorMenuItem())
-#        menu_e.append(gtk.MenuItem("_Options"))
-#
-#        menu_h = gtk.Menu()
-#        menu_h.append(gtk.MenuItem("_Help"))
-#        menu_h.append(gtk.SeparatorMenuItem())
-#        menu_h.append(gtk.MenuItem("_About"))
-#
-#        bar_f = gtk.MenuItem("_File"); bar_f.set_submenu(menu_f)
-#        bar_e = gtk.MenuItem("_Edit"); bar_e.set_submenu(menu_e)
-#        bar_h = gtk.MenuItem("_Help"); bar_h.set_submenu(menu_h)
-#
-#        menubar.append(bar_f)
-#        menubar.append(bar_e)
-#        menubar.append(bar_h)
-#
-#        return menubar
 
     def ask_open (self):
         loadname = None
@@ -1629,8 +1516,10 @@ class VisMapperWindow (gtk.Window):
         self.app.quit()
 
 
-# Overall application object.
+
+
 class VisMapperApp (object):
+    """Overall application object, minimalist wrapper."""
     def __init__ (self):
         self.store = Store(8)
         self.ui = VisMapperWindow(self)
