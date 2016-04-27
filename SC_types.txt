@@ -1,0 +1,9 @@
+Steam Controller input element type
+
+* D-pad
+* Button Quad
+* Joystick.Movement
+* Joystick.Camera
+* Mouse
+* Scrollwheel
+* Region
