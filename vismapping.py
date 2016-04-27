@@ -34,6 +34,10 @@ def BuildMenuBar (menubardesc):
     return BuildMenu(menubardesc, gtk.MenuBar())
 
 
+#===============
+# begin data-heavy section
+#===============
+
 # SDL binding string:
 # {type}/{number}/{value}
 # type:
@@ -181,11 +185,11 @@ class Store (object):
                 self.binddata[n].append({})
 
 #    def __init__ (self, backingFileName=None):
-    def __init__ (self, numlayers=8, backingFileName=None):
+    def __init__ (self, numlayers=8, numlevels=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
         # bindings are mapping SDL_binding => command
         self._numlayers = numlayers
-        self._numlevels = numlayers
+        self._numlevels = numlevels
 #        self.binddata = []
 #        for n in range(numlayers):
 #            self.binddata.append({})
@@ -208,6 +212,11 @@ class Store (object):
         pickle.dump(self.binddata, fileobj)
         #fileobj.close()
 
+
+
+#=================
+# begin GUI-heavy data
+#=================
 
 
 
@@ -865,6 +874,9 @@ class PadLayouts:
           ]
 
 
+#===============
+# end data-heavy section
+#===============
 
 
 # Graphical representation of the game controller pad.
@@ -936,6 +948,11 @@ class PadGlyph_ClassicPC (PadGlyph):
 
 class PadGlyph_XB360 (PadGlyph):
     LAYOUT=PadLayouts.XB360.MINI
+
+
+#=================
+# end GUI-heavy data
+#=================
 
 
 
@@ -1220,6 +1237,7 @@ class VisBind (gtk.VBox):
         pass
 
     def InpSelectMode (self):
+        """Generate GUI Widget for selecting mode (layer)."""
         moderow = gtk.HBox()
         modebtns = gtk.HButtonBox()
 
@@ -1246,6 +1264,7 @@ class VisBind (gtk.VBox):
         return modebox
 
     def InpSelectLevel (self):
+        """Generate GUI Widget for selecting level (shifted)."""
         shiftbox = gtk.Frame("LEVEL")
         shiftrow = gtk.HBox()
         shiftbtns = gtk.HButtonBox()
@@ -1301,7 +1320,8 @@ class VisBind (gtk.VBox):
         for k in self.bindentry.keys():
             w = self.bindentry[k]
             if levelnum:
-                lbl = "%s^%d" % (w.label, levelnum)
+                #lbl = "%s^%d" % (w.label, levelnum)
+                lbl = "%s<sub>%d</sub>" % (w.label, levelnum)
             else:
                 lbl = w.label
             #w.inp_lbl.set_text(lbl)
@@ -1336,6 +1356,13 @@ class VisBind (gtk.VBox):
         del self.bindentry[ksym].bind
 
 
+class DlgAbout (gtk.AboutDialog):
+    def __init__ (self):
+        gtk.AboutDialog.__init__(self)
+        self.set_name("VisMapper")
+        self.set_version("0.0.1")
+        self.set_copyright("Copyright 2016  PhaethonH <PhaethonH@gmail.com>")
+        self.set_license("GNU General Public License 3.0 or later")
 
 
 class VisMapperWindow (gtk.Window):
@@ -1413,6 +1440,8 @@ class VisMapperWindow (gtk.Window):
             globals()['crumb'] = debugcrumb
 
         self.panes.pack_start(self.statusbar, expand=False)
+
+        self.dlg_about = DlgAbout()
 
     def MakeMenubar (self):
         menu_desc = [
@@ -1510,7 +1539,8 @@ class VisMapperWindow (gtk.Window):
         pass
 
     def on_about (self, w, *args):
-        pass
+        self.dlg_about.run()
+        self.dlg_about.hide()
 
     def on_quit (self, w, *args):
         self.app.quit()
