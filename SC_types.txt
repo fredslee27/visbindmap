@@ -1,9 +1,60 @@
 Steam Controller input element type
 
 * D-pad
+++ Binds: Up, Left, Right, Down, OuterRing
 * Button Quad
-* Joystick.Movement
-* Joystick.Camera
+++ Actions: N, W, E, S
+++ [ ] Turbo (repeat)
+++ [--|--] Turbo Rate
 * Mouse
-* Scrollwheel
+++ Binds: x, y, Touch, Click, Double-tap
+* Mouse joystick
+++ Binds: x, y, Click, Double-tap
+* Joystick.Move
+++ Binds: x, y, OuterRing, Click
+* Joystick.Camera
+++ Binds: x, y, Click
+* ScrollWheel
+++ Binds: Clockwise, Counterclockwise, Click
+++ Direction: Circular, Horizontal, Vertical
+++ Scroll_Items: 1..10
 * Region
+* TouchMenu
+++ Count: 2, 4, 7, 9, 12, 13, 16
+++ Activation: Click, Unclick, Untouch
+++ Menu_Items: 1..16 <- (displayed, synthesized)
+
+2:
+ 1
+ 2
+
+4:
+ 1 2
+ 3 4
+
+7:
+  1 2
+ 3 4 5
+  6 7
+
+9:
+ 1 2 3
+ 4 5 6
+ 7 8 9
+
+12:
+ 1 2 3 4
+ 5 6 7 8
+ 9 A B C
+
+13:
+ 1 2 3 4
+ 5 D#D 6
+ 7 D#D 8
+ 9 A B C
+
+16:
+ 1 2 3 4
+ 5 6 7 8
+ 9 A B C
+ D E F 0
