@@ -822,6 +822,58 @@ KBD = {
   }
 
 
+TOP = {
+  "K_ESCAPE": "esc",
+  "K_F1": "F1", "K_F2": "F2", "K_F3": "F3", "K_F4": "F4",
+  "K_F5": "F5", "K_F6": "F6", "K_F7": "F7", "K_F8": "F8",
+  "K_F9": "F9", "K_F10": "F10", "K_F11": "F11", "K_F12": "F12",
+  "K_SCROLLLOCK": "sclk", "K_PAUSE": "paus", "K_PRINT": "ptsc",
+
+  "K_GRAVE": "`",
+  "K_1": "1", "K_2": "2", "K_3": "3", "K_4": "4", "K_5": "5",
+  "K_6": "6", "K_7": "7", "K_8": "8", "K_9": "9", "K_0": "0",
+  "K_MINUS": "-", "K_EQUALS": "=", "K_BACKSPACE": "BS",
+
+  "K_TAB": "tab",
+  "K_Q": "Q", "K_W": "W", "K_E": "E", "K_R": "R", "K_T": "T",
+  "K_Y": "Y", "K_U": "U", "K_I": "I", "K_O": "O", "K_P": "P",
+  "K_LBRACKET": "[", "K_RBRACKET": "]", "K_BACKSLASH": "\\",
+
+  "K_CAPSLOCK": "caps",
+  "K_A": "A", "K_S": "S", "K_D": "D", "K_F": "F", "K_G": "G",
+  "K_H": "H", "K_J": "J", "K_K": "K", "K_L": "L", "K_SEMICOLON": ";",
+  "K_QUOTE": "'", "K_RETURN": "ret", "K_ENTER": "ent",
+
+  "K_LSHIFT": "shift",
+  "K_Z": "Z", "K_X": "X", "K_C": "C", "K_V": "V", "K_B": "B",
+  "K_N": "N", "K_M": "M", "K_COMMA": ",", "K_PERIOD": ".", "K_SLASH": "/",
+  "K_RSHIFT": "shift",
+
+  "K_LCONTROL": "ctrl", "K_LLOGO": "logo", "K_LALT": "alt",
+  "K_SPACE": "space",
+  "K_RALT": "alt", "K_RLOGO": "logo", "K_RMENU": "menu", "K_RCONTROL": "ctrl",
+
+  "K_INSERT": "ins", "K_HOME": "hom", "K_PGUP": "pgup",
+  "K_DELETE": "del", "K_END": "end", "K_PGDN": "pgdn",
+  "K_UP": "Up",
+  "K_LEFT": "Lt", "K_DOWN": "Dn", "K_RIGHT": "Rt",
+
+  "K_NUMLOCK": "nmlk",
+  "K_KP_EQUALS": "=",
+  "K_KP_SLASH": "/", "K_KP_STAR": "*", "K_KP_MINUS": "-",
+  "K_KP_7": "7", "K_KP_8": "8", "K_KP_9": "9", "K_KP_PLUS": "+",
+  "K_KP_4": "4", "K_KP_5": "5", "K_KP_6": "6",
+  "K_KP_1": "1", "K_KP_2": "2", "K_KP_3": "3", "K_KP_ENTER": "ent",
+  "K_KP_0": "0", "K_KP_SEP": ".",
+
+  "K_LFN": "Fn", "K_RFN": "Fn",
+  "K_LMETA": "<>", "K_RMETA": "<>",
+
+  "M_1": "1", "M_2": "2", "M_3": "3", "M_4": "4", "M_5": "5",
+  "M_x": "lt", "M_X": "rt", "M_y": "up", "M_Y": "down",
+  }
+
+
 
 
 # One-time convert kbd_desc.py to SQL statements.
@@ -910,6 +962,7 @@ CREATE TABLE inp_details (
     print("")
   
 if __name__ == '__main__':
+  # Generate SQL for keyboard layouts from python lists.
   gen_sql()
   # python -mkbd_desc | sqlite3 layouts.sqlite3
 

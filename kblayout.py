@@ -8,63 +8,127 @@ import kbd_desc
 
 
 
+class InpDescrModel (gobject.GObject):
+    """Input descriptor model.  UI elements refer to this object for visual properties to use."""
+
+    class InpLayer (object):
+        """To be accessed as if dict."""
+        def __init__ (self, parent, layernum, fallback):
+            self.layernum = layernum
+            self._binds = dict()
+            # if the binding resolution fails, borrow from the fallback layer.
+            self._fallback = None
+
+        def get_bind (self, k):
+            if self._binds.has_key(k):
+                return self._binds[k]
+            elif self._fallback:
+                return self._fallback[k]
+            else:
+                return None
+
+        def set_bind (self, k, v):
+            self._binds[k] = v
+
+        def has_bind (self, k):
+            if self._binds.has_key(k):
+                return True
+            elif self._fallback:
+                return self._fallback.has_key(k)
+            else:
+                return False
+            
+        def __getitem__ (self, k):
+            return self.get_bind(k)
+
+        def __setitem__ (self, k, v):
+            self.set_bind(k,v)
+
+        def has_key (self, k):
+            return self.has_bind(k)
+
+    def __init__ (self, nlayers=1):
+        gobject.GObject.__init__(self)
+        # Mapping of inpsym to label to display in UI.
+        self.labels = dict()
+        # List of InpLayer representing the binding layers.
+        self.layers = list()
+        self.set_numlayers(nlayers)
+
+    def get_label (self, inpsym):
+        return self.labels.get(inpsym, inpsym)
+
+    def set_label (self, inpsym, lbl):
+        self.labels[inpsym] = lbl
+        self.emit("label-changed", inpsym)
+
+    def get_layer (self):
+        return self._layer
+    def set_layer (self, val):
+        self._layer = val
+        self.emit("layer-changed", val)
+
+    def get_layer (self, n):
+        if (0 <= n) and (n < len(self.layers)):
+            return self.layers[n]
+
+    def set_numlayers (self, n):
+        self.maxlayers = n
+        while (len(self.layers) < self.maxlayers):
+            m = len(self.layers)
+            if m > 0:
+                fallback = m-1
+            else:
+                fallback = None
+            temp = self.InpLayer(self, m, fallback)
+            self.layers.append(temp)
+
+    def get_bind (self, layernum, inpsym):
+        self.get_layer(layernum).get_bind(inpsym)
+
+    def set_bind (self, layernum, inpsym, v):
+        self.get_layer(layernum).set_bind(inpsym, v)
+        self.emit("bind-changed", layernum, inpsym)
+
+    # Signals:
+    # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
+    # * label-changed() - labels for keytops has changed; update display
+    # * layer-changed() - active layer changed
+
+gobject.type_register(InpDescrModel)
+gobject.signal_new("bind-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT, gobject.TYPE_STRING))
+gobject.signal_new("label-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,))
+gobject.signal_new("layer-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+
+
+
 class KbTop (gtk.Button):
-    def __init__ (self, label):
+    """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
+    Contents to display are packaged in a data model (InpDescrModel)
+    """
+    def __init__ (self, inpsym, inpdescr=None):
+        """Initialize with given data model, and the input symbol tied to this kbtop"""
+        # UI elements
         gtk.Button.__init__(self)
         self.plane = gtk.VBox()
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
-        #self.inp_bind = gtk.Entry()
-        #self.inp_bind = gtk.TextView()
         self.inp_bind = gtk.Label()
-        self.ksym = None
-        self._bind = None
-        self._bindid = None
-#        self.layers = {}  # Mapping layer id to bind for that layer.
 
-        encoded = label.split("\f")
-        self.label = encoded[0]
-        if len(encoded) > 1:
-            self.ksym = encoded[1]
-        else:
-            self.ksym = self.label
+        # data model
+        self.set_model(inpdescr)
+        #self.inpdescr = inpdescr
+        self.inpsym = inpsym
 
-#        if len(self.label) > 2:
-#            self.inp_lbl.set_markup("<small>%s</small>" % self.label)
-#        else:
-#            self.inp_lbl.set_text("%s" % self.label)
-        self.set_keytop(self.label)
+        # Fill label (first row)
+        self.label = self.inpdescr.get_label(self.inpsym)
+        #self.set_keytop(self.label)
 
-#        if 1:
-#            style = self.inp_bind.get_style().copy()
-#            #self.inp_bind.set_style('draw-border', True)
-#            print("style: %r" % style)
-#            #self.inp_bind.set_border_width(2)
-#            #border = gtk.Border(2,2,2,2)
-#            #style.draw_border = border
-#            bg = style.bg
-#            print("bg: %r // %r" % (bg, list(bg)))
-#            bg[0] = gtk.gdk.Color('#ffffff')
-#            bg[1] = gtk.gdk.Color('#ffffff')
-#            bg[2] = gtk.gdk.Color('#ffffff')
-#            bg[3] = gtk.gdk.Color('#ffffff')
-#            bg[4] = gtk.gdk.Color('#ffffff')
-#            print("new-bg: %r // %r" % (bg, list(bg)))
-#            #self.inp_bind.set_style(style)
-#            self.inp_bind.modify_bg(gtk.STATE_NORMAL, gtk.gdk.Color('#ffffff'))
-#            self.inp_bind.set_markup("<span bgcolor='white'>BLAH</span>")
-#            #self.inp_bind.set_markup("<span bgcolor='white'>%-32s</span>" % "")
-#            pass
-
-        #self.inp_bind.set_sensitive(False)
-        #self.inp_bind.set_width_chars(32)
-        #self.inp_bind.set_max_width_chars(8)
+        # Adjust bind display (second row)
         self.inp_bind.set_width_chars(4)
         self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
-        #print("inp_bind events = %r" % self.inp_bind.get_events())
 
-        #self.evbox = gtk.EventBox()
-#        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bind", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
+        # Set up drag-and-drop
         self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bindid", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
         self.connect("drag-drop", self.on_drop)
         self.connect("drag-data-received", self.on_drag_data_received)
@@ -78,8 +142,6 @@ class KbTop (gtk.Button):
         self.box_bind.set_shadow_type(gtk.SHADOW_IN)
         self.align1 = gtk.Alignment(0,0,1,1)
         self.bg_bind = gtk.EventBox()
-        #self.bg_bind.add(self.inp_bind)
-        #self.box_bind.modify_bg(gtk.STATE_NORMAL, gtk.gdk.color_parse('#ffffff'))
 
         # TODO: pull color from Entry background (due to themes).
         bgcolor = gtk.gdk.color_parse('#ffffff')
@@ -89,29 +151,33 @@ class KbTop (gtk.Button):
         self.bg_bind.modify_bg(gtk.STATE_SELECTED, bgcolor)
         #self.bg_bind.modify_bg(gtk.STATE_INSENSITIVE, bgcolor)
 
-        #self.box_bind.add(self.bg_bind)
-#        self.row_bind = gtk.HBox()
-#        self.row_bind.pack_start(gtk.Label("["), False, False)
-#        self.row_bind.pack_start(self.inp_bind, False, False)
-#        self.row_bind.pack_start(gtk.Label("]"), True, True)
         self.inp_bind.set_alignment(0, 0.5)
         self.bg_bind.add(self.inp_bind)
         self.align1.add(self.bg_bind)
         self.box_bind.add(self.align1)
 
-#        self.bg_bind.add(self.inp_bind)
-#        self.bg_bind.set_above_child(True)
-#        self.align1.add(self.bg_bind)
-#        self.box_bind.add(self.align1)
-
         self.plane.pack_start(self.box_bind, expand=False, fill=False)
 
-        #self.evbox.add(self.plane)
-
-        del self.bind
-
         self.add(self.plane)
-        #self.add(self.evbox)
+
+        self.update_display()
+
+    def get_inpsym (self):
+        return self.inpsym
+    def set_inpsym (self, val):
+        self.inpsym = val
+
+    def get_model (self):
+        return self.inpdescr
+    def set_model (self, mdl):
+        if mdl is None:
+            mdl = InpDescrModel()
+        self.inpdescr = mdl
+        if self.inpdescr:
+            self.inpdescr.connect("bind-changed", self.on_data_change)
+            self.inpdescr.connect("label-changed", self.on_data_change)
+            self.inpdescr.connect("layer-changed", self.on_data_change)
+        # self.emit("data-model-changed")
 
     def set_keytop (self, disp):
         if len(disp) > 2:
@@ -120,89 +186,45 @@ class KbTop (gtk.Button):
             self.inp_lbl.set_text("%s" % disp)
         return
 
-    def get_bind (self):
-        return self._bind
-    def set_bind (self, value):
-        self._bind = value
-        if value is None:
-#            dispval = "<span bgcolor='white'>%-8s</span>" % ""
-#            self.inp_bind.set_markup(dispval)
-            self.inp_bind.set_text("")
+    def update_display (self):
+        # Update keytop
+        lbl = self.inpdescr.get_label(self.inpsym)
+        self.set_keytop(lbl)
+        # Update binding display
+        layernum = 0
+        val = self.inpdescr.get_layer(layernum).get_bind(self.inpsym)
+        if val:
+            self.inp_bind.set_text(val)
         else:
-            #self.inp_bind.set_text("%-8s" % value)
-            dispval = value
-#            dispval = "<span bgcolor='yellow'>%-8s</span>" % value
-            if len(value) > 6:
-                dispval = "<small>%s</small> " % dispval
-            self.inp_bind.set_markup(dispval)
-#            self.inp_bind.set_text(value)
-        self.emit("bind-changed")
-    def del_bind (self):
-        self._bind = None
-#        self.inp_bind.set_text("")
-#        dispval = "<span bgcolor='white'>%-8s</span>" % ""
-#        self.inp_bind.set_markup(dispval)
-        self.inp_bind.set_text("")
-        self.emit("bind-changed")
+            self.inp_bind.set_text("")
 
-    bind = property(get_bind, set_bind, del_bind)
-
-    def get_bindid (self):
-        return self._bindid
-    def set_bindid (self, val):
-        self._bindid = val
-        self.emit("bindid-changed")
-    def del_bindid (self):
-        self._bindid = None
-        self.emit("bindid-changed")
-
-    bindid = property(get_bindid, set_bindid, del_bindid)
+    def on_data_change (self, *args):
+        self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
-#        other = ctx.get_source_widget()
-#        sel = other.get_selection()
-#        (treemdl, treeiter) = sel.get_selected()
-#        val = treemdl.get_command(treeiter)
-#        self.bind = val
-#
-#        if treemdl.iter_has_child(treeiter):
-#            # non-terminal item; fail.
-#            ctx.drop_finish(False, 0)
-#            return
-#        # Get the command to bind.
-#        #val = treemdl.get_value(treeiter, 0)
-#        val = treemdl.get_value(treeiter, 1)
-#        w.set_text(val)
-#        print("calling drag_get_data")
         self.drag_get_data(ctx, "STRING", time)
 
         return True
 
-#    def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-##        print("DATA RECEIVED: %r" % sel.get_text())
-#        self.bind = sel.get_text()
-#        ctx.finish(True, False, time)
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-#        print("DATA RECEIVED: %r" % sel.get_text())
-        #self._bindid = int(sel.get_text())
         self.bindid = int(sel.get_text())
-        #self.bind = sel.get_text()
         ctx.finish(True, False, time)
 
-gobject.type_register(KbTop)
-gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
-gobject.signal_new("bindid-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
+#gobject.type_register(KbTop)
+#gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
+#gobject.signal_new("bindid-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 
 
 
 class KblayoutWidget (gtk.VBox):
-    def __init__ (self):
+    def __init__ (self, mdl=None):
         gtk.VBox.__init__(self)
+        self.mdl = mdl
         self.keytops = {}
         self.active = False
-        #self.grid = gtk.Table(homogeneous=True)
         self.grid = gtk.Table(homogeneous=True)
 
+        # Selector for specific layout.
         self.mdl_layout = gtk.ListStore(str)
         kbnames = sorted(self.kbdesc.keys())
         for k in kbnames:
@@ -216,31 +238,25 @@ class KblayoutWidget (gtk.VBox):
         self.inp_layout.set_active(idx)
         self.inp_layout.connect('changed', self.on_changed)
 
+        # GUI Layout for KB Layout.
         self.lbl_layout = gtk.Label("Layout:")
         self.row_layout = gtk.HBox()
         self.row_layout.pack_start(self.lbl_layout, expand=False, fill=False)
         self.row_layout.pack_start(self.inp_layout, expand=False, fill=False)
 
-        #self.fill_board(kbd_desc.KBD['en_US'])
-        #self.fill_board(self.kbdesc['en_US'])
-        #self.fill_board(self.kbdesc['en_US (HHK)'])
         idx = self.inp_layout.get_active()
         val = self.mdl_layout[idx][0]
         self.fill_board(self.kbdesc[val])
 
-#        self.gridport = gtk.ScrolledWindow()
-#        self.gridport.add_with_viewport(self.grid)
-#        self.hscroll = gtk.Adjustment(0, 1, 0, 1, 1, 1)
-#        self.vscroll = gtk.Adjustment(0, 0, 100, 1, 10, 10)
-##        self.gridport = gtk.Viewport(self.hscroll, self.vscroll)
-##        self.gridport.add(self.grid)
-#        self.gridport.set_hadjustment(self.hscroll)
-#        self.gridport.set_vadjustment(self.vscroll)
-#        self.gridport.size_allocate(gtk.gdk.Rectangle(0, 0, 640, 1024))
-
         self.pack_start(self.row_layout, expand=False, fill=False)
-#        self.pack_start(self.gridport, expand=True, fill=True)
         self.pack_start(self.grid, expand=False, fill=False)
+
+    def get_model (self):
+        return self.mdl
+    def set_model (self, mdl):
+        self.mdl = mdl
+        for k in self.keytops.valueiter():
+            k.set_model(mdl)
 
     @property
     def kbdesc (self):
@@ -256,17 +272,20 @@ class KblayoutWidget (gtk.VBox):
                 for keydata in row:
                     (label, height, width) = keydata
                     if label is not None:
-                        keytop = KbTop(label)
+                        inpsym, disp = label, label
+                        if '\f' in label:
+                            (disp, inpsym) = label.split('\f', 1)
+                            if self.mdl:
+                                self.mdl.set_label(inpsym, disp)
+                        keytop = KbTop(inpsym, self.mdl)
                         l, r = colnum, colnum+width
                         t, b = rownum, rownum+2*height
                         #print("attach %r %r %r %r %r" % (keytop, l, r, t, b))
                         grid.attach(keytop, l, r, t, b)
-                        if keytops.has_key(keytop.ksym):
-                            print("potential duplicate: %s" % keytop.label)
-                        keytops[keytop.ksym] = keytop
+                        if keytops.has_key(inpsym):
+                            print("potential duplicate: %s" % inpsym)
+                        keytops[inpsym] = keytop
                         keytop.connect("clicked", self.on_keytop_clicked)
-                        keytop.connect("bind-changed", self.on_bind_changed)
-                        keytop.connect("bindid-changed", self.on_bindid_changed)
                         self.active = keytop
                     colnum += width
                 rownum += 1  # totals 2 for non-empty row.
@@ -293,27 +312,27 @@ class KblayoutWidget (gtk.VBox):
         self.emit("layout-changed", val)
 
     def on_keytop_clicked (self, w, *args):
-        ksym = w.ksym
-        print("target: %s" % ksym)
-        self.emit("key-selected", ksym)
+        inpsym = w.inpsym
+        print("target: %s" % inpsym)
+        self.emit("key-selected", inpsym)
 
     def on_bind_changed (self, w, *args):
-        #self.bindmap[w.ksym] = w.bind
+        #self.bindmap[w.inpsym] = w.bind
         self.emit("bind-changed", w)
 
     def on_bindid_changed (self, w, *args):
         #print("Kblayout: bindid-changed")
-        #self.bindmap[w.ksym] = w.bind
+        #self.bindmap[w.inpsym] = w.bind
         self.emit("bindid-changed", w)
 
-    def __getitem__ (self, ksym):
-        return self.keytops[ksym]
+    def __getitem__ (self, inpsym):
+        return self.keytops[inpsym]
 
-    def __setitem__ (self, ksym, val):
-        self.keytops[ksym].bind = val
+    def __setitem__ (self, inpsym, val):
+        self.keytops[inpsym].bind = val
 
-    def __delitem__ (self, ksym):
-        del self.keytops[ksym]
+    def __delitem__ (self, inpsym):
+        del self.keytops[inpsym]
 
 # Set up signals.
 gobject.type_register(KblayoutWidget)
@@ -348,8 +367,8 @@ class KblayoutWindow (gtk.Window):
     def on_delete (self, w, *args):
         gtk.main_quit()
 
-    def on_key_selected (self, w, ksym, *args):
-        print("Selected ksym '%s'" % ksym)
+    def on_key_selected (self, w, inpsym, *args):
+        print("Selected inpsym '%s'" % inpsym)
 
     def on_bind_changed (self, w, keytop, *args):
         print("Bind changed for %r" % keytop)
