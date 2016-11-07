@@ -29,7 +29,7 @@ class TestKblayout(unittest.TestCase):
                 t = time.time()
 
 
-    @unittest.skip("skip models")
+#    @unittest.skip("skip models")
     def test_models (self):
         bindchanged = []
         def on_bindchange (w, *args):
@@ -44,7 +44,7 @@ class TestKblayout(unittest.TestCase):
         self.runloop(playback)
         self.assertTrue(True in bindchanged)
 
-    @unittest.skip("skip kbtop")
+#    @unittest.skip("skip kbtop")
     def test_kbtop (self):
         def on_bindchange(w, *args):
             pass
@@ -77,6 +77,7 @@ class TestKblayout(unittest.TestCase):
         self.runloop(playback)
         self.assertEqual(b.inp_lbl.get_text(), "TEST")
         #time.sleep(4)
+        w.hide()
 
     def test_kblayout (self):
         mdl = kblayout.InpDescrModel(1)
@@ -115,6 +116,7 @@ class TestKblayout(unittest.TestCase):
         playback = [ 3,
                      ]
         self.runloop(playback)
+        w.hide()
 
 
 
