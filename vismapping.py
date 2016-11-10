@@ -307,10 +307,11 @@ Consists of:
         pass
 
 
-    def __init__ (self, store, cmds=None):
+    def __init__ (self, model, cmds=None):
         gtk.VBox.__init__(self)
 
-        self.store = store
+        #self.store = store
+        self.mdl = model
         self.cmds = cmds
 
         self.uibuild()
@@ -325,11 +326,7 @@ Consists of:
         self.pack_start(self.moderow)
 
         # grid/tablular layout of inpbind+bindcmd
-        self.kbl = kblayout.KblayoutWidget()
-#        self.kbl.connect("key-selected", self.on_key_selected)
-#        self.kbl.connect("bind-changed", self.on_bind_changed)
-#        self.kbl.connect("bindid-changed", self.on_bindid_changed)
-#        self.kbl.connect("layout-changed", self.on_layout_changed)
+        self.kbl = kblayout.KblayoutWidget(self.mdl)
 
         self.pack_start(self.kbl, expand=False, fill=False)
 
@@ -441,14 +438,15 @@ class VisMapperWindow (gtk.Window):
     def reset (self):
         self.bindpad.reset()
 
-    def __init__ (self, parent=None):
-        self.app = parent
+    def __init__ (self, data=None, parent=None):
+        self.data = data
+        self.app = parent   # DEPRECATED
         gtk.Window.__init__(self)
         self.set_title("Vismapper")
 
-        self.saveuri = None
+#        self.saveuri = None
 
-        self.store = self.app.store
+#        self.store = self.app.store
 
         self.panes = gtk.VBox()
         self.add(self.panes)
@@ -462,7 +460,7 @@ class VisMapperWindow (gtk.Window):
         self.cmdcol = VisCmds()
 
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.store, self.cmdcol.cmds)
+        self.bindpad = VisBind(self.data, self.cmdcol.cmds)
         self.bindrow.pack_start(self.bindpad)
         self.padpane.pack_start(self.bindrow)
 
@@ -604,11 +602,11 @@ class VisMapperWindow (gtk.Window):
 
 
 class VisMapperApp (object):
-    """Overall application object, minimalist wrapper."""
+    """Overall application object."""
     def __init__ (self):
         self.store = Store(8)
         self.mdl = kblayout.InpDescrModel(1)
-        self.ui = VisMapperWindow(self)
+        self.ui = VisMapperWindow(self.mdl, self)
 
     def go (self):
         self.ui.show_all()

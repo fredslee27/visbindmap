@@ -212,13 +212,19 @@ class KbTop (gtk.Button):
         self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
-        self.drag_get_data(ctx, "STRING", time)
-
+        dragdata = self.drag_get_data(ctx, "STRING", time)
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-        self.bindid = int(sel.get_text())
+        print("%s.on_drag_data_received" % self)
+        bindid = int(sel.get_text())
+        print(" drag_data => %s" % bindid)
+        self.bindid = bindid
         ctx.finish(True, False, time)
+        active_layer = 0
+        #self.inpdescr.get_layer(active_layer).set_bind(self.inpsym, bindid)
+        self.inpdescr.set_bind(active_layer, self.inpsym, str(bindid))
+        print(" bind(inpsym=%s, val=%s)" % (self.inpsym, "test_ok"))
 
 #gobject.type_register(KbTop)
 #gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
