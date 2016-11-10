@@ -90,6 +90,16 @@ class InpDescrModel (gobject.GObject):
         self.get_layer(layernum).set_bind(inpsym, v)
         self.emit("bind-changed", layernum, inpsym)
 
+    def resolve_bind (self, layernum, inpsym):
+        follow = layernum
+        retval = None
+        while (retval is None) and (follow is not None):
+            layer = self.get_layer(layernum)
+            if layer:
+                retval = layer.get_bind(inpsym)
+            else:
+                follow = layer._fallback
+
     # Signals:
     # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
     # * label-changed() - labels for keytops has changed; update display
