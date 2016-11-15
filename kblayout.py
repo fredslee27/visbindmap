@@ -56,6 +56,7 @@ class InpDescrModel (gobject.GObject):
         self.set_numlayers(nlayers)
 
     def get_label (self, inpsym):
+        """If no model data, return inpsym as the label."""
         return self.labels.get(inpsym, inpsym)
 
     def set_label (self, inpsym, lbl):
@@ -140,6 +141,7 @@ class KbTop (gtk.Button):
 
         # Set up drag-and-drop
         self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bindid", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
+        #self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("binduri", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
         self.connect("drag-drop", self.on_drop)
         self.connect("drag-data-received", self.on_drag_data_received)
 
@@ -212,12 +214,20 @@ class KbTop (gtk.Button):
         self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
+        print("%s on-drop %r" % (self.__class__.__name__, w))
         self.drag_get_data(ctx, "STRING", time)
 
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-        self.bindid = int(sel.get_text())
+        print("%s drag-data-received %r" % (self.__class__.__name__, w))
+        srcw = ctx.get_source_widget()
+        print(" srcw = %r" % srcw)
+        seltext = sel.get_text()
+        #self.bindid = int(sel.get_text())
+        #self.binduri = sel.get_text()
+        print("  sel = %r" % seltext)
+        bindid = int(seltext)
         ctx.finish(True, False, time)
 
 #gobject.type_register(KbTop)
