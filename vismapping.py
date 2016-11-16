@@ -626,11 +626,41 @@ class VisMapperWindow (gtk.Window):
 
 
 class VisMapperApp (object):
-    """Overall application object, minimalist wrapper."""
+    """Overall application object."""
     def __init__ (self):
         self.store = Store(8)
         self.mdl = kblayout.InpDescrModel(1)
         self.ui = VisMapperWindow(self, self.mdl)
+        self.uibuild()
+
+    def uibuild (self):
+        """Setup and connect UI elements."""
+        kbl = self.ui.bindpad.kbl
+        cmdview = self.ui.cmdcol
+        kbl.connect("dnd-link", self.on_kbl_dndlink)
+        print("- built")
+
+    def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
+        print("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
+        inpsym = dstw.inpsym
+        layernum = 0
+        self.mdl.set_bind(layernum, inpsym, bindval)
+        pass
+
+#    def on_kbl_drop (self, w, ctx, x, y, t, *args):
+#        w.drag_get_data(ctx, "STRING", time)
+#        # Initiates drag-data transfer.
+#        return True
+#
+#    def on_kbl_drag_data_received (self, w, ctx, x, y, sel, info, t, *args):
+#        srcw = ctx.get_source_widget()
+#        bindid = int(self.get_text())
+#        ctx.finish(True, False, time)
+#        bindval = "UNKNOWN"
+#        layernum = 0  # from store?
+#        #self.mdl.set_bind(layernum, w.inpsym, bindval)
+#        print("Handled KbLayout drag data received")
+
 
     def go (self):
         self.ui.show_all()

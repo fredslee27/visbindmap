@@ -229,8 +229,10 @@ class KbTop (gtk.Button):
         print("  sel = %r" % seltext)
         bindid = int(seltext)
         ctx.finish(True, False, time)
+        self.emit("dnd-link", srcw, seltext)
 
-#gobject.type_register(KbTop)
+gobject.type_register(KbTop)
+gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
 #gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 #gobject.signal_new("bindid-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 
@@ -306,6 +308,7 @@ class KblayoutWidget (gtk.VBox):
                             print("potential duplicate: %s" % inpsym)
                         keytops[inpsym] = keytop
                         keytop.connect("clicked", self.on_keytop_clicked)
+                        keytop.connect("dnd-link", self.on_keytop_bound)
                         self.active = keytop
                     colnum += width
                 rownum += 1  # totals 2 for non-empty row.
@@ -336,6 +339,10 @@ class KblayoutWidget (gtk.VBox):
         print("target: %s" % inpsym)
         self.emit("key-selected", inpsym)
 
+    def on_keytop_bound (self, dstw, srcw, dnddata, *args):
+        print("keytop_bound dstw=%r srcw=%r data=%r" % (dstw, srcw, dnddata))
+        self.emit("dnd-link", dstw, srcw, dnddata)
+
     def on_bind_changed (self, w, *args):
         #self.bindmap[w.inpsym] = w.bind
         self.emit("bind-changed", w)
@@ -360,6 +367,7 @@ gobject.signal_new("key-selected", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gob
 gobject.signal_new("bind-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("bindid-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("layout-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+gobject.signal_new("dnd-link", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, object, str))
 
 
 
