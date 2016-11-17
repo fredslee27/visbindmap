@@ -56,6 +56,7 @@ class InpDescrModel (gobject.GObject):
         self.set_numlayers(nlayers)
 
     def get_label (self, inpsym):
+        """If no model data, return inpsym as the label."""
         return self.labels.get(inpsym, inpsym)
 
     def set_label (self, inpsym, lbl):
@@ -140,6 +141,7 @@ class KbTop (gtk.Button):
 
         # Set up drag-and-drop
         self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bindid", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
+        #self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("binduri", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
         self.connect("drag-drop", self.on_drop)
         self.connect("drag-data-received", self.on_drag_data_received)
 
@@ -212,21 +214,43 @@ class KbTop (gtk.Button):
         self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
+<<<<<<< local
         dragdata = self.drag_get_data(ctx, "STRING", time)
+=======
+        print("%s on-drop %r" % (self.__class__.__name__, w))
+        self.drag_get_data(ctx, "STRING", time)
+
+>>>>>>> other
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
+<<<<<<< local
         print("%s.on_drag_data_received" % self)
         bindid = int(sel.get_text())
         print(" drag_data => %s" % bindid)
         self.bindid = bindid
+=======
+        print("%s drag-data-received %r" % (self.__class__.__name__, w))
+        srcw = ctx.get_source_widget()
+        print(" srcw = %r" % srcw)
+        seltext = sel.get_text()
+        #self.bindid = int(sel.get_text())
+        #self.binduri = sel.get_text()
+        print("  sel = %r" % seltext)
+        bindid = int(seltext)
+>>>>>>> other
         ctx.finish(True, False, time)
+<<<<<<< local
         active_layer = 0
         #self.inpdescr.get_layer(active_layer).set_bind(self.inpsym, bindid)
         self.inpdescr.set_bind(active_layer, self.inpsym, str(bindid))
         print(" bind(inpsym=%s, val=%s)" % (self.inpsym, "test_ok"))
+=======
+        self.emit("dnd-link", srcw, seltext)
+>>>>>>> other
 
-#gobject.type_register(KbTop)
+gobject.type_register(KbTop)
+gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
 #gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 #gobject.signal_new("bindid-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 
@@ -302,6 +326,7 @@ class KblayoutWidget (gtk.VBox):
                             print("potential duplicate: %s" % inpsym)
                         keytops[inpsym] = keytop
                         keytop.connect("clicked", self.on_keytop_clicked)
+                        keytop.connect("dnd-link", self.on_keytop_bound)
                         self.active = keytop
                     colnum += width
                 rownum += 1  # totals 2 for non-empty row.
@@ -332,6 +357,10 @@ class KblayoutWidget (gtk.VBox):
         print("target: %s" % inpsym)
         self.emit("key-selected", inpsym)
 
+    def on_keytop_bound (self, dstw, srcw, dnddata, *args):
+        print("keytop_bound dstw=%r srcw=%r data=%r" % (dstw, srcw, dnddata))
+        self.emit("dnd-link", dstw, srcw, dnddata)
+
     def on_bind_changed (self, w, *args):
         #self.bindmap[w.inpsym] = w.bind
         self.emit("bind-changed", w)
@@ -356,6 +385,7 @@ gobject.signal_new("key-selected", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gob
 gobject.signal_new("bind-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("bindid-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("layout-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+gobject.signal_new("dnd-link", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, object, str))
 
 
 

@@ -241,6 +241,7 @@ class VisCmds (gtk.VBox):
         self.entry = gtk.TreeView(self.cmdlist)
         self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bind", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
         self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bindid", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
+        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("binduri", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
@@ -255,7 +256,7 @@ class VisCmds (gtk.VBox):
 
     def on_drag_data_get (self, w, ctx, sel, info, time, *args):
         if sel.target == "bind":
-#            print("+++ target is bind")
+            print("+++ target is bind")
             srcw = ctx.get_source_widget()
             treesel = srcw.get_selection()
             (treemdl, treeiter) = treesel.get_selected()
@@ -273,7 +274,7 @@ class VisCmds (gtk.VBox):
             #sel.set_text(val, len(val))
             sel.set("STRING", 8, val)  # 8 bits per unit.
         elif sel.target == "bindid":
-#            print("+++ target is bind")
+            print("+++ target is bindid")
             srcw = ctx.get_source_widget()
             treesel = srcw.get_selection()
             (treemdl, treeiter) = treesel.get_selected()
@@ -290,7 +291,25 @@ class VisCmds (gtk.VBox):
 #            print("using val=%r" % val)
             #sel.set_text(val, len(val))
             sel.set("STRING", 8, str(val))  # 8 bits per unit.
+        elif sel.target == "binduri":
+            print("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
+            # Find out target, get its inpsym, assign binding.
+            # Send displayed text to target.
+            print("+++ target is bindref")
+            srcw = ctx.get_source_widget()
+            treesel = srcw.get_selection()
+            (treemdl, treeiter) = treesel.get_selected()
 
+            if treemdl.iter_has_child(treeiter):
+                # non-terminal item; fail.
+                sel.set_text("", 0)
+                return
+            # Get the command to bind.
+            num = treemdl.get_value(treeiter, 0)
+            name = treemdl.get_value(treeiter, 1)
+            val = "cmdbind://%s/%s" % (num, name)
+            print("+++  val = %r" % val)
+            sel.set("STRING", 8, str(val))  # 8 bits per unit.
 
 
 # Graphically lay out bindings meanings.
@@ -307,12 +326,13 @@ Consists of:
         pass
 
 
-    def __init__ (self, model, cmds=None):
+    def __init__ (self, store, cmds=None, inpdescr=None):
         gtk.VBox.__init__(self)
 
         #self.store = store
         self.mdl = model
         self.cmds = cmds
+        self.inpdescr = inpdescr
 
         self.uibuild()
 
@@ -326,7 +346,11 @@ Consists of:
         self.pack_start(self.moderow)
 
         # grid/tablular layout of inpbind+bindcmd
-        self.kbl = kblayout.KblayoutWidget(self.mdl)
+        self.kbl = kblayout.KblayoutWidget(self.inpdescr)
+#        self.kbl.connect("key-selected", self.on_key_selected)
+#        self.kbl.connect("bind-changed", self.on_bind_changed)
+#        self.kbl.connect("bindid-changed", self.on_bindid_changed)
+#        self.kbl.connect("layout-changed", self.on_layout_changed)
 
         self.pack_start(self.kbl, expand=False, fill=False)
 
@@ -438,9 +462,10 @@ class VisMapperWindow (gtk.Window):
     def reset (self):
         self.bindpad.reset()
 
-    def __init__ (self, data=None, parent=None):
-        self.data = data
-        self.app = parent   # DEPRECATED
+    def __init__ (self, parent=None, inpdescr=None):
+        self.inpdescr = inpdescr
+        self.app = parent
+
         gtk.Window.__init__(self)
         self.set_title("Vismapper")
 
@@ -460,7 +485,7 @@ class VisMapperWindow (gtk.Window):
         self.cmdcol = VisCmds()
 
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.data, self.cmdcol.cmds)
+        self.bindpad = VisBind(self.store, self.cmdcol.cmds, self.inpdescr)
         self.bindrow.pack_start(self.bindpad)
         self.padpane.pack_start(self.bindrow)
 
@@ -606,7 +631,37 @@ class VisMapperApp (object):
     def __init__ (self):
         self.store = Store(8)
         self.mdl = kblayout.InpDescrModel(1)
-        self.ui = VisMapperWindow(self.mdl, self)
+        self.ui = VisMapperWindow(self, self.mdl)
+        self.uibuild()
+
+    def uibuild (self):
+        """Setup and connect UI elements."""
+        kbl = self.ui.bindpad.kbl
+        cmdview = self.ui.cmdcol
+        kbl.connect("dnd-link", self.on_kbl_dndlink)
+        print("- built")
+
+    def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
+        print("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
+        inpsym = dstw.inpsym
+        layernum = 0
+        self.mdl.set_bind(layernum, inpsym, bindval)
+        pass
+
+#    def on_kbl_drop (self, w, ctx, x, y, t, *args):
+#        w.drag_get_data(ctx, "STRING", time)
+#        # Initiates drag-data transfer.
+#        return True
+#
+#    def on_kbl_drag_data_received (self, w, ctx, x, y, sel, info, t, *args):
+#        srcw = ctx.get_source_widget()
+#        bindid = int(self.get_text())
+#        ctx.finish(True, False, time)
+#        bindval = "UNKNOWN"
+#        layernum = 0  # from store?
+#        #self.mdl.set_bind(layernum, w.inpsym, bindval)
+#        print("Handled KbLayout drag data received")
+
 
     def go (self):
         self.ui.show_all()
