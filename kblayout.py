@@ -214,22 +214,10 @@ class KbTop (gtk.Button):
         self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
-<<<<<<< local
         dragdata = self.drag_get_data(ctx, "STRING", time)
-=======
-        print("%s on-drop %r" % (self.__class__.__name__, w))
-        self.drag_get_data(ctx, "STRING", time)
-
->>>>>>> other
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-<<<<<<< local
-        print("%s.on_drag_data_received" % self)
-        bindid = int(sel.get_text())
-        print(" drag_data => %s" % bindid)
-        self.bindid = bindid
-=======
         print("%s drag-data-received %r" % (self.__class__.__name__, w))
         srcw = ctx.get_source_widget()
         print(" srcw = %r" % srcw)
@@ -238,16 +226,8 @@ class KbTop (gtk.Button):
         #self.binduri = sel.get_text()
         print("  sel = %r" % seltext)
         bindid = int(seltext)
->>>>>>> other
         ctx.finish(True, False, time)
-<<<<<<< local
-        active_layer = 0
-        #self.inpdescr.get_layer(active_layer).set_bind(self.inpsym, bindid)
-        self.inpdescr.set_bind(active_layer, self.inpsym, str(bindid))
-        print(" bind(inpsym=%s, val=%s)" % (self.inpsym, "test_ok"))
-=======
         self.emit("dnd-link", srcw, seltext)
->>>>>>> other
 
 gobject.type_register(KbTop)
 gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data

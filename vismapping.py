@@ -95,6 +95,44 @@ class Store (object):
 
 
 
+def build_treestore_from_commands(cmds_db, treestore=None):
+    if treestore is None:
+        treestore = gtk.TreeStore(int, str, str, str, object)
+
+    # First, the unbind item.
+    treestore.append(None, (0, "", "(unbind)", "", cmds_db))
+
+    # Prepare groups; mapping of group name to TreeIter position of that header row in the TreeStore.
+    groupheads = {}
+
+    # Recursively callable for nested groups.
+    def make_group (grpname):
+        if '/' in grpname:
+            splitpt = grpname.rindex('/')
+            prefix = grpname[:splitpt]
+            suffix = grpname[splitpt+1:]
+            make_group(prefix)
+            parentiter = groupheads[prefix]
+            treeiter = treestore.append(parentiter, (0, "", suffix, "", cmds_db))
+            groupheads[grpname] = treeiter
+        else:
+            if not groupheads.has_key(grpname):
+                treeiter = treestore.append(None, (0, "", grp, "", cmds_db))
+                groupheads[grpname] = treeiter
+
+    for grp in cmds_db.groups:
+        make_group(grp)
+
+    for cmdinfo in cmds_db:
+        (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
+        grpiter = groupheads[grp]
+        if not desc:
+            desc = cmd
+        row = (cmdid, cmd, desc, hint, cmds_db)
+        treeiter = treestore.append(grpiter, row)
+
+
+
 class Commands (object):
     """Database of game commands."""
     def __init__ (self, dbname):
@@ -105,10 +143,6 @@ class Commands (object):
         # Pull relevant rows.
         cursor = self.conn.cursor()
         cursor.execute('''SELECT id,layer,grp,cmd,label,hint FROM cmd;''')
-#        for row in cursor.fetchall():
-#            (cmdid, grp, cmd, label, hint) = row
-#            self.db.append((cmdid, grp, cmd, label, hint))
-#        print("conn = %r" % self.conn)
 
     def get_modes (self):
         cursor = self.conn.cursor()
@@ -187,40 +221,40 @@ class Commands (object):
         raise StopIteration()
 
     def build_treestore (self, store):
-        # The unbind item.
-        store.append(None, (0, "", "(unbind)", "", self))
+        return build_treestore_from_commands(self, store)
+#    def build_treestore (self, store):
+#        # The unbind item.
+#        store.append(None, (0, "", "(unbind)", "", self))
+##            treeiter = store.append(grpiter, (cmdid, cmd, desc, hint, self))
+#        # Build all groups.
+#        groupheads = {}
+#
+#        def make_group (grpname):
+#            if '/' in grpname:
+#                splitpt = grpname.rindex('/')
+#                prefix = grpname[:splitpt]
+#                suffix = grpname[splitpt+1:]
+#                make_group(prefix)
+#                parentiter = groupheads[prefix]
+#                #treeiter = store.append(parentiter, (0, "", grp, ""))
+#                treeiter = store.append(parentiter, (0, "", suffix, "", self))
+#                groupheads[grpname] = treeiter
+#            else:
+#                if not groupheads.has_key(grpname):
+#                    treeiter = store.append(None, (0, "", grp, "", self))
+#                    groupheads[grpname] = treeiter
+#
+#        for grp in self.groups:
+##            treeiter = store.append(None, (0, "", grp, ""))
+##            groupheads[grp] = treeiter
+#            make_group(grp)
+#
+#        for cmdinfo in self.__iter__():
+#            (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
+#            grpiter = groupheads[grp]
+#            if not desc:
+#                desc = cmd
 #            treeiter = store.append(grpiter, (cmdid, cmd, desc, hint, self))
-        # Build all groups.
-        groupheads = {}
-
-        def make_group (grpname):
-            if '/' in grpname:
-                splitpt = grpname.rindex('/')
-                prefix = grpname[:splitpt]
-                suffix = grpname[splitpt+1:]
-                make_group(prefix)
-                parentiter = groupheads[prefix]
-                #treeiter = store.append(parentiter, (0, "", grp, ""))
-                treeiter = store.append(parentiter, (0, "", suffix, "", self))
-                groupheads[grpname] = treeiter
-            else:
-                if not groupheads.has_key(grpname):
-                    treeiter = store.append(None, (0, "", grp, "", self))
-                    groupheads[grpname] = treeiter
-
-        for grp in self.groups:
-#            treeiter = store.append(None, (0, "", grp, ""))
-#            groupheads[grp] = treeiter
-            make_group(grp)
-
-        for cmdinfo in self.__iter__():
-            (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
-            grpiter = groupheads[grp]
-            if not desc:
-                desc = cmd
-            treeiter = store.append(grpiter, (cmdid, cmd, desc, hint, self))
-
-
 
 
 class VisCmds (gtk.VBox):
@@ -645,6 +679,7 @@ class VisMapperApp (object):
         print("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
         inpsym = dstw.inpsym
         layernum = 0
+        bindval = "-NOT IMPLEMENTED-"
         self.mdl.set_bind(layernum, inpsym, bindval)
         pass
 
