@@ -140,7 +140,8 @@ class KbTop (gtk.Button):
         self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
 
         # Set up drag-and-drop
-        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bindid", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bind", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
+        #self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bindid", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
         #self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("binduri", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
         self.connect("drag-drop", self.on_drop)
         self.connect("drag-data-received", self.on_drag_data_received)
@@ -227,7 +228,7 @@ class KbTop (gtk.Button):
         #self.bindid = int(sel.get_text())
         #self.binduri = sel.get_text()
         print("  sel = %r" % seltext)
-        bindid = int(seltext)
+        #bindid = int(seltext)
         ctx.finish(True, False, time)
         self.emit("dnd-link", srcw, seltext)
 

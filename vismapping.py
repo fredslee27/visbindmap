@@ -97,10 +97,10 @@ class Store (object):
 
 def build_treestore_from_commands(cmds_db, treestore=None):
     if treestore is None:
-        treestore = gtk.TreeStore(int, str, str, str, object)
+        treestore = gtk.TreeStore(int, str, str, str)
 
     # First, the unbind item.
-    treestore.append(None, (0, "", "(unbind)", "", cmds_db))
+    treestore.append(None, (0, "", "(unbind)", ""))
 
     # Prepare groups; mapping of group name to TreeIter position of that header row in the TreeStore.
     groupheads = {}
@@ -113,11 +113,11 @@ def build_treestore_from_commands(cmds_db, treestore=None):
             suffix = grpname[splitpt+1:]
             make_group(prefix)
             parentiter = groupheads[prefix]
-            treeiter = treestore.append(parentiter, (0, "", suffix, "", cmds_db))
+            treeiter = treestore.append(parentiter, (0, "", suffix, ""))
             groupheads[grpname] = treeiter
         else:
             if not groupheads.has_key(grpname):
-                treeiter = treestore.append(None, (0, "", grp, "", cmds_db))
+                treeiter = treestore.append(None, (0, "", grp, ""))
                 groupheads[grpname] = treeiter
 
     for grp in cmds_db.groups:
@@ -128,7 +128,7 @@ def build_treestore_from_commands(cmds_db, treestore=None):
         grpiter = groupheads[grp]
         if not desc:
             desc = cmd
-        row = (cmdid, cmd, desc, hint, cmds_db)
+        row = (cmdid, cmd, desc, hint)
         treeiter = treestore.append(grpiter, row)
 
 
@@ -259,22 +259,20 @@ class Commands (object):
 
 class VisCmds (gtk.VBox):
     """Visual presentation of commands: a tree of group and the commands."""
+    # TODO: move out of widget
     DEFAULT_DATASOURCE = DEFAULT_DBNAME + ".sqlite3"
 
     def __init__ (self, datasrc=None):
         gtk.VBox.__init__(self)
+
         # id, cmd, display, hint
+        self.cmdlist = gtk.TreeStore(int, str, str, str)
 
-        self.cmdlist = gtk.TreeStore(int, str, str, str, object)
-
-        if datasrc is None:
-            datasrc = self.DEFAULT_DATASOURCE
-        self.cmds = Commands(datasrc)
-        self.cmds.build_treestore(self.cmdlist)
+        self.set_datasrc(datasrc)
 
         self.entry = gtk.TreeView(self.cmdlist)
         self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bind", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
-        self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bindid", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
+        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bindid", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
         #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("binduri", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
@@ -288,51 +286,52 @@ class VisCmds (gtk.VBox):
         self.add(self.entrywin)
         self.set_size_request(160, 100)
 
+    # TODO: 
+    def get_datasrc (self):
+        return self._datasrc
+    def set_datasrc (self, datasrc):
+        if datasrc is None:
+            datasrc = self.DEFAULT_DATASOURCE
+        self._datasrc = datasrc
+        self.cmds = Commands(datasrc)
+        self.cmds.build_treestore(self.cmdlist)
+        # TODO: ...?
+    datasrc = property(get_datasrc, set_datasrc)
+
+    def build_treestore (self, commands):
+        pass
+
     def on_drag_data_get (self, w, ctx, sel, info, time, *args):
+        srcw = ctx.get_source_widget()
+        treesel = srcw.get_selection()
+        (treemdl, treeiter) = treesel.get_selected()
         if sel.target == "bind":
             print("+++ target is bind")
-            srcw = ctx.get_source_widget()
-            treesel = srcw.get_selection()
-            (treemdl, treeiter) = treesel.get_selected()
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
-                #sel.data = None
                 sel.set_text("", 0)
-#                ctx.drop_finish(False, 0)
                 return
             # Get the command to bind.
             val = treemdl.get_value(treeiter, 1)
 
-#            print("using val=%r" % val)
-            #sel.set_text(val, len(val))
             sel.set("STRING", 8, val)  # 8 bits per unit.
         elif sel.target == "bindid":
             print("+++ target is bindid")
-            srcw = ctx.get_source_widget()
-            treesel = srcw.get_selection()
-            (treemdl, treeiter) = treesel.get_selected()
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
-                #sel.data = None
                 sel.set_text("", 0)
-#                ctx.drop_finish(False, 0)
                 return
             # Get the command to bind.
             val = treemdl.get_value(treeiter, 0)
 
-#            print("using val=%r" % val)
-            #sel.set_text(val, len(val))
             sel.set("STRING", 8, str(val))  # 8 bits per unit.
         elif sel.target == "binduri":
             print("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
             # Find out target, get its inpsym, assign binding.
             # Send displayed text to target.
             print("+++ target is bindref")
-            srcw = ctx.get_source_widget()
-            treesel = srcw.get_selection()
-            (treemdl, treeiter) = treesel.get_selected()
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -678,7 +677,8 @@ class VisMapperApp (object):
         print("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
         inpsym = dstw.inpsym
         layernum = 0
-        bindval = "-NOT IMPLEMENTED-"
+        #bindval = "-NOT IMPLEMENTED-"
+        bindval = dnddata
         self.mdl.set_bind(layernum, inpsym, bindval)
         pass
 
