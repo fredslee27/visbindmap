@@ -362,7 +362,8 @@ Consists of:
     def __init__ (self, store, cmds=None, inpdescr=None):
         gtk.VBox.__init__(self)
 
-        self.store = store
+        #self.store = store
+        self.mdl = model
         self.cmds = cmds
         self.inpdescr = inpdescr
 
@@ -504,9 +505,9 @@ class VisMapperWindow (gtk.Window):
         gtk.Window.__init__(self)
         self.set_title("Vismapper")
 
-        self.saveuri = None
+#        self.saveuri = None
 
-        self.store = self.app.store
+#        self.store = self.app.store
 
         self.panes = gtk.VBox()
         self.add(self.panes)

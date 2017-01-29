@@ -220,9 +220,7 @@ class KbTop (gtk.Button):
         self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
-        print("%s on-drop %r" % (self.__class__.__name__, w))
-        self.drag_get_data(ctx, "STRING", time)
-
+        dragdata = self.drag_get_data(ctx, "STRING", time)
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
