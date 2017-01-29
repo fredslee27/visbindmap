@@ -12,7 +12,12 @@ class InpDescrModel (gobject.GObject):
     """Input descriptor model.  UI elements refer to this object for visual properties to use."""
 
     class InpLayer (object):
-        """To be accessed as if dict."""
+        """To be accessed as if dict.
+One layer of bindings.
+Keys are keysym.
+
+Multiple layers attach to a mode.
+"""
         def __init__ (self, parent, layernum, fallback):
             self.layernum = layernum
             self._binds = dict()

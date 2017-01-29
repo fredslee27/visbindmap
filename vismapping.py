@@ -465,12 +465,15 @@ Consists of:
         return
 
     def relabel_keys (self, levelnum):
+        """Change the keytops, typ. due to layout change."""
         pass
 
     def on_mode_toggle (self, w, *args):
+        """Load bindings for mode."""
         pass
 
     def on_shifter_toggle (self, w, *args):
+        """Load bindings for shift level."""
         pass
 
     def bind_cmd (self, ksym, cmdinfo):
@@ -659,7 +662,7 @@ class VisMapperWindow (gtk.Window):
 
 
 class VisMapperApp (object):
-    """Overall application object."""
+    """Overall application object, with app/GUI state information."""
     def __init__ (self):
         self.store = Store(8)
         self.mdl = kblayout.InpDescrModel(1)
