@@ -366,15 +366,11 @@ Consists of:
         pass
 
 
-    def __init__ (self, store, cmds=None, inpdescr=None):
+    def __init__ (self, store, cmds=None):
         gtk.VBox.__init__(self)
 
         self.store = store
         self.cmds = cmds
-        #self.inpdescr = inpdescr
-
-        self._modenum = 0
-        self._shiftnum = 0
 
         self.uibuild()
 
@@ -388,36 +384,19 @@ Consists of:
         self.pack_start(self.moderow)
 
         # grid/tablular layout of inpbind+bindcmd
-        #self.kbl = kblayout.KblayoutWidget(self.inpdescr)
-        #inpdescr = self.store.modes[self._modenum]
         inpdescr = self.store.inpdescr
         self.kbl = kblayout.KblayoutWidget(inpdescr)
-#        self.kbl.connect("key-selected", self.on_key_selected)
-#        self.kbl.connect("bind-changed", self.on_bind_changed)
-#        self.kbl.connect("bindid-changed", self.on_bindid_changed)
-#        self.kbl.connect("layout-changed", self.on_layout_changed)
+        self.kbl.connect('key-selected', self.on_key_selected)
 
         self.pack_start(self.kbl, expand=False, fill=False)
 
-    def get_model (self):
-        return self.inpdescr
-    def set_model (self, mdl):
-        self.inpdescr = mdl
-        for symname,w in self.kbl.keytops.iteritems():
-            w.set_model(mdl)
-
     def on_key_selected (self, w, ksym, *args):
-        print("key-selected: %s" % ksym)
+        binding = self.store.inpdescr.get_bind(0, ksym)
+        print("key-selected: %s => %s" % (ksym, binding))
 
     def on_layout_changed (self, w, layoutname, *args):
         self.relabel_keys(self.levelnum)
         self.load_bindmap(self.layernum)
-
-    def on_bind_changed (self, w, keytop, *args):
-        """(DEPRECATED)"""
-        print("+++ VisBind.bind-changed: %r" % keytop)
-        #self.bindmap[keytop.ksym] = keytop.bind
-        pass
 
     def InpSelectMode (self):
         """Generate GUI Widget for selecting mode (layer)."""
@@ -476,37 +455,6 @@ Consists of:
         shiftbox.add(shiftrow)
         return shiftbox
 
-    def save_bindmap (self, bindmask):
-        crumb("\f")
-        crumb("save_bindmap -- nop")
-        pass
-
-    def load_bindmap (self, modenum=None, shiftnum=None):
-        """Load binding map: update visual keys with bindings from given layer."""
-        if modenum is None:
-            modenum = self._modenum
-        if shiftnum is None:
-            shiftnum = self._shiftnum
-        print("Loading bindmap[layer=%r][level=%r]" % (modenum, shiftnum))
-        layermap = self.store.binddata[modenum]
-        levelmap = layermap[shiftnum]
-#        for name,cmdinfo in levelmap.iteritems():
-#            #(cmdid, layer, grp, cmd, desc, hint) = cmdinfo
-#            print("what do with %r" % (cmdinfo,))
-        #active_mode = self.inpdescr
-        #active_mode = self.store.modes[self._modenum]
-        active_mode = self.store.inpdescr
-        for symname,w in self.kbl.keytops.iteritems():
-            w.set_model(active_mode)
-        active_mode.set_layer(shiftnum)
-        self._modenum = modenum
-        self._shiftnum = shiftnum
-        return
-
-    def shift_bindmap (self, levelnum):
-        """Change/refresh the keytops, typically due to layout or level change."""
-        pass
-
     def relabel_keys (self, levelnum):
         """Repaint/Update keysyms, typically due to layout change."""
         pass
@@ -514,11 +462,8 @@ Consists of:
     def on_mode_toggle (self, w, *args):
         """Load bindings for mode."""
         if w.get_active():
-          print("mode toggle to %d" % w.layernum)
-          self.load_bindmap(w.layernum, None)
-          # TODO: announce change in layer.
           self.emit("mode-changed", w.layernum)
-        pass
+        return
 
     def on_shifter_toggle (self, w, *args):
         """Load bindings for shift level."""
@@ -527,11 +472,8 @@ Consists of:
           return
         if w.get_active():
           # turning on.
-          print("shifter toggle to %d" % (w.levelnum,))
-          self.load_bindmap(None, w.levelnum)
-        # TODO: announce change in level.
-        self.emit("level-changed", w.levelnum)
-        pass
+          self.emit("level-changed", w.levelnum)
+        return
 
     def bind_cmd (self, ksym, cmdinfo):
         print("+++ bind");
@@ -560,8 +502,7 @@ class VisMapperWindow (gtk.Window):
     def reset (self):
         self.bindpad.reset()
 
-    def __init__ (self, parent=None, inpdescr=None):
-        self.inpdescr = inpdescr
+    def __init__ (self, parent=None, store=None):
         self.app = parent
 
         gtk.Window.__init__(self)
@@ -569,7 +510,10 @@ class VisMapperWindow (gtk.Window):
 
         self.saveuri = None
 
-        self.store = self.app.store
+        if store is None:
+            self.store = self.app.store
+        else:
+            self.store = store
 
         self.panes = gtk.VBox()
         self.add(self.panes)
@@ -583,7 +527,7 @@ class VisMapperWindow (gtk.Window):
         self.cmdcol = VisCmds()
 
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.store, self.cmdcol.cmds, self.inpdescr)
+        self.bindpad = VisBind(self.store, self.cmdcol.cmds)
         self.bindrow.pack_start(self.bindpad)
         self.padpane.pack_start(self.bindrow)
 
@@ -733,7 +677,7 @@ class VisMapperApp (object):
         self.modenum = 0
         self.levelnum = 0
         mdl = self.store.inpdescr
-        self.ui = VisMapperWindow(self, mdl)
+        self.ui = VisMapperWindow(self, self.store)
         self.uibuild()
 
     def uibuild (self):
@@ -753,24 +697,22 @@ class VisMapperApp (object):
         pop = self.store.modes[modenum]
         self.store.inpdescr.layers = pop
         print("^^^ ? changing to mode %d" % modenum)
-        # TODO: redraw VisBind
-        #self.ui.bindpad.kbl.set_layer(self.ui.bindpad.kbl.get_layer())
         mdl = self.store.inpdescr
+        # update displays by forcing level change event.
         mdl.set_layer(mdl.get_layer())
         pass
 
     def on_kblevel_changed (self, w, levelnum, *args):
         self.levelnum = levelnum
+        mdl = self.store.inpdescr
+        mdl.set_layer(levelnum)
         pass
 
     def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
         print("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
         inpsym = dstw.inpsym
         levelnum = self.levelnum
-        #bindval = "-NOT IMPLEMENTED-"
         bindval = dnddata
-        #self.mdl.set_bind(levelnum, inpsym, bindval)
-        #mdl = self.store.modes[levelnum]
         mdl = self.store.inpdescr
         mdl.set_bind(levelnum, inpsym, bindval)
         pass

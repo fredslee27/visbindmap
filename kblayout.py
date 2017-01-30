@@ -25,12 +25,14 @@ Multiple layers attach to a mode.
             self._fallback = None
 
         def get_bind (self, k):
+            retval = None
             if self._binds.has_key(k):
-                return self._binds[k]
+                retval = self._binds[k]
             elif self._fallback:
-                return self._fallback[k]
+                retval = self._fallback[k]
             else:
-                return None
+                retval = None
+            return retval
 
         def set_bind (self, k, v):
             self._binds[k] = v
@@ -51,6 +53,9 @@ Multiple layers attach to a mode.
 
         def has_key (self, k):
             return self.has_bind(k)
+
+        def __repr__ (self):
+            return "%s(parent=None, layernum=%r, fallback=%r, binds=%r)" % (self.__class__.__name__, self.layernum, self._fallback, self._binds)
 
     def __init__ (self, nlayers=1):
         gobject.GObject.__init__(self)
@@ -79,6 +84,7 @@ Multiple layers attach to a mode.
     def get_layermap (self, n):
         if (0 <= n) and (n < len(self.layers)):
             return self.layers[n]
+        return None
     def set_layermap (self, n, m):
         if (0 <= n) and (n < len(self.layers)):
             if m is None:
@@ -98,7 +104,7 @@ Multiple layers attach to a mode.
             self.layers.append(temp)
 
     def get_bind (self, layernum, inpsym):
-        self.get_layermap(layernum).get_bind(inpsym)
+        return self.get_layermap(layernum).get_bind(inpsym)
 
     def set_bind (self, layernum, inpsym, v):
         self.get_layermap(layernum).set_bind(inpsym, v)
@@ -113,6 +119,7 @@ Multiple layers attach to a mode.
                 retval = layer.get_bind(inpsym)
             else:
                 follow = layer._fallback
+        return retval
 
     # Signals:
     # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
