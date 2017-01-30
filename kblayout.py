@@ -25,12 +25,14 @@ Multiple layers attach to a mode.
             self._fallback = None
 
         def get_bind (self, k):
+            retval = None
             if self._binds.has_key(k):
-                return self._binds[k]
+                retval = self._binds[k]
             elif self._fallback:
-                return self._fallback[k]
+                retval = self._fallback[k]
             else:
-                return None
+                retval = None
+            return retval
 
         def set_bind (self, k, v):
             self._binds[k] = v
@@ -52,6 +54,9 @@ Multiple layers attach to a mode.
         def has_key (self, k):
             return self.has_bind(k)
 
+        def __repr__ (self):
+            return "%s(parent=None, layernum=%r, fallback=%r, binds=%r)" % (self.__class__.__name__, self.layernum, self._fallback, self._binds)
+
     def __init__ (self, nlayers=1):
         gobject.GObject.__init__(self)
         # Mapping of inpsym to label to display in UI.
@@ -59,6 +64,8 @@ Multiple layers attach to a mode.
         # List of InpLayer representing the binding layers.
         self.layers = list()
         self.set_numlayers(nlayers)
+        # active layer
+        self._layer = 0
 
     def get_label (self, inpsym):
         """If no model data, return inpsym as the label."""
@@ -74,9 +81,16 @@ Multiple layers attach to a mode.
         self._layer = val
         self.emit("layer-changed", val)
 
-    def get_layer (self, n):
+    def get_layermap (self, n):
         if (0 <= n) and (n < len(self.layers)):
             return self.layers[n]
+        return None
+    def set_layermap (self, n, m):
+        if (0 <= n) and (n < len(self.layers)):
+            if m is None:
+                self.layers[n] = self.InpLayer(self, n, 0)
+            else:
+                self.layers[n] = m
 
     def set_numlayers (self, n):
         self.maxlayers = n
@@ -90,21 +104,22 @@ Multiple layers attach to a mode.
             self.layers.append(temp)
 
     def get_bind (self, layernum, inpsym):
-        self.get_layer(layernum).get_bind(inpsym)
+        return self.get_layermap(layernum).get_bind(inpsym)
 
     def set_bind (self, layernum, inpsym, v):
-        self.get_layer(layernum).set_bind(inpsym, v)
+        self.get_layermap(layernum).set_bind(inpsym, v)
         self.emit("bind-changed", layernum, inpsym)
 
     def resolve_bind (self, layernum, inpsym):
         follow = layernum
         retval = None
         while (retval is None) and (follow is not None):
-            layer = self.get_layer(layernum)
+            layer = self.get_layermap(layernum)
             if layer:
                 retval = layer.get_bind(inpsym)
             else:
                 follow = layer._fallback
+        return retval
 
     # Signals:
     # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
@@ -209,8 +224,12 @@ class KbTop (gtk.Button):
         lbl = self.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
         # Update binding display
-        layernum = 0
-        val = self.inpdescr.get_layer(layernum).get_bind(self.inpsym)
+        layernum = self.inpdescr.get_layer()
+        layermap = val = self.inpdescr.get_layermap(layernum)
+        if layermap:
+            val = layermap.get_bind(self.inpsym)
+        else:
+            val = None
         if val:
             self.inp_bind.set_text(val)
         else:
