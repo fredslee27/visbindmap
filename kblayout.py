@@ -114,11 +114,11 @@ Multiple layers attach to a mode.
         follow = layernum
         retval = None
         while (retval is None) and (follow is not None):
-            layer = self.get_layermap(layernum)
-            if layer:
-                retval = layer.get_bind(inpsym)
+            layermap = self.get_layermap(layernum)
+            if layermap:
+                retval = layermap.get_bind(inpsym)
             else:
-                follow = layer._fallback
+                follow = layermap._fallback
         return retval
 
     # Signals:
@@ -225,15 +225,14 @@ class KbTop (gtk.Button):
         self.set_keytop(lbl)
         # Update binding display
         layernum = self.inpdescr.get_layer()
-        layermap = val = self.inpdescr.get_layermap(layernum)
-        if layermap:
-            val = layermap.get_bind(self.inpsym)
+        layermap = self.inpdescr.get_layermap(layernum)
+        if layermap is not None:
+            val = layermap.get_bind(self.inpsym)  # could be null.
         else:
             val = None
-        if val:
-            self.inp_bind.set_text(val)
-        else:
-            self.inp_bind.set_text("")
+        if val is None:
+            val = ""
+        self.inp_bind.set_text(val)
 
     def on_data_change (self, *args):
         self.update_display()

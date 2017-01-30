@@ -74,7 +74,6 @@ class Store (object):
         self.modes = [ 
           [ kblayout.InpDescrModel.InpLayer(self.inpdescr,y,0) for y in range(self._numlevels) ]
             for x in range(self._numlayers) ] # List of InpDescrModel.layers
-        self.modes[0] = self.inpdescr.layers
 
     def __init__ (self, numlayers=8, numlevels=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
@@ -369,8 +368,7 @@ Consists of:
     def __init__ (self, store, cmds=None):
         gtk.VBox.__init__(self)
 
-        #self.store = store
-        self.mdl = model
+        self.store = store
         self.cmds = cmds
 
         self.uibuild()
@@ -693,10 +691,14 @@ class VisMapperApp (object):
 
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
+        # Save current Layers to modes[current_mode]
         sav = self.store.inpdescr.layers
         self.store.modes[self.modenum] = sav
+        # Load new Layers from modes[new_mode]
         pop = self.store.modes[modenum]
         self.store.inpdescr.layers = pop
+        # Store new mode as current.
+        self.modenum = modenum
         print("^^^ ? changing to mode %d" % modenum)
         mdl = self.store.inpdescr
         # update displays by forcing level change event.
