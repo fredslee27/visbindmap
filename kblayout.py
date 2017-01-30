@@ -79,6 +79,12 @@ Multiple layers attach to a mode.
     def get_layermap (self, n):
         if (0 <= n) and (n < len(self.layers)):
             return self.layers[n]
+    def set_layermap (self, n, m):
+        if (0 <= n) and (n < len(self.layers)):
+            if m is None:
+                self.layers[n] = self.InpLayer(self, n, 0)
+            else:
+                self.layers[n] = m
 
     def set_numlayers (self, n):
         self.maxlayers = n
