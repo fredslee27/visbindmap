@@ -366,6 +366,9 @@ Consists of:
         self.cmds = cmds
         self.inpdescr = inpdescr
 
+        self._layernum = 0
+        self._levelnum = 0
+
         self.uibuild()
 
         self.reset()
@@ -394,7 +397,8 @@ Consists of:
         self.load_bindmap(self.layernum)
 
     def on_bind_changed (self, w, keytop, *args):
-        #print("VisBind.bind-changed: %r" % keytop)
+        """(DEPRECATED)"""
+        print("+++ VisBind.bind-changed: %r" % keytop)
         #self.bindmap[keytop.ksym] = keytop.bind
         pass
 
@@ -415,7 +419,7 @@ Consists of:
             lbl = modes[modeid]
             btn = gtk.RadioButton(grp, lbl)  # create element.
             btn.layernum = modeid  # private data
-            btn.connect('clicked', self.on_mode_toggle)  # react
+            btn.connect('toggled', self.on_mode_toggle)  # react
             modebtns.add(btn)  # GUI
             moderow.btns.append(btn)  # internal storage.
         moderow.pack_start(modebtns, expand=False)
@@ -446,7 +450,7 @@ Consists of:
             grp = btns and btns[0] or None
             btn = gtk.RadioButton(grp, lbl)
             btn.levelnum = lvlnum
-            btn.connect('clicked', self.on_shifter_toggle)  # react
+            btn.connect('toggled', self.on_shifter_toggle)  # react
             btns.append(btn)
             shiftbtns.add(btn)
         shiftrow.btns = btns
@@ -460,26 +464,60 @@ Consists of:
         crumb("save_bindmap -- nop")
         pass
 
-    def load_bindmap (self, layernum):
+    def load_bindmap (self, layernum=None, levelnum=None):
         """Load binding map: update visual keys with bindings from given layer."""
+        if layernum is None:
+            layernum = self._layernum
+        if levelnum is None:
+            levelnum = self._levelnum
+        print("Loading bindmap[layer=%r][level=%r]" % (layernum, levelnum))
+        layermap = self.store.binddata[layernum]
+        levelmap = layermap[levelnum]
+#        for name,cmdinfo in levelmap.iteritems():
+#            #(cmdid, layer, grp, cmd, desc, hint) = cmdinfo
+#            print("what do with %r" % (cmdinfo,))
+        active_mode = self.inpdescr
+        for symname,w in self.kbl.keytops.iteritems():
+            w.set_model(active_mode)
+        active_mode.set_layer(levelnum)
+        self._layernum = layernum
+        self._levelnum = levelnum
         return
 
+    def shift_bindmap (self, levelnum):
+        """Change/refresh the keytops, typically due to layout or level change."""
+        pass
+
     def relabel_keys (self, levelnum):
-        """Change the keytops, typ. due to layout change."""
+        """Repaint/Update keysyms, typically due to layout change."""
         pass
 
     def on_mode_toggle (self, w, *args):
         """Load bindings for mode."""
+        if w.get_active():
+          print("mode toggle to %d" % w.layernum)
+          self.load_bindmap(w.layernum, None)
+        # TODO: announce change in layer.
         pass
 
     def on_shifter_toggle (self, w, *args):
         """Load bindings for shift level."""
+        if not w.get_active():
+          # turning off.
+          return
+        if w.get_active():
+          # turning on.
+          print("shifter toggle to %d" % (w.levelnum,))
+          self.load_bindmap(None, w.levelnum)
+        # TODO: announce change in level.
         pass
 
     def bind_cmd (self, ksym, cmdinfo):
+        print("+++ bind");
         pass
 
     def unbind_cmd (self, ksym):
+        print("+++ unbind");
         pass
 
 

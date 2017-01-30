@@ -59,6 +59,8 @@ Multiple layers attach to a mode.
         # List of InpLayer representing the binding layers.
         self.layers = list()
         self.set_numlayers(nlayers)
+        # active layer
+        self._layer = 0
 
     def get_label (self, inpsym):
         """If no model data, return inpsym as the label."""
@@ -74,7 +76,7 @@ Multiple layers attach to a mode.
         self._layer = val
         self.emit("layer-changed", val)
 
-    def get_layer (self, n):
+    def get_layermap (self, n):
         if (0 <= n) and (n < len(self.layers)):
             return self.layers[n]
 
@@ -90,17 +92,17 @@ Multiple layers attach to a mode.
             self.layers.append(temp)
 
     def get_bind (self, layernum, inpsym):
-        self.get_layer(layernum).get_bind(inpsym)
+        self.get_layermap(layernum).get_bind(inpsym)
 
     def set_bind (self, layernum, inpsym, v):
-        self.get_layer(layernum).set_bind(inpsym, v)
+        self.get_layermap(layernum).set_bind(inpsym, v)
         self.emit("bind-changed", layernum, inpsym)
 
     def resolve_bind (self, layernum, inpsym):
         follow = layernum
         retval = None
         while (retval is None) and (follow is not None):
-            layer = self.get_layer(layernum)
+            layer = self.get_layermap(layernum)
             if layer:
                 retval = layer.get_bind(inpsym)
             else:
@@ -209,8 +211,12 @@ class KbTop (gtk.Button):
         lbl = self.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
         # Update binding display
-        layernum = 0
-        val = self.inpdescr.get_layer(layernum).get_bind(self.inpsym)
+        layernum = self.inpdescr.get_layer()
+        layermap = val = self.inpdescr.get_layermap(layernum)
+        if layermap:
+            val = layermap.get_bind(self.inpsym)
+        else:
+            val = None
         if val:
             self.inp_bind.set_text(val)
         else:
