@@ -8,6 +8,7 @@ import pprint
 import pickle
 
 import kblayout
+from kblayout import Log
 
 
 BASENAME="factorio"
@@ -17,13 +18,19 @@ DEFAULT_DBNAME="cmds"
 def crumb (x):
     pass
 
+log = Log(Log.debug)
 
-def BuildMenuBar (menubardesc):
+
+def BuildMenuBar (menubardesc, menubar=None):
     def BuildMenuItem (itemdesc):
         if itemdesc is None: return gtk.SeparatorMenuItem()  # separator
         retval = gtk.MenuItem(itemdesc[0])
         if callable(itemdesc[1]):  # leaf
-            retval.connect("activate", itemdesc[1])
+            try:
+                extra = itemdesc[2]
+            except IndexError:
+                extra = None
+            retval.connect("activate", itemdesc[1], extra)
         elif hasattr(itemdesc[1], "__getslice__"):  # submenu
             retval.set_submenu(BuildMenu(itemdesc[1]))
         return retval
@@ -31,7 +38,9 @@ def BuildMenuBar (menubardesc):
         menu = menu or gtk.Menu()
         map(menu.append, map(BuildMenuItem, menudesc))
         return menu
-    return BuildMenu(menubardesc, gtk.MenuBar())
+    if menubar is None:
+        menubar = gtk.MenuBar()
+    return BuildMenu(menubardesc, menubar)
 
 
 
@@ -63,17 +72,19 @@ class Store (object):
     DEFAULT_FILENAME = BASENAME + ".cfg"
 
     def reset (self):
-        self.binddata = []
-        for n in range(self._numlevels):
-            self.binddata.append([])
-            for m in range(self._numlayers):
-                self.binddata[n].append({})
         self.inpdescr = kblayout.InpDescrModel(self._numlevels)
         #self.modes = [None]*self.numlayers  # List of InpDescrModel.layers
         #self.modes = [ list() for x in range(self._numlayers) ] # List of InpDescrModel.layers
-        self.modes = [ 
-          [ kblayout.InpDescrModel.InpLayer(self.inpdescr,y,0) for y in range(self._numlevels) ]
-            for x in range(self._numlayers) ] # List of InpDescrModel.layers
+#        self.modes = [ 
+#          [ kblayout.InpDescrModel.InpLayer(self.inpdescr,y,0) for y in range(self._numlevels) ]
+#            for x in range(self._numlayers) ] # List of InpDescrModel.layers
+        self.modes = []
+        for x in range(self._numlayers):
+            placeholder = []
+            for y in range(self._numlevels):
+                v = kblayout.InpDescrModel.InpLayer(self.inpdescr, y, 0, None)
+                placeholder.append(v)
+            self.modes.append(placeholder)
 
     def __init__ (self, numlayers=8, numlevels=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
@@ -89,14 +100,14 @@ class Store (object):
         if fileobj is None:
             fileobj = open(self.fname, "rb")
         #fileobj = open(fname, "rb")
-        self.binddata = pickle.load(fileobj)
+        #self.binddata = pickle.load(fileobj)
         #fileobj.close()
 
     def save (self, fileobj=None):
         if fileobj is None:
             fileobj = open(self.fname, "wb")
         #fileobj = open(fname, "wb")
-        pickle.dump(self.binddata, fileobj)
+        #pickle.dump(self.binddata, fileobj)
         #fileobj.close()
 
 
@@ -173,7 +184,7 @@ class Commands (object):
     def get_by_id (self, val):
         # TODO: look through tree model instead?
         if val is None:
-            print("[None]=>None...")
+            log.debug("[None]=>None...")
             return [ None, 0x1f, "", "", "", "" ]
 
         cursor = self.conn.cursor()
@@ -194,7 +205,7 @@ class Commands (object):
 
     def find (self, cmdname):
         if cmdname is None:
-            print("find(None) => None")
+            log.debug("find(None) => None")
             return None
 
         cursor = self.conn.cursor()
@@ -312,7 +323,7 @@ class VisCmds (gtk.VBox):
         treesel = srcw.get_selection()
         (treemdl, treeiter) = treesel.get_selected()
         if sel.target == "bind":
-            print("+++ target is bind")
+            log.debug("target is bind")
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -323,7 +334,7 @@ class VisCmds (gtk.VBox):
 
             sel.set("STRING", 8, val)  # 8 bits per unit.
         elif sel.target == "bindid":
-            print("+++ target is bindid")
+            log.debug("target is bindid")
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -334,7 +345,7 @@ class VisCmds (gtk.VBox):
 
             sel.set("STRING", 8, str(val))  # 8 bits per unit.
         elif sel.target == "binduri":
-            print("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
+            log.debug("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
             # Find out target, get its inpsym, assign binding.
             # Send displayed text to target.
             print("+++ target is bindref")
@@ -347,7 +358,7 @@ class VisCmds (gtk.VBox):
             num = treemdl.get_value(treeiter, 0)
             name = treemdl.get_value(treeiter, 1)
             val = "cmdbind://%s/%s" % (num, name)
-            print("+++  val = %r" % val)
+            log.debug("val = %r" % val)
             sel.set("STRING", 8, str(val))  # 8 bits per unit.
 
 
@@ -391,7 +402,7 @@ Consists of:
 
     def on_key_selected (self, w, ksym, *args):
         binding = self.store.inpdescr.get_bind(0, ksym)
-        print("key-selected: %s => %s" % (ksym, binding))
+        log.debug("key-selected: %s => %r" % (ksym, binding))
 
     def on_layout_changed (self, w, layoutname, *args):
         self.relabel_keys(self.levelnum)
@@ -475,11 +486,11 @@ Consists of:
         return
 
     def bind_cmd (self, ksym, cmdinfo):
-        print("+++ bind");
+        log.debug("bind");
         pass
 
     def unbind_cmd (self, ksym):
-        print("+++ unbind");
+        log.debug("unbind");
         pass
 
 gobject.type_register(VisBind)
@@ -501,7 +512,7 @@ class VisMapperWindow (gtk.Window):
     def reset (self):
         self.bindpad.reset()
 
-    def __init__ (self, parent=None, store=None):
+    def __init__ (self, parent=None, store=None, menubar=None):
         self.app = parent
 
         gtk.Window.__init__(self)
@@ -514,6 +525,10 @@ class VisMapperWindow (gtk.Window):
         else:
             self.store = store
 
+        self.menubar = menubar
+        self.uibuild()
+
+    def uibuild (self):
         self.panes = gtk.VBox()
         self.add(self.panes)
 
@@ -521,7 +536,7 @@ class VisMapperWindow (gtk.Window):
 
         self.padpane = gtk.VBox()
 
-        self.connect("delete-event", self.on_quit)
+        self.connect("delete-event", self.on_delete_event)
 
         self.cmdcol = VisCmds()
 
@@ -534,59 +549,39 @@ class VisMapperWindow (gtk.Window):
         self.spans.add(self.padpane)
         self.spans.add(self.cmdcol)
 
-        self.menubar = self.MakeMenubar()
+        if self.menubar is None:
+            self.menubar = self.MakeMenubar()
         self.statusbar = gtk.Statusbar()
         self.panes.pack_start(self.menubar, expand=False, fill=True)
         self.panes.pack_start(self.spans, expand=False)
 
         if 1:
-            self.debugrow = gtk.HBox()
-            self.debugbuf = gtk.TextBuffer()
-            self.debugwin = gtk.TextView(self.debugbuf)
-            self.debugrow.pack_start(self.debugwin, expand=True, fill=True)
-            debugpane = gtk.ScrolledWindow()
-            debugpane.add_with_viewport(self.debugrow)
-            #self.panes.pack_start(self.debugrow, expand=True, fill=True)
-            self.panes.pack_start(debugpane, expand=True, fill=True)
-            self.debugbuf.insert_at_cursor("Debug")
-            self.debugbuf.insert_at_cursor(" ready:")
-            self.debugbuf.insert_at_cursor("\n")
-            def debugcrumb (x):
-                if x == "\f":
-                    self.debugbuf.delete(self.debugbuf.get_start_iter(), self.debugbuf.get_end_iter())
-                else:
-                    self.debugbuf.insert_at_cursor(x + "\n")
-            globals()['crumb'] = debugcrumb
+            self.uibuild_debug()
 
         self.panes.pack_start(self.statusbar, expand=False)
-
         self.dlg_about = DlgAbout()
 
-    def MakeMenubar (self):
-        menu_desc = [
-          ('_File', [
-            ('_New', self.on_new),
-            ('_Open', self.on_open),
-            ('_Save', self.on_save),
-            ('Save _As', self.on_saveas),
-            None,
-            ('_Quit', self.on_quit),
-            ]),
-          ('_Edit', [
-            ('_Copy', self.on_copy),
-            ('C_ut', self.on_cut),
-            ('_Paste', self.on_paste),
-            None,
-            ('_Options', self.on_options),
-            ]),
-          ('_Help', [
-            ('_Help', self.on_help),
-            None,
-            ('_About', self.on_about),
-            ]),
-          ]
+    def uibuild_debug (self):
+        self.debugrow = gtk.HBox()
+        self.debugbuf = gtk.TextBuffer()
+        self.debugwin = gtk.TextView(self.debugbuf)
+        self.debugrow.pack_start(self.debugwin, expand=True, fill=True)
+        debugpane = gtk.ScrolledWindow()
+        debugpane.add_with_viewport(self.debugrow)
+        #self.panes.pack_start(self.debugrow, expand=True, fill=True)
+        self.panes.pack_start(debugpane, expand=True, fill=True)
+        self.debugbuf.insert_at_cursor("Debug")
+        self.debugbuf.insert_at_cursor(" ready:")
+        self.debugbuf.insert_at_cursor("\n")
+        def debugcrumb (x):
+            if x == "\f":
+                self.debugbuf.delete(self.debugbuf.get_start_iter(), self.debugbuf.get_end_iter())
+            else:
+                self.debugbuf.insert_at_cursor(x + "\n")
+        globals()['crumb'] = debugcrumb
 
-        return BuildMenuBar(menu_desc)
+    def on_delete_event (self, w, *args):
+        self.app.quit()
 
     def ask_open (self):
         loadname = None
@@ -594,8 +589,8 @@ class VisMapperWindow (gtk.Window):
         response = dlg.run()
         if response == 1:
             loadname = dlg.get_filename()
-            if loadname[-4:] != ".cfg":
-                loadname = loadname + ".cfg"
+#            if loadname[-4:] != ".cfg":
+#                loadname = loadname + ".cfg"
         dlg.destroy()
         return loadname
 
@@ -610,60 +605,104 @@ class VisMapperWindow (gtk.Window):
         dlg.destroy()
         return savename
 
-    def on_new (self, w, *args):
-        self.app.reset()
-
-    def on_open (self, w, *args):
-        loadname = self.ask_open()
-        if loadname:
-            loadfile = open(loadname, "rb")
-            self.store.load(loadfile)
-            loadfile.close()
-        #crumb("loaded binddata = %r" % (self.bindpad.bindlayers,))
-        self.bindpad.moderow.btn_global.clicked()
-        return
-
-    def on_save (self, w, *args):
-        if self.saveuri is None:
-            # Dialog for filename.
-            return self.on_saveas(w, *args)
-        else:
-            savefile = open(self.saveuri, "wb")
-            self.app.save(savefile)
-            savefile.close()
-        return
-
-    def on_saveas (self, w, *args):
-        savename = self.ask_save()
-        if savename:
-            self.saveuri = savename
-            savefile = open(savename, "wb")
-            self.app.save(savefile)
-            savefile.close()
-        return
-
-    def on_copy (self, w, *args):
-        pass
-
-    def on_cut (self, w, *args):
-        pass
-
-    def on_paste (self, w, *args):
-        pass
-
-    def on_options (self, w, *args):
-        pass
-
-    def on_help (self, w, *args):
-        pass
-
-    def on_about (self, w, *args):
+    def display_about (self):
         self.dlg_about.run()
         self.dlg_about.hide()
 
-    def on_quit (self, w, *args):
-        self.app.quit()
 
+
+class MainMenubar (gtk.MenuBar):
+    def __init__ (self, app):
+        gtk.MenuBar.__init__(self)
+        self.app = app
+        self.uibuild()
+
+    def on_file_new (self, w, *args):
+        app = self.app
+        app.reset()
+        return
+    def on_file_open (self, w, *args):
+        app = self.app
+        loadname = self.app.ask_load_uri()
+        if loadname:
+            self.app.set_saveuri(loadname)
+            self.app.load_in_place()
+        return
+    def on_file_save (self, w, *args):
+        app = self.app
+        if not app.save_in_place():
+            return self.on_file_saveas(self, w, *args)
+        return
+    def on_file_saveas (self, w, *args):
+        app = self.app
+        savename = app.ask_save_uri()
+        if savename:
+            app.set_saveuri(savename)
+            app.save_in_place()
+        return
+    def on_quit (self, w, *args):
+        app = self.app
+        app.quit()
+        return
+    def on_edit_copy (self, w, *args):
+        app = self.app
+        return
+    def on_edit_cut (self, w, *args):
+        app = self.app
+        return
+    def on_edit_paste (self, w, *args):
+        app = self.app
+        return
+    def on_edit_options (self, w, *args):
+        app = self.app
+        return
+    def on_debug_1 (self, w, *args):
+        app = self.app
+        log.debug("DEBUG 1")
+        return
+    def on_debug_2 (self, w, *args):
+        app = self.app
+        return
+    def on_debug_3 (self, w, *args):
+        app = self.app
+        return
+    def on_help (self, w, *args):
+        app = self.app
+        return
+    def on_about (self, w, *args):
+        app = self.app
+        app.display_about()
+        return
+
+    def uibuild (self):
+        menu_desc = [
+          ('_File', [
+            ('_New', self.on_file_new),
+            ('_Open', self.on_file_open),
+            ('_Save', self.on_file_save),
+            ('Save _As', self.on_file_saveas),
+            None,
+            ('_Quit', self.on_quit),
+            ]),
+          ('_Edit', [
+            ('_Copy', self.on_edit_copy),
+            ('C_ut', self.on_edit_cut),
+            ('_Paste', self.on_edit_paste),
+            None,
+            ('_Options', self.on_edit_options),
+            ]),
+          ('_DEBUG', [
+            ('Debug _1', self.on_debug_1),
+            ('Debug _2', self.on_debug_2),
+            ('Debug _3', self.on_debug_3),
+            ]),
+          ('_Help', [
+            ('_Help', self.on_help),
+            None,
+            ('_About', self.on_about),
+            ]),
+          ]
+        return BuildMenuBar(menu_desc, self)
 
 
 
@@ -676,7 +715,9 @@ class VisMapperApp (object):
         self.modenum = 0
         self.levelnum = 0
         mdl = self.store.inpdescr
-        self.ui = VisMapperWindow(self, self.store)
+        menubar = MainMenubar(self)
+        self.ui = VisMapperWindow(self, self.store, menubar=menubar)
+        self.saveuri = None
         self.uibuild()
 
     def uibuild (self):
@@ -687,7 +728,6 @@ class VisMapperApp (object):
         visbind = self.ui.bindpad
         visbind.connect('mode-changed', self.on_kbmode_changed)
         visbind.connect('level-changed', self.on_kblevel_changed)
-        print("- built")
 
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
@@ -699,7 +739,7 @@ class VisMapperApp (object):
         self.store.inpdescr.layers = pop
         # Store new mode as current.
         self.modenum = modenum
-        print("^^^ ? changing to mode %d" % modenum)
+        log.debug(" ? changing to mode %d" % modenum)
         mdl = self.store.inpdescr
         # update displays by forcing level change event.
         mdl.set_layer(mdl.get_layer())
@@ -712,7 +752,7 @@ class VisMapperApp (object):
         pass
 
     def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
-        print("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
+        log.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
         inpsym = dstw.inpsym
         levelnum = self.levelnum
         bindval = dnddata
@@ -734,17 +774,46 @@ class VisMapperApp (object):
 #        #self.mdl.set_bind(layernum, w.inpsym, bindval)
 #        print("Handled KbLayout drag data received")
 
+    # Operations re: File
+    def get_saveuri (self):
+        return self.saveuri
+    def set_saveuri (self, val):
+        self.saveuri = val
+    def ask_save_uri (self):
+        """Called by MenuBar upon File/SaveAs, to run the SaveAs dialog."""
+        return self.ui.ask_save()
+    def save_in_place (self):
+        """Save to file specified by internal state 'saveuri'."""
+        if self.saveuri:
+            savefile = open(self.saveuri, "wb")
+            self.save(savefile)
+            savefile.close()
+    def ask_load_uri (self):
+        """Called by MenuBar upon File/Open, to run the Open dialog"""
+        return self.ui.ask_open()
+    def load_in_place (self):
+        """Load from file specified by internal state 'saveuri'."""
+        if self.saveuri:
+            loadfile = open(self.saveuri, "rb")
+            self.load(loadfile)
+            loadfile.close()
+
+    def display_about (self):
+        self.ui.display_about()
+
 
     def go (self):
         self.ui.show_all()
         gtk.mainloop()
 
     def load (self, srcfile):
-        self.store.load(destfile)
+        #self.store.load(srcfile)
+        log.debug("LOADING %r" % srcfile)
         return 0
 
     def save (self, destfile):
-        self.store.save(destfile)
+        #self.store.save(destfile)
+        log.debug("SAVING %r" % destfile)
         return 0
 
     def reset (self):
@@ -754,12 +823,14 @@ class VisMapperApp (object):
     def quit (self):
         gtk.main_quit()
 
+    @staticmethod
+    def main ():
+        self = VisMapperApp()
+        self.go()
+
 
 
 if __name__ == "__main__":
-    #s = Store()
-    #s.save()
-    app = VisMapperApp()
-    app.go()
+    VisMapperApp.main()
 
 

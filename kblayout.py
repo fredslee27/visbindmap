@@ -1,11 +1,33 @@
 #!/usr/bin/env python
 # vi: set tabstop=4 expandtab shiftwidth=4 :
+from __future__ import print_function
 
 import sys
 import gtk, gobject
 
 import kbd_desc
 
+
+class Log (object):
+    def __init__ (self, loglevel=None, sink=sys.stderr):
+        self._sink = sink
+        if loglevel is None: loglevel = Log.info
+        self.set_level(loglevel)
+
+    def get_level (self): return self._level
+    def set_level (self, val): self._level = val.__func__
+    level = property(get_level, set_level)
+
+    def __gate (self, lvlnum, lvlmarker, *msgparts):
+        if self._level in self._levels[lvlnum:]:
+            print(lvlmarker, *msgparts, file=self._sink)
+    def fatal (self, *msgparts): self.__gate(0, "!!!", *msgparts)
+    def error (self, *msgparts): self.__gate(1, "***", *msgparts)
+    def warn (self, *msgparts):  self.__gate(2, "---", *msgparts)
+    def info (self, *msgparts):  self.__gate(3, "===", *msgparts)
+    def debug (self, *msgparts): self.__gate(4, "+++", *msgparts)
+    _levels = [ fatal, error, warn, info, debug ]
+log = Log(Log.debug)
 
 
 class InpDescrModel (gobject.GObject):
@@ -18,9 +40,12 @@ Keys are keysym.
 
 Multiple layers attach to a mode.
 """
-        def __init__ (self, parent, layernum, fallback):
+        def __init__ (self, parent, layernum, fallback, binds=None):
             self.layernum = layernum
-            self._binds = dict()
+            if binds is None:
+                self._binds = dict()
+            else:
+                self._binds = binds
             # if the binding resolution fails, borrow from the fallback layer.
             self._fallback = None
 
@@ -120,6 +145,14 @@ Multiple layers attach to a mode.
             else:
                 follow = layermap._fallback
         return retval
+
+    def __repr__ (self):
+        return "%s(nlayers=%d, labels=%r, layers=%r)" % (
+          self.__class__.__name__,
+          self.maxlyers,
+          self.labels,
+          self.layers
+          )
 
     # Signals:
     # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
@@ -242,13 +275,15 @@ class KbTop (gtk.Button):
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-        print("%s drag-data-received %r" % (self.__class__.__name__, w))
+        #print("%s drag-data-received %r" % (self.__class__.__name__, w))
+        log.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
         srcw = ctx.get_source_widget()
-        print(" srcw = %r" % srcw)
+        #print(" srcw = %r" % srcw)
+        log.debug(" srcw = %r" % srcw)
         seltext = sel.get_text()
         #self.bindid = int(sel.get_text())
         #self.binduri = sel.get_text()
-        print("  sel = %r" % seltext)
+        log.debug("  sel = %r" % seltext)
         #bindid = int(seltext)
         ctx.finish(True, False, time)
         self.emit("dnd-link", srcw, seltext)
@@ -327,7 +362,7 @@ class KblayoutWidget (gtk.VBox):
                         #print("attach %r %r %r %r %r" % (keytop, l, r, t, b))
                         grid.attach(keytop, l, r, t, b)
                         if keytops.has_key(inpsym):
-                            print("potential duplicate: %s" % inpsym)
+                            log.warn("potential duplicate: %s" % inpsym)
                         keytops[inpsym] = keytop
                         keytop.connect("clicked", self.on_keytop_clicked)
                         keytop.connect("dnd-link", self.on_keytop_bound)
@@ -358,11 +393,11 @@ class KblayoutWidget (gtk.VBox):
 
     def on_keytop_clicked (self, w, *args):
         inpsym = w.inpsym
-        print("target: %s" % inpsym)
+        log.debug("target: %s" % inpsym)
         self.emit("key-selected", inpsym)
 
     def on_keytop_bound (self, dstw, srcw, dnddata, *args):
-        print("keytop_bound dstw=%r srcw=%r data=%r" % (dstw, srcw, dnddata))
+        log.debug("keytop_bound dstw=%r srcw=%r data=%r" % (dstw, srcw, dnddata))
         self.emit("dnd-link", dstw, srcw, dnddata)
 
     def on_bind_changed (self, w, *args):
@@ -418,10 +453,10 @@ class KblayoutWindow (gtk.Window):
         gtk.main_quit()
 
     def on_key_selected (self, w, inpsym, *args):
-        print("Selected inpsym '%s'" % inpsym)
+        log.debug("Selected inpsym '%s'" % inpsym)
 
     def on_bind_changed (self, w, keytop, *args):
-        print("Bind changed for %r" % keytop)
+        log.debug("Bind changed for %r" % keytop)
 
     def run (self):
         self.show_all()
