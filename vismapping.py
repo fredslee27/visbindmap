@@ -7,6 +7,7 @@ import sqlite3
 
 import pprint
 import pickle
+import ast, parser
 
 import kblayout
 from kblayout import Log
@@ -107,6 +108,29 @@ class AppData (object):
         pass
 
 
+class ObjectReinstantiater(ast.NodeTransformer):
+    """Traverse Abstract Syntax Tree to filter allowed object instantiation."""
+    # Classes allowed to be instantiated.  Otherwise becomes None.
+    REINSTANCERS = {
+        "kblayout.InpDescrModel": kblayout.InpDescrModel,
+        "kblayout.InpLayer": kblayout.InpLayer,
+        }
+    def nop (self, node):
+        return ast.parse("None", mode='eval')
+    def visit_Call (self, node):
+        cmodule = node.func.value.id
+        cclass = node.func.attr
+        ckey = "%s.%s" % (cmodule, cclass)
+        if ckey in self.REINSTANCERS:
+            #print("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
+            return node
+        else:
+            return ast.parse("None", mode='eval')
+    def visit_Yield (self, node): return self.nop()
+    def visit_Lambda (self, node): return self.nop()
+    def visit_IfExp (self, node): return self.nop()
+
+
 # Persistant storage.
 class Store (object):
     DEFAULT_FILENAME = BASENAME + ".cfg"
@@ -117,7 +141,7 @@ class Store (object):
         for x in range(self._nummodes):
             placeholder = []
             for y in range(self._numlayers):
-                v = kblayout.InpDescrModel.InpLayer(y, 0, None)
+                v = kblayout.InpLayer(y, 0, None)
                 placeholder.append(v)
             self.modes.append(placeholder)
         self.inpdescr.layers = self.modes[0]
@@ -139,6 +163,13 @@ class Store (object):
         #fileobj = open(fname, "rb")
         #self.binddata = pickle.load(fileobj)
         #fileobj.close()
+        s = fileobj.read()
+        astree = ast.parse(s, mode='eval')
+        transformed = ObjectReinstantiater().visit(astree)
+        storedict = eval(compile(transformed, '', 'eval'))
+        self.modes = storedict['modes']
+        self.inpdescr.layers = self.modes[0]
+        self.inpdescr.refresh()
 
     def save (self, fileobj=None):
         if fileobj is None:
@@ -727,6 +758,8 @@ class MainMenubar (gtk.MenuBar):
     def on_debug_1 (self, w, *args):
         app = self.app
         log.debug("DEBUG 1")
+        app.set_saveuri("/home/fredslee/devel/vismapping/testout.cfg")
+        app.load_in_place()
         return
     def on_debug_2 (self, w, *args):
         app = self.app
@@ -876,8 +909,8 @@ class VisMapperApp (object):
 
     def load (self, srcfile):
         """Load configuration from file-like object."""
-        #self.store.load(srcfile)
         log.debug("LOADING %r" % srcfile)
+        self.store.load(srcfile)
         return 0
 
     def save (self, destfile):

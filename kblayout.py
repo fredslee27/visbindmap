@@ -30,68 +30,69 @@ class Log (object):
 log = Log(Log.debug)
 
 
-class InpDescrModel (gobject.GObject):
-    """Input descriptor model.  UI elements refer to this object for visual properties to use."""
-
-    class InpLayer (object):
-        """To be accessed as if dict.
+class InpLayer (object):
+    """To be accessed as if dict.
 One layer of bindings.
 Keys are keysym.
 
 Multiple layers attach to a mode.
 """
-        def __init__ (self, layernum, fallback, binds=None):
-            self.layernum = layernum
-            if binds is None:
-                self._binds = dict()
-            else:
-                self._binds = binds
-            # if the binding resolution fails, borrow from the fallback layer.
-            self._fallback = None
+    def __init__ (self, layernum, fallback, binds=None):
+        self.layernum = layernum
+        if binds is None:
+            self._binds = dict()
+        else:
+            self._binds = binds
+        # if the binding resolution fails, borrow from the fallback layer.
+        self._fallback = None
 
-        def get_bind (self, k):
+    def get_bind (self, k):
+        retval = None
+        if self._binds.has_key(k):
+            retval = self._binds[k]
+        elif self._fallback:
+            retval = self._fallback[k]
+        else:
             retval = None
-            if self._binds.has_key(k):
-                retval = self._binds[k]
-            elif self._fallback:
-                retval = self._fallback[k]
-            else:
-                retval = None
-            return retval
+        return retval
 
-        def set_bind (self, k, v):
-            self._binds[k] = v
+    def set_bind (self, k, v):
+        self._binds[k] = v
 
-        def has_bind (self, k):
-            if self._binds.has_key(k):
-                return True
-            elif self._fallback:
-                return self._fallback.has_key(k)
-            else:
-                return False
-            
-        def __getitem__ (self, k):
-            return self.get_bind(k)
+    def has_bind (self, k):
+        if self._binds.has_key(k):
+            return True
+        elif self._fallback:
+            return self._fallback.has_key(k)
+        else:
+            return False
+        
+    def __getitem__ (self, k):
+        return self.get_bind(k)
 
-        def __setitem__ (self, k, v):
-            self.set_bind(k,v)
+    def __setitem__ (self, k, v):
+        self.set_bind(k,v)
 
-        def has_key (self, k):
-            return self.has_bind(k)
+    def has_key (self, k):
+        return self.has_bind(k)
 
-        def __repr__ (self):
-            return "%s.%s(layernum=%r, fallback=%r, binds=%r)" % (self.__class__.__module__, self.__class__.__name__, self.layernum, self._fallback, self._binds)
-            #return str(self.__json__())
+    def __repr__ (self):
+        return "%s.%s(layernum=%r, fallback=%r, binds=%r)" % (self.__class__.__module__, self.__class__.__name__, self.layernum, self._fallback, self._binds)
+        #return str(self.__json__())
 
-        def __json__ (self):
-            """JSON-friendly representation of this object."""
-            return {
-                '__module__': self.__class__.__module__,
-                '__class__': self.__class__.__name__,
-                'layernum': self.layernum,
-                'fallback': self._fallback,
-                'binds': self._binds,
-                }
+    def __json__ (self):
+        """JSON-friendly representation of this object."""
+        return {
+            '__module__': self.__class__.__module__,
+            '__class__': self.__class__.__name__,
+            'layernum': self.layernum,
+            'fallback': self._fallback,
+            'binds': self._binds,
+            }
+
+
+class InpDescrModel (gobject.GObject):
+    """Input descriptor model.  UI elements refer to this object for visual properties to use."""
 
     def __init__ (self, nlayers=1):
         gobject.GObject.__init__(self)
@@ -124,7 +125,7 @@ Multiple layers attach to a mode.
     def set_layermap (self, n, m):
         if (0 <= n) and (n < len(self.layers)):
             if m is None:
-                self.layers[n] = self.InpLayer(n, 0)
+                self.layers[n] = InpLayer(n, 0)
             else:
                 self.layers[n] = m
 
@@ -136,7 +137,7 @@ Multiple layers attach to a mode.
                 fallback = m-1
             else:
                 fallback = None
-            temp = self.InpLayer(m, fallback)
+            temp = InpLayer(m, fallback)
             self.layers.append(temp)
 
     def get_bind (self, layernum, inpsym):
@@ -156,6 +157,10 @@ Multiple layers attach to a mode.
             else:
                 follow = layermap._fallback
         return retval
+
+    def refresh (self):
+        """Induce update of viewers of this model."""
+        self.emit("layer-changed", self._layer)
 
     def __repr__ (self):
         return "%s.%s(nlayers=%d, labels=%r, layers=%r)" % (
