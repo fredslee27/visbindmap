@@ -46,26 +46,41 @@ class TeeLog (object):
 log = Log(Log.debug)
 
 
-def BuildMenuBar (menubardesc, menubar=None):
-    def BuildMenuItem (itemdesc):
+
+def BuildMenuBar (menubardesc, menubar=None, accelgroup=None):
+    """Build menu bar from a list of menu description list.
+List of menu description contains elements made of tuples, each tuple is:
+1. None = menu separator
+2. (display:str, handler:callable) = menu item + callback ("c/b")
+2a   use lambda for passing userdata : lambda *args: callback(*args, MyUserData)
+3. (display:str, accel:str, handler:callable) = menu item + accelerator + c/b
+3. (display:str, submenu:list) = sub-menu (nested list of menu description)
+"""
+    def BuildMenuItem (itemdesc, accelgroup=None):
         if itemdesc is None: return gtk.SeparatorMenuItem()  # separator
         retval = gtk.MenuItem(itemdesc[0])
-        if callable(itemdesc[1]):  # leaf
-            try:
-                extra = itemdesc[2]
-            except IndexError:
-                extra = None
-            retval.connect("activate", itemdesc[1], extra)
-        elif hasattr(itemdesc[1], "__getslice__"):  # submenu
-            retval.set_submenu(BuildMenu(itemdesc[1]))
+        if callable(itemdesc[1]):  # leaf - regular menu item with callback.
+            callback = itemdesc[1]
+            retval.connect("activate", callback)
+        elif hasattr(itemdesc[1], "isalpha"):  # string-like.
+            accelkey = itemdesc[1]
+            callback = itemdesc[2]
+            retval.connect("activate", callback)
+            accelsym, accelmod = gtk.accelerator_parse(accelkey)
+            if accelgroup:
+                retval.add_accelerator('activate', accelgroup, accelsym, accelmod, gtk.ACCEL_VISIBLE)
+        elif hasattr(itemdesc[1], "__getslice__"):  # treat as submenu.
+            submenu = itemdesc[1]
+            retval.set_submenu(BuildMenu(submenu, accelgroup=accelgroup))
         return retval
-    def BuildMenu (menudesc, menu=None):
+    def BuildMenu (menudesc, menu=None, accelgroup=None):
         menu = menu or gtk.Menu()
-        map(menu.append, map(BuildMenuItem, menudesc))
+        #map(menu.append, map(BuildMenuItem, menudesc))
+        map(menu.append, map(lambda x: BuildMenuItem(x,accelgroup), menudesc))
         return menu
     if menubar is None:
         menubar = gtk.MenuBar()
-    return BuildMenu(menubardesc, menubar)
+    return BuildMenu(menubardesc, menubar, accelgroup)
 
 
 
@@ -534,16 +549,18 @@ class DlgAbout (gtk.AboutDialog):
 
 class VisMapperWindow (gtk.Window):
     """Main window, majority of state information."""
+    BASE_TITLE = "Vismapper"
+
     def reset (self):
+        """Reset window contents."""
         self.bindpad.reset()
 
     def __init__ (self, parent=None, store=None, menubar=None):
         self.app = parent
 
         gtk.Window.__init__(self)
-        self.set_title("Vismapper")
-
-#        self.saveuri = None
+        self.set_title("%s" % self.BASE_TITLE)
+        self.subtitle = ""
 
         if store is None:
             self.store = self.app.store
@@ -553,7 +570,21 @@ class VisMapperWindow (gtk.Window):
         self.menubar = menubar
         self.uibuild()
 
+    def use_filename (self, fname=None):
+        """Set filename portion of window title.
+Provide "" to erase filename portion."""
+        if fname is None:
+            # Do not change.
+            return
+        # Or "" to erase subtitle.
+        self.subtitle = fname
+        if fname:
+            self.set_title("%s: %s" % (self.BASE_TITLE, self.subtitle))
+        else:
+            self.set_title(self.BASE_TITLE)
+
     def uibuild (self):
+        """Build the UI: generate widgets, add children, connect signals."""
         self.panes = gtk.VBox()
         self.add(self.panes)
 
@@ -587,6 +618,7 @@ class VisMapperWindow (gtk.Window):
         self.dlg_about = DlgAbout()
 
     def uibuild_debug (self):
+        """Build  UI elements for debugging."""
         self.debugrow = gtk.HBox()
         self.debugbuf = gtk.TextBuffer()
         self.debugwin = gtk.TextView(self.debugbuf)
@@ -598,13 +630,18 @@ class VisMapperWindow (gtk.Window):
         self.debugbuf.insert_at_cursor("Debug")
         self.debugbuf.insert_at_cursor(" ready:")
         self.debugbuf.insert_at_cursor("\n")
-        #teelog.debugbuf = self.debugbuf
+        # Overwrite global log object to take a tee stream.
         globals()['log'] = Log(Log.debug, TeeLog(self.debugbuf, sys.stderr))
 
     def on_delete_event (self, w, *args):
+        """Closing window with the [X] button."""
         self.app.quit()
 
     def ask_open (self):
+        """Present dialog for opening/loading file.
+Returns: str - filename specified by user.
+         None - operation canceled.
+"""
         loadname = None
         dlg = gtk.FileChooserDialog("Open", None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=("Open",1, "Cancel", 0))
         response = dlg.run()
@@ -616,6 +653,10 @@ class VisMapperWindow (gtk.Window):
         return loadname
 
     def ask_save (self):
+        """Present dialog for writing/saving file
+Returns: str - filename specified by user.
+         None - operation canceled.
+"""
         savename = None
         dlg = gtk.FileChooserDialog("Save As", None, action=gtk.FILE_CHOOSER_ACTION_SAVE, buttons=("Save",1, "Cancel",0))
         response = dlg.run()
@@ -627,14 +668,17 @@ class VisMapperWindow (gtk.Window):
         return savename
 
     def display_about (self):
+        """Show/run the dialog for About."""
         self.dlg_about.run()
         self.dlg_about.hide()
 
 
 
 class MainMenubar (gtk.MenuBar):
-    def __init__ (self, app):
+    """MenuBar for the main window."""
+    def __init__ (self, app, accelgroup=None):
         gtk.MenuBar.__init__(self)
+        self.accelgroup = accelgroup
         self.app = app
         self.uibuild()
 
@@ -698,17 +742,17 @@ class MainMenubar (gtk.MenuBar):
     def uibuild (self):
         menu_desc = [
           ('_File', [
-            ('_New', self.on_file_new),
-            ('_Open', self.on_file_open),
-            ('_Save', self.on_file_save),
-            ('Save _As', self.on_file_saveas),
+            ('_New', "<Control><Shift>n", self.on_file_new),
+            ('_Open', "<Control>o", self.on_file_open),
+            ('_Save', "<Control>s", self.on_file_save),
+            ('Save _As', "<Control><Alt>s", self.on_file_saveas),
             None,
-            ('_Quit', self.on_quit),
+            ('_Quit', "<Control>q", self.on_quit),
             ]),
           ('_Edit', [
-            ('_Copy', self.on_edit_copy),
-            ('C_ut', self.on_edit_cut),
-            ('_Paste', self.on_edit_paste),
+            ('_Copy', "<Control>c", self.on_edit_copy),
+            ('C_ut', "<Control>x", self.on_edit_cut),
+            ('_Paste', "<Control>v", self.on_edit_paste),
             None,
             ('_Options', self.on_edit_options),
             ]),
@@ -723,7 +767,7 @@ class MainMenubar (gtk.MenuBar):
             ('_About', self.on_about),
             ]),
           ]
-        return BuildMenuBar(menu_desc, self)
+        return BuildMenuBar(menu_desc, self, self.accelgroup)
 
 
 
@@ -736,8 +780,10 @@ class VisMapperApp (object):
         self.modenum = 0
         self.levelnum = 0
         mdl = self.store.inpdescr
-        menubar = MainMenubar(self)
+        self.accelgroup = gtk.AccelGroup()
+        menubar = MainMenubar(self, self.accelgroup)
         self.ui = VisMapperWindow(self, self.store, menubar=menubar)
+        self.ui.add_accel_group(self.accelgroup)
         self.saveuri = None
         self.uibuild()
 
@@ -824,16 +870,14 @@ class VisMapperApp (object):
         self.ui.display_about()
 
 
-    def go (self):
-        self.ui.show_all()
-        gtk.mainloop()
-
     def load (self, srcfile):
+        """Load configuration from file-like object."""
         #self.store.load(srcfile)
         log.debug("LOADING %r" % srcfile)
         return 0
 
     def save (self, destfile):
+        """Save configuration to file-like object."""
         #self.store.save(destfile)
         log.debug("SAVING %r" % destfile)
         return 0
@@ -844,6 +888,11 @@ class VisMapperApp (object):
 
     def quit (self):
         gtk.main_quit()
+
+    def go (self):
+        # Instanced method.
+        self.ui.show_all()
+        gtk.mainloop()
 
     @staticmethod
     def main ():
