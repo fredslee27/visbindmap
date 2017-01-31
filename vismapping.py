@@ -2,6 +2,7 @@
 # vim: set expandtab tabstop=4 :
 
 import gtk, gobject
+import sys
 import sqlite3
 
 import pprint
@@ -18,6 +19,30 @@ DEFAULT_DBNAME="cmds"
 def crumb (x):
     pass
 
+class TeeLog (object):
+    """Print log messages to stderr and debug text window."""
+    def __init__ (self, debugbuf, stream=sys.stderr):
+        self.outstream = stream
+        self.debugbuf = debugbuf
+    def write (self, data):
+        self.outstream.write(data)
+
+        if self.debugbuf:
+            if data == "\f":
+                # Clear contents.
+                self.debugbuf.delete(self.debugbuf.get_start_iter(), self.debugbuf.get_end_iter())
+            else:
+                self.debugbuf.insert_at_cursor(data)
+    def writelines (self, data):
+        self.outstream.writelines(data)
+        print("@@@ writelines not implemented")
+    def flush (self):
+        pass
+    def close (self):
+        self.outstream = None
+        # let gc close the file, in case it's stderr.
+    def closed (self):
+        return (self.outstream is not None)
 log = Log(Log.debug)
 
 
@@ -573,12 +598,8 @@ class VisMapperWindow (gtk.Window):
         self.debugbuf.insert_at_cursor("Debug")
         self.debugbuf.insert_at_cursor(" ready:")
         self.debugbuf.insert_at_cursor("\n")
-        def debugcrumb (x):
-            if x == "\f":
-                self.debugbuf.delete(self.debugbuf.get_start_iter(), self.debugbuf.get_end_iter())
-            else:
-                self.debugbuf.insert_at_cursor(x + "\n")
-        globals()['crumb'] = debugcrumb
+        #teelog.debugbuf = self.debugbuf
+        globals()['log'] = Log(Log.debug, TeeLog(self.debugbuf, sys.stderr))
 
     def on_delete_event (self, w, *args):
         self.app.quit()
@@ -743,13 +764,14 @@ class VisMapperApp (object):
         mdl = self.store.inpdescr
         # update displays by forcing level change event.
         mdl.set_layer(mdl.get_layer())
-        pass
+        return
 
     def on_kblevel_changed (self, w, levelnum, *args):
         self.levelnum = levelnum
         mdl = self.store.inpdescr
         mdl.set_layer(levelnum)
-        pass
+        log.debug("changing to shift level %d" % levelnum)
+        return
 
     def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
         log.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
@@ -758,7 +780,7 @@ class VisMapperApp (object):
         bindval = dnddata
         mdl = self.store.inpdescr
         mdl.set_bind(levelnum, inpsym, bindval)
-        pass
+        return
 
 #    def on_kbl_drop (self, w, ctx, x, y, t, *args):
 #        w.drag_get_data(ctx, "STRING", time)
