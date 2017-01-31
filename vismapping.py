@@ -2,7 +2,7 @@
 # vim: set expandtab tabstop=4 :
 
 import gtk, gobject
-import sys
+import sys, os, os.path
 import sqlite3
 
 import pprint
@@ -350,21 +350,17 @@ class Commands (object):
 
 class VisCmds (gtk.VBox):
     """Visual presentation of commands: a tree of group and the commands."""
-    # TODO: move out of widget
-    DEFAULT_DATASOURCE = DEFAULT_DBNAME + ".sqlite3"
-
     def __init__ (self, datasrc=None):
         gtk.VBox.__init__(self)
 
         # id, cmd, display, hint
         self.cmdlist = gtk.TreeStore(int, str, str, str)
 
-        self.set_datasrc(datasrc)
+        if datasrc:
+            self.set_datasrc(datasrc)
 
         self.entry = gtk.TreeView(self.cmdlist)
         self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bind", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
-        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bindid", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
-        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("binduri", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
@@ -381,10 +377,12 @@ class VisCmds (gtk.VBox):
     def get_datasrc (self):
         return self._datasrc
     def set_datasrc (self, datasrc):
-        if datasrc is None:
-            datasrc = self.DEFAULT_DATASOURCE
+#        if datasrc is None:
+#            datasrc = self.DEFAULT_DATASOURCE
         self._datasrc = datasrc
-        self.cmds = Commands(datasrc)
+#        self.cmds = Commands(datasrc)
+        self.cmds = datasrc
+        self.cmdlist.clear()
         self.cmds.build_treestore(self.cmdlist)
         # TODO: ...?
     datasrc = property(get_datasrc, set_datasrc)
@@ -589,7 +587,7 @@ class VisMapperWindow (gtk.Window):
         """Reset window contents."""
         self.bindpad.reset()
 
-    def __init__ (self, parent=None, store=None, menubar=None):
+    def __init__ (self, parent=None, store=None, menubar=None, cmdsrc=None):
         self.app = parent
 
         gtk.Window.__init__(self)
@@ -601,6 +599,7 @@ class VisMapperWindow (gtk.Window):
         else:
             self.store = store
 
+        self.cmdsrc = cmdsrc
         self.menubar = menubar
         self.uibuild()
 
@@ -628,10 +627,10 @@ Provide "" to erase filename portion."""
 
         self.connect("delete-event", self.on_delete_event)
 
-        self.cmdcol = VisCmds()
+        self.cmdcol = VisCmds(self.cmdsrc)
 
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.store, self.cmdcol.cmds)
+        self.bindpad = VisBind(self.store, self.cmdsrc)
         self.bindrow.pack_start(self.bindpad)
         self.padpane.pack_start(self.bindrow)
 
@@ -701,6 +700,19 @@ Returns: str - filename specified by user.
         dlg.destroy()
         return savename
 
+    def ask_cmds (self):
+        """Present dialog for source of commands.
+Returns: str - path to sqlite3 resource/file.
+         None - operation canceled
+"""
+        srcname = None
+        dlg = gtk.FileChooserDialog("Commands Pack", None, action=gtk.FILE_CHOOSER_ACTION_OPEN, buttons=("Open",1, "Cancel", 0))
+        response = dlg.run()
+        if response == 1:
+            srcname = dlg.get_filename()
+        dlg.destroy()
+        return srcname
+
     def display_about (self):
         """Show/run the dialog for About."""
         self.dlg_about.run()
@@ -738,6 +750,13 @@ class MainMenubar (gtk.MenuBar):
         if savename:
             app.set_saveuri(savename)
             app.save_in_place()
+        return
+    def on_file_cmdpack (self, w, *args):
+        app = self.app
+        srcname = app.ask_cmds_uri()
+        if srcname:
+            app.set_cmdsuri(srcname)
+            app.cmds_in_place()
         return
     def on_quit (self, w, *args):
         app = self.app
@@ -783,6 +802,8 @@ class MainMenubar (gtk.MenuBar):
             ('_Save', "<Control>s", self.on_file_save),
             ('Save _As', "<Control><Alt>s", self.on_file_saveas),
             None,
+            ('_CommandPack', self.on_file_cmdpack),
+            None,
             ('_Quit', "<Control>q", self.on_quit),
             ]),
           ('_Edit', [
@@ -813,14 +834,19 @@ class VisMapperApp (object):
         self.store = Store(8)
         #self.mdl = kblayout.InpDescrModel(1)
         #self.ui = VisMapperWindow(self, self.mdl)
+        #self.cmdsuri = DEFAULT_DBNAME + ".sqlite3"
+        self.cmdset = None
+        self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
+        #self.cmds_in_place()
         self.modenum = 0
         self.levelnum = 0
         mdl = self.store.inpdescr
         self.accelgroup = gtk.AccelGroup()
         menubar = MainMenubar(self, self.accelgroup)
-        self.ui = VisMapperWindow(self, self.store, menubar=menubar)
+        self.ui = VisMapperWindow(self, self.store, menubar=menubar, cmdsrc=self.cmdset)
         self.ui.add_accel_group(self.accelgroup)
-        self.saveuri = None
+        self.saveuri = None     # Config file.
+        # Commands Pack file name.
         self.uibuild()
 
     def uibuild (self):
@@ -884,6 +910,8 @@ class VisMapperApp (object):
         return self.saveuri
     def set_saveuri (self, val):
         self.saveuri = val
+        basename = os.path.basename(val)
+        self.ui.use_filename(basename)
     def ask_save_uri (self):
         """Called by MenuBar upon File/SaveAs, to run the SaveAs dialog."""
         return self.ui.ask_save()
@@ -893,6 +921,7 @@ class VisMapperApp (object):
             savefile = open(self.saveuri, "wb")
             self.save(savefile)
             savefile.close()
+        return
     def ask_load_uri (self):
         """Called by MenuBar upon File/Open, to run the Open dialog"""
         return self.ui.ask_open()
@@ -902,10 +931,30 @@ class VisMapperApp (object):
             loadfile = open(self.saveuri, "rb")
             self.load(loadfile)
             loadfile.close()
+        return
+
+    def get_cmdsuri (self):
+        return self.cmdsuri
+    def set_cmdsuri (self, val):
+        self.cmdsuri = val
+        if not self.cmdset:
+            self.cmdset = Commands(self.cmdsuri)
+    def ask_cmds_uri (self):
+        return self.ui.ask_cmds()
+    def cmds_in_place (self):
+        if self.cmdsuri:
+            print("TODO: load commands.")
+            self.cmdset = Commands(self.cmdsuri)
+            self.ui.cmdcol.set_datasrc(self.cmdset)
+        return
 
     def display_about (self):
         self.ui.display_about()
 
+
+    def cmds (self, srcpath):
+        log.debug("LOADING CMDS: %r" % srcpath)
+        return 0
 
     def load (self, srcfile):
         """Load configuration from file-like object."""
