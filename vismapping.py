@@ -122,7 +122,7 @@ class ObjectReinstantiater(ast.NodeTransformer):
         cclass = node.func.attr
         ckey = "%s.%s" % (cmodule, cclass)
         if ckey in self.REINSTANCERS:
-            #print("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
+            log.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
             return node
         else:
             return ast.parse("None", mode='eval')
@@ -188,6 +188,7 @@ class Store (object):
 
 def build_treestore_from_commands(cmds_db, treestore=None):
     if treestore is None:
+        #                       id, cmd, display, hint
         treestore = gtk.TreeStore(int, str, str, str)
 
     # First, the unbind item.
@@ -208,7 +209,7 @@ def build_treestore_from_commands(cmds_db, treestore=None):
             groupheads[grpname] = treeiter
         else:
             if not groupheads.has_key(grpname):
-                treeiter = treestore.append(None, (0, "", grp, ""))
+                treeiter = treestore.append(None, (0, "", grpname, ""))
                 groupheads[grpname] = treeiter
 
     for grp in cmds_db.groups:
@@ -222,6 +223,72 @@ def build_treestore_from_commands(cmds_db, treestore=None):
         row = (cmdid, cmd, desc, hint)
         treeiter = treestore.append(grpiter, row)
 
+
+class CmdStore (gtk.TreeStore):
+    def __init__ (self, cmds_db=None):
+        #                            id, cmd, display, hint
+        gtk.TreeStore.__init__(self,  int, str, str, str)
+        self.clear()
+        if cmds_db:
+            self.import_commands(cmds_db)
+
+    def clear (self):
+        gtk.TreeStore.clear(self)
+        # First item = 'unbind'
+        self.append(None, (0, "", "(unbind)", ""))
+        # Prepare groups; mapping of group name to TreeIter position of that header row in the TreeStore.
+        self.groupheads = {}
+        return
+
+    def make_group (self, grpname):
+        if '/' in grpname:
+            splitpt = grpname.rindex('/')
+            prefix = grpname[:splitpt]
+            suffix = grpname[splitpt+1:]
+            make_group(prefix)
+            parentiter = self.groupheads[prefix]
+            treeiter = self.append(parentiter, (0, "", suffix, ""))
+            self.groupheads[grpname] = treeiter
+        else:
+            if not self.groupheads.has_key(grpname):
+                treeiter = self.append(None, (0, "", grpname, ""))
+                self.groupheads[grpname] = treeiter
+
+    def import_commands (self, cmds_db):
+        for grp in cmds_db.groups:
+            self.make_group(grp)
+        for cmdinfo in cmds_db:
+            (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
+            grpiter = self.groupheads[grp]
+            if not desc:
+                desc = cmd
+            row = (cmdid, cmd, desc, hint)
+            treeiter = self.append(grpiter, row)
+        return True
+
+
+# List of binding modes.
+class ModeStore (gtk.ListStore):
+    def __init__ (self, cmds_db=None):
+        #                            id, name
+        gtk.ListStore.__init__(self, int, str)
+        self.clear()
+        if cmds_db:
+            self.import_commands(cmds_db)
+
+    def clear (self):
+        gtk.ListStore.clear(self)
+        # First/Minimum is "global".
+        self.append((0, "*GLOBAL"))
+        return
+
+    def import_commands (self, cmds_db):
+        modes = cmds_db.get_modes()
+        n = 1
+        for modename in modes:
+            self.append((n, modename))
+            n += 1
+        return True
 
 
 class Commands (object):
@@ -350,16 +417,14 @@ class Commands (object):
 
 class VisCmds (gtk.VBox):
     """Visual presentation of commands: a tree of group and the commands."""
-    def __init__ (self, datasrc=None):
+    def __init__ (self, cmdstore=None):
         gtk.VBox.__init__(self)
 
-        # id, cmd, display, hint
-        self.cmdlist = gtk.TreeStore(int, str, str, str)
+        if not cmdstore:
+            cmdstore = CmdStore()
+        self.cmdstore = cmdstore
 
-        if datasrc:
-            self.set_datasrc(datasrc)
-
-        self.entry = gtk.TreeView(self.cmdlist)
+        self.entry = gtk.TreeView(self.cmdstore)
         self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bind", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
@@ -373,22 +438,12 @@ class VisCmds (gtk.VBox):
         self.add(self.entrywin)
         self.set_size_request(160, 100)
 
-    # TODO: 
-    def get_datasrc (self):
-        return self._datasrc
-    def set_datasrc (self, datasrc):
-#        if datasrc is None:
-#            datasrc = self.DEFAULT_DATASOURCE
-        self._datasrc = datasrc
-#        self.cmds = Commands(datasrc)
-        self.cmds = datasrc
-        self.cmdlist.clear()
-        self.cmds.build_treestore(self.cmdlist)
-        # TODO: ...?
-    datasrc = property(get_datasrc, set_datasrc)
-
-    def build_treestore (self, commands):
-        pass
+    def get_cmdstore (self):
+        return self.cmdstore
+    def set_cmdstore (self, cmdstore):
+        self.cmdstore = cmdstore
+        self.entry.set_model(self.cmdstore)
+        # TODO: update TreeView?
 
     def on_drag_data_get (self, w, ctx, sel, info, time, *args):
         srcw = ctx.get_source_widget()
@@ -420,7 +475,7 @@ class VisCmds (gtk.VBox):
             log.debug("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
             # Find out target, get its inpsym, assign binding.
             # Send displayed text to target.
-            print("+++ target is bindref")
+            log.debug("+++ target is bindref")
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -448,11 +503,12 @@ Consists of:
         pass
 
 
-    def __init__ (self, store, cmds=None):
+    def __init__ (self, store, models=None):
         gtk.VBox.__init__(self)
 
         self.store = store
-        self.cmds = cmds
+        self.models = models
+        self.cmdstore = models.cmdstore
 
         self.uibuild()
 
@@ -486,21 +542,36 @@ Consists of:
         modebtns = gtk.HButtonBox()
 
         moderow.lbl = gtk.Label("MODE:")
+        moderow.btns = []
         # "Select Layer" radio buttons.
         #modes = [ "(GLOBAL)", "Game", "Inventory", "Crafting", "Editor" ]
-        modes = [ "*GLOBAL" ] + self.cmds.get_modes()
+        #modes = [ "*GLOBAL" ] + self.cmdstore.get_modes()
+        modestore = self.models.modestore
+
+        def rebuild_buttons (modestore):
+            if moderow.btns:
+                for btn in moderow.btns:
+                    modebtns.remove(btn)
+            moderow.btns = []  # private data.
+            for modeid in range(len(modestore)):
+                grp = moderow.btns and moderow.btns[0] or None    # is group member or is group leader.
+                lbl = modestore[modeid][1]  # List row, second column => name.
+                btn = gtk.RadioButton(grp, lbl)  # create element.
+                btn.layernum = modeid  # private data
+                btn.connect('toggled', self.on_mode_toggle)  # react
+                modebtns.add(btn)  # GUI
+                moderow.btns.append(btn)  # internal storage.
+            moderow.show_all()
+            return
+        def on_data_changed (m, *args):
+            rebuild_buttons(m)
             
-        moderow.btns = []  # private data.
-        #moderow.pack_start(moderow.lbl, expand=False)
-        for modeid in range(0, len(modes)):
-            grp = moderow.btns and moderow.btns[0] or None    # is group leader or member.
-            lbl = modes[modeid]
-            btn = gtk.RadioButton(grp, lbl)  # create element.
-            btn.layernum = modeid  # private data
-            btn.connect('toggled', self.on_mode_toggle)  # react
-            modebtns.add(btn)  # GUI
-            moderow.btns.append(btn)  # internal storage.
+        rebuild_buttons(modestore)
         moderow.pack_start(modebtns, expand=False)
+        # Rebuilds all buttons on any change.  This is very expensive.
+        modestore.connect('row-changed', on_data_changed)
+        modestore.connect('row-deleted', on_data_changed)
+        modestore.connect('row-inserted', on_data_changed)
 
         #return moderow
         modebox = gtk.Frame("MODE")
@@ -587,7 +658,7 @@ class VisMapperWindow (gtk.Window):
         """Reset window contents."""
         self.bindpad.reset()
 
-    def __init__ (self, parent=None, store=None, menubar=None, cmdsrc=None):
+    def __init__ (self, parent=None, store=None, menubar=None, models=None):
         self.app = parent
 
         gtk.Window.__init__(self)
@@ -599,7 +670,8 @@ class VisMapperWindow (gtk.Window):
         else:
             self.store = store
 
-        self.cmdsrc = cmdsrc
+        #self.cmdstore = cmdstore
+        self.models = models
         self.menubar = menubar
         self.uibuild()
 
@@ -627,10 +699,10 @@ Provide "" to erase filename portion."""
 
         self.connect("delete-event", self.on_delete_event)
 
-        self.cmdcol = VisCmds(self.cmdsrc)
+        self.cmdcol = VisCmds(self.models.cmdstore)
 
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.store, self.cmdsrc)
+        self.bindpad = VisBind(self.store, self.models)
         self.bindrow.pack_start(self.bindpad)
         self.padpane.pack_start(self.bindrow)
 
@@ -782,6 +854,8 @@ class MainMenubar (gtk.MenuBar):
         return
     def on_debug_2 (self, w, *args):
         app = self.app
+        app.set_cmdsuri("/home/fredslee/devel/vismapping/cmdset/GunsOfIcarusOnline.sqlite3")
+        app.cmds_in_place()
         return
     def on_debug_3 (self, w, *args):
         app = self.app
@@ -828,22 +902,42 @@ class MainMenubar (gtk.MenuBar):
 
 
 
+class VisMapperModels (object):
+    """Collection of data models for the GUI."""
+    def __init__ (self, cmdstore=None, modestore=None, bindstore=None):
+        self.cmdstore = cmdstore
+        self.modestore = modestore
+        self.bindstore = bindstore
+
+
+
 class VisMapperApp (object):
     """Overall application object, with app/GUI state information."""
     def __init__ (self):
         self.store = Store(8)
         #self.mdl = kblayout.InpDescrModel(1)
         #self.ui = VisMapperWindow(self, self.mdl)
-        #self.cmdsuri = DEFAULT_DBNAME + ".sqlite3"
+
+        self.cmdsuri = DEFAULT_DBNAME + ".sqlite3"
+        self.cmdsrc = Commands(self.cmdsuri)
+        #self.cmdstore = build_treestore_from_commands(self.cmdsrc, None)
+        self.cmdstore = CmdStore(self.cmdsrc)
         self.cmdset = None
         self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
         #self.cmds_in_place()
+
         self.modenum = 0
         self.levelnum = 0
         mdl = self.store.inpdescr
         self.accelgroup = gtk.AccelGroup()
+
+        self.models = VisMapperModels()
+        self.models.cmdstore = self.cmdstore
+        self.models.bindstore = self.store
+        self.models.modestore = ModeStore(self.cmdsrc)
+
         menubar = MainMenubar(self, self.accelgroup)
-        self.ui = VisMapperWindow(self, self.store, menubar=menubar, cmdsrc=self.cmdset)
+        self.ui = VisMapperWindow(self, self.store, menubar=menubar, models=self.models)
         self.ui.add_accel_group(self.accelgroup)
         self.saveuri = None     # Config file.
         # Commands Pack file name.
@@ -943,9 +1037,11 @@ class VisMapperApp (object):
         return self.ui.ask_cmds()
     def cmds_in_place (self):
         if self.cmdsuri:
-            print("TODO: load commands.")
             self.cmdset = Commands(self.cmdsuri)
-            self.ui.cmdcol.set_datasrc(self.cmdset)
+            self.models.cmdstore.clear()
+            self.models.cmdstore.import_commands(self.cmdset)
+            self.models.modestore.clear()
+            self.models.modestore.import_commands(self.cmdset)
         return
 
     def display_about (self):
