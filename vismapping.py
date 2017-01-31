@@ -122,7 +122,7 @@ class ObjectReinstantiater(ast.NodeTransformer):
         cclass = node.func.attr
         ckey = "%s.%s" % (cmodule, cclass)
         if ckey in self.REINSTANCERS:
-            log.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
+            #log.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
             return node
         else:
             return ast.parse("None", mode='eval')
@@ -503,12 +503,10 @@ Consists of:
         pass
 
 
-    def __init__ (self, store, models=None):
+    def __init__ (self, models=None):
         gtk.VBox.__init__(self)
 
-        self.store = store
         self.models = models
-        self.cmdstore = models.cmdstore
 
         self.uibuild()
 
@@ -522,14 +520,14 @@ Consists of:
         self.pack_start(self.moderow)
 
         # grid/tablular layout of inpbind+bindcmd
-        inpdescr = self.store.inpdescr
+        inpdescr = self.models.bindstore.inpdescr
         self.kbl = kblayout.KblayoutWidget(inpdescr)
         self.kbl.connect('key-selected', self.on_key_selected)
 
         self.pack_start(self.kbl, expand=False, fill=False)
 
     def on_key_selected (self, w, ksym, *args):
-        binding = self.store.inpdescr.get_bind(0, ksym)
+        binding = self.models.bindstore.inpdescr.get_bind(0, ksym)
         log.debug("key-selected: %s => %r" % (ksym, binding))
 
     def on_layout_changed (self, w, layoutname, *args):
@@ -658,19 +656,13 @@ class VisMapperWindow (gtk.Window):
         """Reset window contents."""
         self.bindpad.reset()
 
-    def __init__ (self, parent=None, store=None, menubar=None, models=None):
+    def __init__ (self, parent=None, menubar=None, models=None):
         self.app = parent
 
         gtk.Window.__init__(self)
         self.set_title("%s" % self.BASE_TITLE)
         self.subtitle = ""
 
-        if store is None:
-            self.store = self.app.store
-        else:
-            self.store = store
-
-        #self.cmdstore = cmdstore
         self.models = models
         self.menubar = menubar
         self.uibuild()
@@ -702,7 +694,7 @@ Provide "" to erase filename portion."""
         self.cmdcol = VisCmds(self.models.cmdstore)
 
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.store, self.models)
+        self.bindpad = VisBind(self.models)
         self.bindrow.pack_start(self.bindpad)
         self.padpane.pack_start(self.bindrow)
 
@@ -904,41 +896,32 @@ class MainMenubar (gtk.MenuBar):
 
 class VisMapperModels (object):
     """Collection of data models for the GUI."""
-    def __init__ (self, cmdstore=None, modestore=None, bindstore=None):
+    def __init__ (self, cmdstore=None, modestore=None, bindstore=None, accelgroup=None):
         self.cmdstore = cmdstore
         self.modestore = modestore
         self.bindstore = bindstore
+        self.accelgroup = accelgroup
 
 
 
 class VisMapperApp (object):
     """Overall application object, with app/GUI state information."""
     def __init__ (self):
-        self.store = Store(8)
-        #self.mdl = kblayout.InpDescrModel(1)
-        #self.ui = VisMapperWindow(self, self.mdl)
-
-        self.cmdsuri = DEFAULT_DBNAME + ".sqlite3"
-        self.cmdsrc = Commands(self.cmdsuri)
-        #self.cmdstore = build_treestore_from_commands(self.cmdsrc, None)
-        self.cmdstore = CmdStore(self.cmdsrc)
-        self.cmdset = None
+        self.cmdsrc = None
         self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
-        #self.cmds_in_place()
 
         self.modenum = 0
         self.levelnum = 0
-        mdl = self.store.inpdescr
-        self.accelgroup = gtk.AccelGroup()
 
         self.models = VisMapperModels()
-        self.models.cmdstore = self.cmdstore
-        self.models.bindstore = self.store
+        self.models.cmdstore = CmdStore(self.cmdsrc)
+        self.models.bindstore = Store(8)
         self.models.modestore = ModeStore(self.cmdsrc)
+        self.models.accelgroup = gtk.AccelGroup()
 
-        menubar = MainMenubar(self, self.accelgroup)
-        self.ui = VisMapperWindow(self, self.store, menubar=menubar, models=self.models)
-        self.ui.add_accel_group(self.accelgroup)
+        menubar = MainMenubar(self, self.models.accelgroup)
+        self.ui = VisMapperWindow(self, menubar=menubar, models=self.models)
+        self.ui.add_accel_group(self.models.accelgroup)
         self.saveuri = None     # Config file.
         # Commands Pack file name.
         self.uibuild()
@@ -954,24 +937,20 @@ class VisMapperApp (object):
 
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
-#        # Save current Layers to modes[current_mode]
-#        sav = self.store.inpdescr.layers
-#        self.store.modes[self.modenum] = sav
-#        # Load new Layers from modes[new_mode]
         # Point to new Layers.
-        cur = self.store.modes[modenum]
-        self.store.inpdescr.layers = cur
+        cur = self.models.bindstore.modes[modenum]
+        self.models.bindstore.inpdescr.layers = cur
         # Store new mode as current.
         self.modenum = modenum
         log.debug(" ? changing to mode %d" % modenum)
-        mdl = self.store.inpdescr
+        mdl = self.models.bindstore.inpdescr
         # update displays by forcing level change event.
         mdl.set_layer(mdl.get_layer())
         return
 
     def on_kblevel_changed (self, w, levelnum, *args):
         self.levelnum = levelnum
-        mdl = self.store.inpdescr
+        mdl = self.models.bindstore.inpdescr
         mdl.set_layer(levelnum)
         log.debug("changing to shift level %d" % levelnum)
         return
@@ -981,7 +960,7 @@ class VisMapperApp (object):
         inpsym = dstw.inpsym
         levelnum = self.levelnum
         bindval = dnddata
-        mdl = self.store.inpdescr
+        mdl = self.models.bindstore.inpdescr
         mdl.set_bind(levelnum, inpsym, bindval)
         return
 
@@ -1027,21 +1006,22 @@ class VisMapperApp (object):
             loadfile.close()
         return
 
+    # Operations re: CommandPack
     def get_cmdsuri (self):
         return self.cmdsuri
     def set_cmdsuri (self, val):
         self.cmdsuri = val
-        if not self.cmdset:
-            self.cmdset = Commands(self.cmdsuri)
+        if not self.cmdsrc:
+            self.cmdsrc = Commands(self.cmdsuri)
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
     def cmds_in_place (self):
         if self.cmdsuri:
-            self.cmdset = Commands(self.cmdsuri)
+            self.cmdsrc = Commands(self.cmdsuri)
             self.models.cmdstore.clear()
-            self.models.cmdstore.import_commands(self.cmdset)
+            self.models.cmdstore.import_commands(self.cmdsrc)
             self.models.modestore.clear()
-            self.models.modestore.import_commands(self.cmdset)
+            self.models.modestore.import_commands(self.cmdsrc)
         return
 
     def display_about (self):
@@ -1055,17 +1035,17 @@ class VisMapperApp (object):
     def load (self, srcfile):
         """Load configuration from file-like object."""
         log.debug("LOADING %r" % srcfile)
-        self.store.load(srcfile)
+        self.models.bindstore.load(srcfile)
         return 0
 
     def save (self, destfile):
         """Save configuration to file-like object."""
-        self.store.save(destfile)
+        self.models.bindstore.save(destfile)
         log.debug("SAVING %r" % destfile)
         return 0
 
     def reset (self):
-        self.store.reset()
+        self.modes.bindstore.reset()
         self.ui.reset()
 
     def quit (self):
