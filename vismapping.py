@@ -12,7 +12,7 @@ import kblayout
 from kblayout import Log
 
 
-BASENAME="factorio"
+BASENAME="generic_game"
 DEFAULT_DBNAME="cmds"
 
 
@@ -112,25 +112,22 @@ class Store (object):
     DEFAULT_FILENAME = BASENAME + ".cfg"
 
     def reset (self):
-        self.inpdescr = kblayout.InpDescrModel(self._numlevels)
-        #self.modes = [None]*self.numlayers  # List of InpDescrModel.layers
-        #self.modes = [ list() for x in range(self._numlayers) ] # List of InpDescrModel.layers
-#        self.modes = [ 
-#          [ kblayout.InpDescrModel.InpLayer(self.inpdescr,y,0) for y in range(self._numlevels) ]
-#            for x in range(self._numlayers) ] # List of InpDescrModel.layers
+        self.inpdescr = kblayout.InpDescrModel(self._numlayers)
         self.modes = []
-        for x in range(self._numlayers):
+        for x in range(self._nummodes):
             placeholder = []
-            for y in range(self._numlevels):
-                v = kblayout.InpDescrModel.InpLayer(self.inpdescr, y, 0, None)
+            for y in range(self._numlayers):
+                v = kblayout.InpDescrModel.InpLayer(y, 0, None)
                 placeholder.append(v)
             self.modes.append(placeholder)
+        self.inpdescr.layers = self.modes[0]
 
-    def __init__ (self, numlayers=8, numlevels=8, backingFileName=None):
+    def __init__ (self, nummodes=8, numlevels=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
-        # bindings are mapping SDL_binding => command
-        self._numlayers = numlayers
-        self._numlevels = numlevels
+        # bindings are mapping SDL_binding => command.
+        # modes are list of list-of-binding, typically 1 or 2.
+        self._nummodes = nummodes
+        self._numlayers = numlevels
         self.reset()
         self.fname = backingFileName
         if not backingFileName:
@@ -146,9 +143,15 @@ class Store (object):
     def save (self, fileobj=None):
         if fileobj is None:
             fileobj = open(self.fname, "wb")
+            fileobj.write(self.modes)
         #fileobj = open(fname, "wb")
         #pickle.dump(self.binddata, fileobj)
         #fileobj.close()
+        storedict = {
+            'modes': self.modes,
+            }
+        pprint.pprint(storedict, fileobj, indent=2, width=132)
+        fileobj.write("\n")
 
 
 
@@ -798,12 +801,13 @@ class VisMapperApp (object):
 
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
-        # Save current Layers to modes[current_mode]
-        sav = self.store.inpdescr.layers
-        self.store.modes[self.modenum] = sav
-        # Load new Layers from modes[new_mode]
-        pop = self.store.modes[modenum]
-        self.store.inpdescr.layers = pop
+#        # Save current Layers to modes[current_mode]
+#        sav = self.store.inpdescr.layers
+#        self.store.modes[self.modenum] = sav
+#        # Load new Layers from modes[new_mode]
+        # Point to new Layers.
+        cur = self.store.modes[modenum]
+        self.store.inpdescr.layers = cur
         # Store new mode as current.
         self.modenum = modenum
         log.debug(" ? changing to mode %d" % modenum)
@@ -878,7 +882,7 @@ class VisMapperApp (object):
 
     def save (self, destfile):
         """Save configuration to file-like object."""
-        #self.store.save(destfile)
+        self.store.save(destfile)
         log.debug("SAVING %r" % destfile)
         return 0
 

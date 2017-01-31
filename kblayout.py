@@ -40,7 +40,7 @@ Keys are keysym.
 
 Multiple layers attach to a mode.
 """
-        def __init__ (self, parent, layernum, fallback, binds=None):
+        def __init__ (self, layernum, fallback, binds=None):
             self.layernum = layernum
             if binds is None:
                 self._binds = dict()
@@ -80,7 +80,18 @@ Multiple layers attach to a mode.
             return self.has_bind(k)
 
         def __repr__ (self):
-            return "%s(parent=None, layernum=%r, fallback=%r, binds=%r)" % (self.__class__.__name__, self.layernum, self._fallback, self._binds)
+            return "%s.%s(layernum=%r, fallback=%r, binds=%r)" % (self.__class__.__module__, self.__class__.__name__, self.layernum, self._fallback, self._binds)
+            #return str(self.__json__())
+
+        def __json__ (self):
+            """JSON-friendly representation of this object."""
+            return {
+                '__module__': self.__class__.__module__,
+                '__class__': self.__class__.__name__,
+                'layernum': self.layernum,
+                'fallback': self._fallback,
+                'binds': self._binds,
+                }
 
     def __init__ (self, nlayers=1):
         gobject.GObject.__init__(self)
@@ -113,7 +124,7 @@ Multiple layers attach to a mode.
     def set_layermap (self, n, m):
         if (0 <= n) and (n < len(self.layers)):
             if m is None:
-                self.layers[n] = self.InpLayer(self, n, 0)
+                self.layers[n] = self.InpLayer(n, 0)
             else:
                 self.layers[n] = m
 
@@ -125,7 +136,7 @@ Multiple layers attach to a mode.
                 fallback = m-1
             else:
                 fallback = None
-            temp = self.InpLayer(self, m, fallback)
+            temp = self.InpLayer(m, fallback)
             self.layers.append(temp)
 
     def get_bind (self, layernum, inpsym):
@@ -147,12 +158,24 @@ Multiple layers attach to a mode.
         return retval
 
     def __repr__ (self):
-        return "%s(nlayers=%d, labels=%r, layers=%r)" % (
+        return "%s.%s(nlayers=%d, labels=%r, layers=%r)" % (
+          self.__class__.__module__,
           self.__class__.__name__,
-          self.maxlyers,
+          self.maxlayers,
           self.labels,
           self.layers
           )
+#        return str(self.__json__())
+
+    def __json__ (self):
+        """JSON-friendly representation of this object."""
+        return {
+            '__module__': self.__class__.__module__,
+            '__class__': self.__class__.__name__,
+            'maxlayers': self.maxlayers,
+            'labels': self.labels,
+            'layers': self.layers,
+            }
 
     # Signals:
     # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
