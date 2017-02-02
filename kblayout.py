@@ -135,12 +135,13 @@ Multiple layers attach to a group.
     def __len__ (self):
         return len(self.layers)
     def __repr__ (self):
-        return "%s.%s(groupnum=%r, numlayers=%r, layers=%r" % (self.__class__.__module___, self.__class__.__name__, self.groupnum, self.numlayers, self.layers)
+        return "%s.%s(groupnum=%r, numlayers=%r, layers=%r" % (self.__class__.__module__, self.__class__.__name__, self.groupnum, len(self.layers), self.layers)
     def __json__ (self):
         return {
             '__module__': self.__class__.__module__,
             '__class__': self.__class__.__class__,
             'groupnum': self.groupnum,
+            'numlayers': len(self.layers),
             'layers': self.layers,
             }
 

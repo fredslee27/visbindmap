@@ -172,7 +172,7 @@ class Store (object):
         #pickle.dump(self.binddata, fileobj)
         #fileobj.close()
         storedict = {
-            'modes': self.modes,
+            'inpdescr': self.inpdescr,
             }
         pprint.pprint(storedict, fileobj, indent=2, width=132)
         fileobj.write("\n")
