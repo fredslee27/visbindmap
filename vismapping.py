@@ -487,7 +487,7 @@ Consists of:
         self.pack_start(self.kbl, expand=False, fill=False)
 
     def on_key_selected (self, w, ksym, *args):
-        binding = self.models.bindstore.inpdescr.get_bind(0, ksym)
+        binding = self.models.bindstore.inpdescr.get_bind(ksym)
         log.debug("key-selected: %s => %r" % (ksym, binding))
 
     def on_layout_changed (self, w, layoutname, *args):

@@ -101,8 +101,9 @@ Indices are group number.
 
 Multiple layers attach to a group.
 """
-    def __init__ (self, groupnum, numlayers, layers=None):
+    def __init__ (self, groupnum, fallback, numlayers, layers=None):
         self.groupnum = groupnum
+        self.fallback = fallback
         if layers:
             self.layers = layers
         else:
@@ -200,9 +201,13 @@ class InpDescrModel (gobject.GObject):
             return self.groups[n]
         return None
     def set_grouplist (self, n, l):
+        try:
+            layercount = self._maxlayers
+        except AttributeError:
+            layercount = 1
         if (0 <= n) and (n < self._maxgroups):
             if m is None:
-                self.groups[n] = InpGroup(n, max(n-1,0), None)
+                self.groups[n] = InpGroup(n, 0, layercount, None)
             else:
                 self.groups[n] = m
 
@@ -237,7 +242,7 @@ class InpDescrModel (gobject.GObject):
                 fallback = m-1
             else:
                 fallback = None
-            temp = InpGroup(m, self._maxlayers, None)
+            temp = InpGroup(m, 0, self._maxlayers, None)
             self.groups.append(temp)
 
     def set_numlayers (self, n):
@@ -256,17 +261,35 @@ class InpDescrModel (gobject.GObject):
         self.emit('bind-changed', groupnum, layernum, inpsym)
         
 
-    def resolve_bind (self, groupnum, layernum, inpsym):
-        layerfollow = layernum
+    def resolve_bind (self, inpsym,  group=None, layer=None):
+        """Determine effective binding of a inpsym based on passthrough rules.
+"""
+        passthrough = False
+        groupnum = group or self.get_group()
+        layernum = group or self.get_layer()
+        groupfollow = groupnum
         retval = None
-        grp = self.get_grouplist(groupnum)
-        while (retval is None) and (layerfollow is not None):
-            layermap = grp.get_layermap(layernum)
-            if layermap:
-                retval = layermap.get_bind(inpsym)
-            else:
-                layerfollow = layermap._fallback
-        return retval
+        while (retval is None) and (groupfollow is not None):
+            grp = self.get_grouplist(groupfollow)
+            layerfollow = layernum
+            while (retval is None) and (layerfollow is not None):
+                layermap = grp.get_layermap(layernum)
+                if layermap:
+                    retval = layermap.get_bind(inpsym)
+                if retval is None:
+                    passthrough = True
+                    if layerfollow != layermap._fallback:
+                        layerfollow = layermap._fallback
+                    else:
+                        layerfollow = None
+                    passthrough = True
+            if retval is None:
+                passthrough = True
+                if grp.fallback != groupfollow:
+                    groupfollow = grp.fallback
+                else:
+                    groupfollow = None
+        return passthrough, retval
 
     def refresh (self):
         """Induce update of viewers of this model."""
@@ -399,14 +422,20 @@ class KbTop (gtk.Button):
         lbl = self.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
         # Update binding display
+        groupnum = self.inpdescr.get_group()
         layernum = self.inpdescr.get_layer()
         layermap = self.inpdescr.get_layermap_activegroup(layernum)
-        if layermap is not None:
-            val = layermap.get_bind(self.inpsym)  # could be null.
-        else:
-            val = None
+#        if layermap is not None:
+#            val = layermap.get_bind(self.inpsym)  # could be null.
+#        else:
+#            val = None
+
+        shadow, val = self.inpdescr.resolve_bind(self.inpsym)
+
         if val is None:
             val = ""
+        elif shadow:
+            val = "/%s/" % val
         self.inp_bind.set_text(val)
 
     def on_data_change (self, *args):
