@@ -114,6 +114,7 @@ class ObjectReinstantiater(ast.NodeTransformer):
     REINSTANCERS = {
         "kblayout.InpDescrModel": kblayout.InpDescrModel,
         "kblayout.InpLayer": kblayout.InpLayer,
+        "kblayout.InpGroup": kblayout.InpGroup,
         }
     def nop (self, node):
         return ast.parse("None", mode='eval')
@@ -136,22 +137,14 @@ class Store (object):
     DEFAULT_FILENAME = BASENAME + ".cfg"
 
     def reset (self):
-        self.inpdescr = kblayout.InpDescrModel(self._numlayers)
-        self.modes = []
-        for x in range(self._nummodes):
-            placeholder = []
-            for y in range(self._numlayers):
-                v = kblayout.InpLayer(y, 0, None)
-                placeholder.append(v)
-            self.modes.append(placeholder)
-        self.inpdescr.layers = self.modes[0]
+        self.inpdescr = kblayout.InpDescrModel(self._nummodes, self._numlevels)
 
     def __init__ (self, nummodes=8, numlevels=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
         # bindings are mapping SDL_binding => command.
         # modes are list of list-of-binding, typically 1 or 2.
         self._nummodes = nummodes
-        self._numlayers = numlevels
+        self._numlevels = numlevels
         self.reset()
         self.fname = backingFileName
         if not backingFileName:
@@ -380,39 +373,6 @@ class Commands (object):
 
     def build_treestore (self, store):
         return build_treestore_from_commands(self, store)
-#    def build_treestore (self, store):
-#        # The unbind item.
-#        store.append(None, (0, "", "(unbind)", "", self))
-##            treeiter = store.append(grpiter, (cmdid, cmd, desc, hint, self))
-#        # Build all groups.
-#        groupheads = {}
-#
-#        def make_group (grpname):
-#            if '/' in grpname:
-#                splitpt = grpname.rindex('/')
-#                prefix = grpname[:splitpt]
-#                suffix = grpname[splitpt+1:]
-#                make_group(prefix)
-#                parentiter = groupheads[prefix]
-#                #treeiter = store.append(parentiter, (0, "", grp, ""))
-#                treeiter = store.append(parentiter, (0, "", suffix, "", self))
-#                groupheads[grpname] = treeiter
-#            else:
-#                if not groupheads.has_key(grpname):
-#                    treeiter = store.append(None, (0, "", grp, "", self))
-#                    groupheads[grpname] = treeiter
-#
-#        for grp in self.groups:
-##            treeiter = store.append(None, (0, "", grp, ""))
-##            groupheads[grp] = treeiter
-#            make_group(grp)
-#
-#        for cmdinfo in self.__iter__():
-#            (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
-#            grpiter = groupheads[grp]
-#            if not desc:
-#                desc = cmd
-#            treeiter = store.append(grpiter, (cmdid, cmd, desc, hint, self))
 
 
 class VisCmds (gtk.VBox):
@@ -542,8 +502,6 @@ Consists of:
         moderow.lbl = gtk.Label("MODE:")
         moderow.btns = []
         # "Select Layer" radio buttons.
-        #modes = [ "(GLOBAL)", "Game", "Inventory", "Crafting", "Editor" ]
-        #modes = [ "*GLOBAL" ] + self.cmdstore.get_modes()
         modestore = self.models.modestore
 
         def rebuild_buttons (modestore):
@@ -937,15 +895,10 @@ class VisMapperApp (object):
 
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
-        # Point to new Layers.
-        cur = self.models.bindstore.modes[modenum]
-        self.models.bindstore.inpdescr.layers = cur
-        # Store new mode as current.
         self.modenum = modenum
-        log.debug(" ? changing to mode %d" % modenum)
         mdl = self.models.bindstore.inpdescr
-        # update displays by forcing level change event.
-        mdl.set_layer(mdl.get_layer())
+        mdl.set_group(modenum)
+        log.debug(" ? changing to mode %d" % modenum)
         return
 
     def on_kblevel_changed (self, w, levelnum, *args):
@@ -958,10 +911,11 @@ class VisMapperApp (object):
     def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
         log.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
         inpsym = dstw.inpsym
+        modenum = self.modenum
         levelnum = self.levelnum
         bindval = dnddata
         mdl = self.models.bindstore.inpdescr
-        mdl.set_bind(levelnum, inpsym, bindval)
+        mdl.set_bind(inpsym, bindval,  group=modenum, layer=levelnum)
         return
 
 #    def on_kbl_drop (self, w, ctx, x, y, t, *args):

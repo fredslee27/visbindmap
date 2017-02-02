@@ -8,6 +8,7 @@ import gtk, gobject
 import kbd_desc
 
 
+# Logging.
 class Log (object):
     def __init__ (self, loglevel=None, sink=sys.stderr):
         self._sink = sink
@@ -28,6 +29,8 @@ class Log (object):
     def debug (self, *msgparts): self.__gate(4, "+++", *msgparts)
     _levels = [ fatal, error, warn, info, debug ]
 log = Log(Log.debug)
+# set log level with: log.level = log.warn
+# log with: log.info("...", "...", ...)
 
 
 class InpLayer (object):
@@ -35,7 +38,7 @@ class InpLayer (object):
 One layer of bindings.
 Keys are keysym.
 
-Multiple layers attach to a mode.
+Multiple layers attach to a group.
 """
     def __init__ (self, layernum, fallback, binds=None):
         self.layernum = layernum
@@ -91,16 +94,80 @@ Multiple layers attach to a mode.
             }
 
 
+class InpGroup (gobject.GObject):
+    """To be accessed as if list.
+One group of binding layer.
+Indices are group number.
+
+Multiple layers attach to a group.
+"""
+    def __init__ (self, groupnum, numlayers, layers=None):
+        self.groupnum = groupnum
+        if layers:
+            self.layers = layers
+        else:
+            self.layers = []
+            for i in range(groupnum):
+                fallback = max(i-1, 0)
+                self.layers.append(InpLayer(i, fallback, None))
+
+    def get_layermap (self, n):
+        return self.layers[n]
+
+    def set_layermap (self, n, m):
+        if (0 <= n) and (n < len(self.layers)):
+            if m is None:
+                self.layers[n] = InpLayer(n, max(n-1,0), None)
+            else:
+                self.layers[n] = m
+
+    def set_numlayers (self, n):
+        self._maxlayers = n
+        while (len(self.layers) < self._maxlayers):
+            m = len(self.layers)
+            temp = InpLayer(m, max(m-1, 0))
+            self.layers.append(temp)
+
+    def __getitem__ (self, k):
+        self.get_layermap(k)
+    def __setitem__ (self, k, v):
+        self.set_layermap(k, v)
+    def __len__ (self):
+        return len(self.layers)
+    def __repr__ (self):
+        return "%s.%s(groupnum=%r, numlayers=%r, layers=%r" % (self.__class__.__module___, self.__class__.__name__, self.groupnum, self.numlayers, self.layers)
+    def __json__ (self):
+        return {
+            '__module__': self.__class__.__module__,
+            '__class__': self.__class__.__class__,
+            'groupnum': self.groupnum,
+            'layers': self.layers,
+            }
+
+
 class InpDescrModel (gobject.GObject):
     """Input descriptor model.  UI elements refer to this object for visual properties to use."""
 
-    def __init__ (self, nlayers=1):
+    def __init__ (self, ngroups=1, nlayers=1, labels=None, groups=None):
         gobject.GObject.__init__(self)
         # Mapping of inpsym to label to display in UI.
-        self.labels = dict()
-        # List of InpLayer representing the binding layers.
-        self.layers = list()
+        if labels is None:
+            self.labels = dict()
+        else:
+            self.labels = labels
+#        # List of InpLayer representing the binding layers.
+#        self.layers = list()
+        # List of InpGroup representing the binding groups.
+        if groups is None:
+            self.groups = list()
+        else:
+            self.groups = groups
+        self._maxlayers = 1
+        self._maxgroups = 1
+        self.set_numgroups(ngroups)
         self.set_numlayers(nlayers)
+        # active group
+        self._group = 0
         # active layer
         self._layer = 0
 
@@ -112,50 +179,92 @@ class InpDescrModel (gobject.GObject):
         self.labels[inpsym] = lbl
         self.emit("label-changed", inpsym)
 
+    def get_group (self):
+        """Get active group number."""
+        return self._group
+    def set_group (self, val):
+        self._group = val
+        self.emit('group-changed', val)
+
     def get_layer (self):
+        """Get active layer number."""
         return self._layer
     def set_layer (self, val):
         self._layer = val
         self.emit("layer-changed", val)
 
-    def get_layermap (self, n):
-        if (0 <= n) and (n < len(self.layers)):
-            return self.layers[n]
+    def get_grouplist (self, n):
+        """Get group (list of InpLayer)"""
+        if (0 <= n) and (n < self._maxgroups):
+            return self.groups[n]
         return None
-    def set_layermap (self, n, m):
-        if (0 <= n) and (n < len(self.layers)):
+    def set_grouplist (self, n, l):
+        if (0 <= n) and (n < self._maxgroups):
             if m is None:
-                self.layers[n] = InpLayer(n, 0)
+                self.groups[n] = InpGroup(n, max(n-1,0), None)
             else:
-                self.layers[n] = m
+                self.groups[n] = m
 
-    def set_numlayers (self, n):
-        self.maxlayers = n
-        while (len(self.layers) < self.maxlayers):
-            m = len(self.layers)
+    def get_layermap (self, g, n):
+        """Get layer (dict of keysym:binding) in specified group."""
+        if (0 <= n) and (n < self._maxlayers):
+            return self.groups[g].get_layermap(n)
+        return None
+    def set_layermap (self, g, n, m):
+        if (0 <= n) and (n < self._maxlayers):
+            if m is None:
+                self.groups[g].set_layermap(n, InpLayer(n, 0))
+            else:
+                self.groups[g].set_layermap(n, m)
+
+    def get_layermap_activegroup (self, n):
+        """Get layer (dict of keysym:binding) in active group."""
+        return self.get_layermap(self.get_group(), n)
+    def set_layermap_activegroup (self, n, m):
+        return self.set_layermap_activegroup(self.group, n, m)
+
+    def set_numgroups (self, n):
+        self._maxgroups = n
+        try:
+            maxlayers = self._maxlayers
+        except AttributeError:
+            # Max layers not known yet.
+            maxlayers = 1
+        while (len(self.groups) < self._maxgroups):
+            m = len(self.groups)
             if m > 0:
                 fallback = m-1
             else:
                 fallback = None
-            temp = InpLayer(m, fallback)
-            self.layers.append(temp)
+            temp = InpGroup(m, self._maxlayers, None)
+            self.groups.append(temp)
 
-    def get_bind (self, layernum, inpsym):
-        return self.get_layermap(layernum).get_bind(inpsym)
+    def set_numlayers (self, n):
+        self._maxlayers = n
+        for grp in self.groups:
+            grp.set_numlayers(n)
 
-    def set_bind (self, layernum, inpsym, v):
-        self.get_layermap(layernum).set_bind(inpsym, v)
-        self.emit("bind-changed", layernum, inpsym)
+    def get_bind (self, inpsym,  group=None, layer=None):
+        groupnum = group or self.get_group()
+        layernum = layer or self.get_layer()
+        return self.get_grouplist(groupnum).get_layermap(layernum).get_bind(inpsym)
+    def set_bind (self, inpsym, v,  group=None, layer=None):
+        groupnum = group or self.get_group()
+        layernum = layer or self.get_layer()
+        self.get_grouplist(groupnum).get_layermap(layernum).set_bind(inpsym, v)
+        self.emit('bind-changed', groupnum, layernum, inpsym)
+        
 
-    def resolve_bind (self, layernum, inpsym):
-        follow = layernum
+    def resolve_bind (self, groupnum, layernum, inpsym):
+        layerfollow = layernum
         retval = None
-        while (retval is None) and (follow is not None):
-            layermap = self.get_layermap(layernum)
+        grp = self.get_grouplist(groupnum)
+        while (retval is None) and (layerfollow is not None):
+            layermap = grp.get_layermap(layernum)
             if layermap:
                 retval = layermap.get_bind(inpsym)
             else:
-                follow = layermap._fallback
+                layerfollow = layermap._fallback
         return retval
 
     def refresh (self):
@@ -163,12 +272,13 @@ class InpDescrModel (gobject.GObject):
         self.emit("layer-changed", self._layer)
 
     def __repr__ (self):
-        return "%s.%s(nlayers=%d, labels=%r, layers=%r)" % (
+        return "%s.%s(ngroups=%d, nlayers=%d, labels=%r, groups=%r)" % (
           self.__class__.__module__,
           self.__class__.__name__,
-          self.maxlayers,
+          self._maxgroups,
+          self._maxlayers,
           self.labels,
-          self.layers
+          self.groups
           )
 #        return str(self.__json__())
 
@@ -177,9 +287,10 @@ class InpDescrModel (gobject.GObject):
         return {
             '__module__': self.__class__.__module__,
             '__class__': self.__class__.__name__,
-            'maxlayers': self.maxlayers,
+            'maxgroups': self._maxgroups,
+            'maxlayers': self._maxlayers,
             'labels': self.labels,
-            'layers': self.layers,
+            'groups': self.groups,
             }
 
     # Signals:
@@ -188,9 +299,10 @@ class InpDescrModel (gobject.GObject):
     # * layer-changed() - active layer changed
 
 gobject.type_register(InpDescrModel)
-gobject.signal_new("bind-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT, gobject.TYPE_STRING))
+gobject.signal_new("bind-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT, gobject.TYPE_INT, gobject.TYPE_STRING))
 gobject.signal_new("label-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,))
 gobject.signal_new("layer-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+gobject.signal_new("group-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
 
 
 
@@ -271,6 +383,7 @@ class KbTop (gtk.Button):
             self.inpdescr.connect("bind-changed", self.on_data_change)
             self.inpdescr.connect("label-changed", self.on_data_change)
             self.inpdescr.connect("layer-changed", self.on_data_change)
+            self.inpdescr.connect("group-changed", self.on_data_change)
         # self.emit("data-model-changed")
 
     def set_keytop (self, disp):
@@ -286,7 +399,7 @@ class KbTop (gtk.Button):
         self.set_keytop(lbl)
         # Update binding display
         layernum = self.inpdescr.get_layer()
-        layermap = self.inpdescr.get_layermap(layernum)
+        layermap = self.inpdescr.get_layermap_activegroup(layernum)
         if layermap is not None:
             val = layermap.get_bind(self.inpsym)  # could be null.
         else:
