@@ -381,44 +381,11 @@ class KbTop (gtk.Button):
         self.align1 = gtk.Alignment(0,0,1,1)
         self.bg_bind = gtk.EventBox()
 
-        # TODO: pull color from Entry background (due to themes).
-#        bgcolor = gtk.gdk.color_parse('#333333')
-#        self.bg_bind.modify_bg(gtk.STATE_NORMAL, bgcolor)
-#        self.bg_bind.modify_bg(gtk.STATE_ACTIVE, bgcolor)
-#        self.bg_bind.modify_bg(gtk.STATE_PRELIGHT, bgcolor)
-#        self.bg_bind.modify_bg(gtk.STATE_SELECTED, bgcolor)
-        #self.bg_bind.modify_bg(gtk.STATE_INSENSITIVE, bgcolor)
-
         self.inp_binds = []
+        self.lvl_lbls = []
         self.bg_binds = []
         self.inp_box = None
 
-#        m = max(1, inpdescr.get_numlayers())
-#        # Input binding displays.
-#        self.inp_binds = [ gtk.Label() for n in range(m) ]
-#        self.inp_bind = self.inp_binds[0]
-#        # Background for binding displays.
-#        self.bg_binds = [ gtk.EventBox() for n in range(m) ]
-#
-#        # set up droppable binding display (dressed up as a text entry).
-#        self.inp_bind.set_alignment(0, 0.5)
-#        self.inp_box = gtk.VBox()
-#        temp = gtk.Entry()
-#        self.refstyle = refstyle = temp.get_style()
-#        for i in range(0, self.vislayers):
-#            ib = self.inp_binds[i]
-#            ib.set_alignment(0, 0.5)
-#            ib.set_width_chars(4)
-#            ib.set_justify(gtk.JUSTIFY_LEFT)
-#            bg = self.bg_binds[i]
-#            bg.modify_bg(gtk.STATE_NORMAL, refstyle.base[gtk.STATE_NORMAL])
-#            bg.modify_bg(gtk.STATE_ACTIVE, refstyle.base[gtk.STATE_ACTIVE])
-#            bg.modify_bg(gtk.STATE_PRELIGHT, refstyle.base[gtk.STATE_PRELIGHT])
-#            bg.modify_bg(gtk.STATE_SELECTED, refstyle.base[gtk.STATE_SELECTED])
-#            bg.add(ib)
-#            if i != 0:
-#                self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
-#            self.inp_box.pack_start(bg, expand=False, fill=False)
         self.uibuild_binddisplays()
 
         #self.inp_box.pack_start(temp)
@@ -440,14 +407,14 @@ class KbTop (gtk.Button):
         m = max(1, self.inpdescr.get_numlayers())
         # Input binding displays.
         self.inp_binds = [ gtk.Label() for n in range(m) ]
-        #self.inp_bind = self.inp_binds[0]
         # Background for binding displays.
         self.bg_binds = [ gtk.EventBox() for n in range(m) ]
+        # label for binding display levels.
+        self.lvl_lbls = [ gtk.Label() for n in range(m) ]
 
         # set up droppable binding display (dressed up as a text entry).
-        #self.inp_bind.set_alignment(0, 0.5)
-        temp = gtk.Entry()
-        self.refstyle = refstyle = temp.get_style()
+        temp = gtk.Entry()  # copy style from Entry.
+        self.refstyle = refstyle = temp.get_style().copy()
         for i in range(0, self.vislayers):
             ib = self.inp_binds[i]
             ib.set_alignment(0, 0.5)
@@ -461,7 +428,12 @@ class KbTop (gtk.Button):
             bg.add(ib)
             if i != 0:
                 self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
-            self.inp_box.pack_start(bg, expand=False, fill=False)
+
+            #self.inp_box.pack_start(bg, expand=False, fill=False)
+            bindline = gtk.HBox()
+            bindline.pack_start(self.lvl_lbls[i], expand=False, fill=False)
+            bindline.pack_start(bg, expand=True, fill=True)
+            self.inp_box.pack_start(bindline, expand=False, fill=False)
         self.align1.add(self.inp_box)
         self.inp_box.show_all()
 
@@ -504,26 +476,9 @@ class KbTop (gtk.Button):
         groupnum = self.inpdescr.get_group()
         layernum = self.inpdescr.get_layer()
         layermap = self.inpdescr.get_layermap(layernum)
-#        if layermap is not None:
-#            val = layermap.get_bind(self.inpsym)  # could be null.
-#        else:
-#            val = None
 
-#        shadow, val = self.inpdescr.resolve_bind(self.inpsym)
         self._baselayer = self.vislayers * (self._layer / self.vislayers)
         bindidx = self.vislayers - (self._layer - self._baselayer) - 1
-#
-#        if val is None:
-#            val = ""
-#            #self.inp_bind.set_text(val)
-#            self.inp_binds[bindidx].set_text(val)
-#        elif shadow:
-#            val = "<i><small>%s</small></i>" % val
-#            #self.inp_bind.set_markup(val)
-#            self.inp_binds[bindidx].set_markup(val)
-#        else:
-#            #self.inp_bind.set_text(val)
-#            self.inp_binds[bindidx].set_text(val)
 
         for i in range(self.vislayers):
             bg = self.bg_binds[i]
@@ -544,9 +499,6 @@ class KbTop (gtk.Button):
                 bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
             shadow, val = self.inpdescr.resolve_bind(self.inpsym, layer=layernum)
             inp_bind = self.inp_binds[i]
-            layermap = self.inpdescr.get_layermap(layernum)
-            should = self.inpdescr.get_bind(self.inpsym, group=self._group, layer=layernum)
-            should2 = layermap.get_bind(self.inpsym)
             if val is None:
                 self.inp_binds[i].set_text("")
             elif shadow:
@@ -554,6 +506,11 @@ class KbTop (gtk.Button):
                 self.inp_binds[i].set_markup(val)
             else:
                 self.inp_binds[i].set_text(val)
+            # install level prefix for multi-level view.
+            if self.vislayers > 1:
+                self.lvl_lbls[i].set_markup("<small>%s:</small>" % layernum)
+            else:
+                self.lvl_lbls[i].set_text("")
 
     def on_data_change (self, *args):
         self.update_display()
