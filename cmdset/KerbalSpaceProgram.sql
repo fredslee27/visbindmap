@@ -189,5 +189,26 @@ INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Flight Forces', NULL, N
 INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Temp. Gauges', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Temp Overlay', NULL, NULL);
 
+
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'ModifierConsole', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Radial Menu', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Toggle Flight Control', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Lock Launch Stages', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Trim Pitch+', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Trim Pitch-', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Trim Yaw+', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Trim Yaw-', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Trim Roll+', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Trim Roll-', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Reset Trim', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Toggle Motion Sensor', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Toggle Precision Controls', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Mouse Motion', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Mouse1', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Mouse2', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Mouse3', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Undo', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Redo', NULl, NULL);
+
 COMMIT TRANSACTION;
 
