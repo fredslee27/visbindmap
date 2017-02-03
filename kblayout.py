@@ -435,8 +435,10 @@ class KbTop (gtk.Button):
         if val is None:
             val = ""
         elif shadow:
-            val = "/%s/" % val
-        self.inp_bind.set_text(val)
+            val = "<i><small>%s</small></i>" % val
+            self.inp_bind.set_markup(val)
+        else:
+            self.inp_bind.set_text(val)
 
     def on_data_change (self, *args):
         self.update_display()
