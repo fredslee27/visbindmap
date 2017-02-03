@@ -1,5 +1,6 @@
 
 DROP TABLE IF EXISTS cmd;
+DROP TABLE IF EXISTS modes;
 
 CREATE TABLE cmd (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,48 +137,54 @@ INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Pause', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Quicksave', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Quickload', NULL, NULL);
 
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Camera Mode', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Camera Next', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Camera Reset', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Zoom In', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Zoom Out', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'View Up', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'View Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'View Left', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'View Right', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Toggle Mouselook', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Scroll View Up', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Scroll View Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Part Pitch Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Part Pitch Up', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Yaw Part Left', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Yaw Part Right', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Roll Part Left', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Roll Part Right', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Reset Part Rotation', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Place Mode', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Offset Mode', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Rotate Mode', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Root Mode', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Toggle Local/Absolute', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Toggle Angle Snap', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Toggle Symmetry', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Cycle Symmetry Mode', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Search All Parts', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Scroll Modifier for Zoom', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Flight UI', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Scroll Icons Up', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Scroll Icons Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Vessel Labels', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Flight Log', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Flight Forces', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Temp. Gauges', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Temp Overlay', NULL, NULL);
+
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'Camera Mode', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'Camera Next', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'Camera Reset', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'Zoom In', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'Zoom Out', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'View Up', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'View Down', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'View Left', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'View Right', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', 'Toggle Mouselook', NULL, NULL);
+
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', '+Camera Horizontal', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', '-Camera Horizontal', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', '+Camera Vertical', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Camera', '-Camera Vertical', NULL, NULL);
+
+
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Scroll View Up', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Scroll View Down', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Part Pitch Down', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Part Pitch Up', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Yaw Part Left', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Yaw Part Right', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Roll Part Left', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Roll Part Right', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Reset Part Rotation', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Place Mode', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Offset Mode', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Rotate Mode', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Root Mode', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Toggle Local/Absolute', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Toggle Angle Snap', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Toggle Symmetry', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Cycle Symmetry Mode', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Search All Parts', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Scroll Modifier for Zoom', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Scroll Icons Up', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Construction', 'Scroll Icons Down', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 4, 'Game', 'Show/Hide Navball', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', '+Camera Horizontal', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', '-Camera Horizontal', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', '+Camera Vertical', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 4, 'Game', '-Camera Vertical', NULL, NULL);
+
+
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Flight UI', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Vessel Labels', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Flight Log', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Flight Forces', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Temp. Gauges', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 4, 'Game/Misc', 'Show/Hide Temp Overlay', NULL, NULL);
 
 COMMIT TRANSACTION;
 

@@ -238,7 +238,7 @@ class CmdStore (gtk.TreeStore):
             splitpt = grpname.rindex('/')
             prefix = grpname[:splitpt]
             suffix = grpname[splitpt+1:]
-            make_group(prefix)
+            self.make_group(prefix)
             parentiter = self.groupheads[prefix]
             treeiter = self.append(parentiter, (0, "", suffix, ""))
             self.groupheads[grpname] = treeiter
