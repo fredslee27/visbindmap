@@ -70,7 +70,7 @@ class TestInpDescrModel(unittest.TestCase):
         self.assertEqual(x.get_group(), 1)
 
 
-    def test_set_bind_via_implicit (self):
+    def test_get_bind_via_implicit (self):
         bindchanged = []
         layerchanged = []
         groupchanged = []
@@ -95,6 +95,17 @@ class TestInpDescrModel(unittest.TestCase):
         self.assertEqual(x.get_layer(), 3)
         self.assertEqual(x.get_bind("K_ESCAPE"), 'NotQuit')
         self.assertEqual(x.get_bind("K_ESCAPE", group=1, layer=3), 'Quit')
+
+    def test_get_binds1 (self):
+        x = kblayout.InpDescrModel(8,8)
+        playback = [ lambda: x.set_bind('K_ESCAPE', 'Quit'),
+                     lambda: x.set_bind('K_ESCAPE', 'NotQuit', layer=1),
+                     ]
+        self.runloop(playback)
+        self.assertEqual(x.get_bind("K_ESCAPE", layer=0), 'Quit')
+        self.assertEqual(x.get_bind("K_ESCAPE", layer=1), 'NotQuit')
+        self.assertEqual(x.resolve_bind("K_ESCAPE", layer=0), (False, "Quit"))
+        self.assertEqual(x.resolve_bind("K_ESCAPE", layer=1), (False, "NotQuit"))
 
 # TODO: test model failing:
 # * change group to OOB

@@ -818,6 +818,12 @@ class MainMenubar (gtk.MenuBar):
         app.display_about()
         return
 
+    def on_view_levels (self, w, count, *args):
+        app = self.app
+        log.debug("View levels = %d" % count)
+        app.set_vislayers(count)
+        pass
+
     def uibuild (self):
         menu_desc = [
           ('_File', [
@@ -836,6 +842,12 @@ class MainMenubar (gtk.MenuBar):
             ('_Paste', "<Control>v", self.on_edit_paste),
             None,
             ('_Options', self.on_edit_options),
+            ]),
+          ('_View', [
+            ('_1 level', lambda w: self.on_view_levels(w, 1)),
+            ('_2 levels', lambda w: self.on_view_levels(w, 2)),
+            ('_4 levels', lambda w: self.on_view_levels(w, 4)),
+            ('_8 levels', lambda w: self.on_view_levels(w, 8)),
             ]),
           ('_DEBUG', [
             ('Debug _1', self.on_debug_1),
@@ -978,6 +990,12 @@ class VisMapperApp (object):
             self.models.modestore.import_commands(self.cmdsrc)
         return
 
+    def get_vislayers (self):
+        kbl = self.ui.bindpad.kbl
+        return kbl.get_vislayers()
+    def set_vislayers (self, v):
+        kbl = self.ui.bindpad.kbl
+        kbl.set_vislayers(v)
     def display_about (self):
         self.ui.display_about()
 

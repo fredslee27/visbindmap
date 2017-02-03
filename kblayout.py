@@ -122,6 +122,8 @@ Multiple layers attach to a group.
             else:
                 self.layers[n] = m
 
+    def get_numlayers (self):
+        return self._maxlayers or 0
     def set_numlayers (self, n):
         self._maxlayers = n
         while (len(self.layers) < self._maxlayers):
@@ -213,18 +215,20 @@ class InpDescrModel (gobject.GObject):
 
     def get_layermap (self, layernum, group=None):
         """Get layer (dict of keysym:binding) in specified group."""
-        groupnum = group or self.get_group()
+        groupnum = group if group is not None else  self.get_group()
         if (0 <= layernum) and (layernum < self._maxlayers):
             return self.groups[groupnum].get_layermap(layernum)
         return None
     def set_layermap (self, layernum, value, group=None):
-        groupnum = group or self.get_group()
+        groupnum = group if group is not None else self.get_group()
         if (0 <= layernum) and (layernum < self._maxlayers):
             if value is None:
                 self.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
             else:
                 self.groups[groupnum].set_layermap(layernum, value)
 
+    def get_numgroups (self):
+        return self._maxgroups or 0
     def set_numgroups (self, n):
         self._maxgroups = n
         try:
@@ -241,18 +245,20 @@ class InpDescrModel (gobject.GObject):
             temp = InpGroup(m, 0, self._maxlayers, None)
             self.groups.append(temp)
 
+    def get_numlayers (self):
+        return self._maxlayers or 0
     def set_numlayers (self, n):
         self._maxlayers = n
         for grp in self.groups:
             grp.set_numlayers(n)
 
     def get_bind (self, inpsym,  group=None, layer=None):
-        groupnum = group or self.get_group()
-        layernum = layer or self.get_layer()
+        groupnum = group if group is not None else self.get_group()
+        layernum = layer if layer is not None else self.get_layer()
         return self.get_grouplist(groupnum).get_layermap(layernum).get_bind(inpsym)
     def set_bind (self, inpsym, v,  group=None, layer=None):
-        groupnum = group or self.get_group()
-        layernum = layer or self.get_layer()
+        groupnum = group if group is not None else self.get_group()
+        layernum = layer if layer is not None else self.get_layer()
         self.get_grouplist(groupnum).get_layermap(layernum).set_bind(inpsym, v)
         self.emit('bind-changed', groupnum, layernum, inpsym)
         
@@ -261,15 +267,15 @@ class InpDescrModel (gobject.GObject):
         """Determine effective binding of a inpsym based on passthrough rules.
 """
         passthrough = False
-        groupnum = group or self.get_group()
-        layernum = group or self.get_layer()
+        groupnum = group if group is not None else self.get_group()
+        layernum = layer if layer is not None else self.get_layer()
         groupfollow = groupnum
         retval = None
         while (retval is None) and (groupfollow is not None):
             grp = self.get_grouplist(groupfollow)
             layerfollow = layernum
             while (retval is None) and (layerfollow is not None):
-                layermap = grp.get_layermap(layernum)
+                layermap = grp.get_layermap(layerfollow)
                 if layermap:
                     retval = layermap.get_bind(inpsym)
                 if retval is None:
@@ -331,30 +337,30 @@ class KbTop (gtk.Button):
     """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
     Contents to display are packaged in a data model (InpDescrModel)
     """
-    def __init__ (self, inpsym, inpdescr=None):
+    def __init__ (self, inpsym, inpdescr=None, vislayers=1):
         """Initialize with given data model, and the input symbol tied to this kbtop"""
         # UI elements
         gtk.Button.__init__(self)
         self.plane = gtk.VBox()
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
-        self.inp_bind = gtk.Label()
-        self.inp_bind2 = gtk.Label()
-        self.inp_bind3 = gtk.Label()
-        self.inp_bind4 = gtk.Label()
+        self.vislayers = vislayers  # Visible layers.
 
         # data model
         self.set_model(inpdescr)
-        #self.inpdescr = inpdescr
+        self.inpdescr = inpdescr
         self.inpsym = inpsym
+        self._baselayer = 0  # partial layers view; what the lowest layer number is.
+        self._layer = 0  # Currently active layer shown.
+        self._group = 0  # Currently active group shown.
 
         # Fill label (first row)
         self.label = self.inpdescr.get_label(self.inpsym)
         #self.set_keytop(self.label)
 
-        # Adjust bind display (second row)
-        self.inp_bind.set_width_chars(4)
-        self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
+#        # Adjust bind display (second row)
+#        self.inp_bind.set_width_chars(4)
+#        self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
 
         # Set up drag-and-drop
         self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bind", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
@@ -376,29 +382,47 @@ class KbTop (gtk.Button):
         self.bg_bind = gtk.EventBox()
 
         # TODO: pull color from Entry background (due to themes).
-        bgcolor = gtk.gdk.color_parse('#ffffff')
-        self.bg_bind.modify_bg(gtk.STATE_NORMAL, bgcolor)
-        self.bg_bind.modify_bg(gtk.STATE_ACTIVE, bgcolor)
-        self.bg_bind.modify_bg(gtk.STATE_PRELIGHT, bgcolor)
-        self.bg_bind.modify_bg(gtk.STATE_SELECTED, bgcolor)
+#        bgcolor = gtk.gdk.color_parse('#333333')
+#        self.bg_bind.modify_bg(gtk.STATE_NORMAL, bgcolor)
+#        self.bg_bind.modify_bg(gtk.STATE_ACTIVE, bgcolor)
+#        self.bg_bind.modify_bg(gtk.STATE_PRELIGHT, bgcolor)
+#        self.bg_bind.modify_bg(gtk.STATE_SELECTED, bgcolor)
         #self.bg_bind.modify_bg(gtk.STATE_INSENSITIVE, bgcolor)
 
-        # set up droppable binding display (dressed up as a text entry).
-        self.inp_bind.set_alignment(0, 0.5)
-        self.inp_bind2.set_alignment(0, 0.5)
-        self.inp_bind3.set_alignment(0, 0.5)
-        self.inp_bind4.set_alignment(0, 0.5)
-        self.inp_box = gtk.VBox()
-        self.inp_box.pack_start(self.inp_bind, expand=False, fill=False)
-#        self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
-#        self.inp_box.pack_start(self.inp_bind2, expand=False, fill=False)
-#        self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
-#        self.inp_box.pack_start(self.inp_bind3, expand=False, fill=False)
-#        self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
-#        self.inp_box.pack_start(self.inp_bind4, expand=False, fill=False)
+        self.inp_binds = []
+        self.bg_binds = []
+        self.inp_box = None
 
-        self.bg_bind.add(self.inp_box)
-        self.align1.add(self.bg_bind)
+#        m = max(1, inpdescr.get_numlayers())
+#        # Input binding displays.
+#        self.inp_binds = [ gtk.Label() for n in range(m) ]
+#        self.inp_bind = self.inp_binds[0]
+#        # Background for binding displays.
+#        self.bg_binds = [ gtk.EventBox() for n in range(m) ]
+#
+#        # set up droppable binding display (dressed up as a text entry).
+#        self.inp_bind.set_alignment(0, 0.5)
+#        self.inp_box = gtk.VBox()
+#        temp = gtk.Entry()
+#        self.refstyle = refstyle = temp.get_style()
+#        for i in range(0, self.vislayers):
+#            ib = self.inp_binds[i]
+#            ib.set_alignment(0, 0.5)
+#            ib.set_width_chars(4)
+#            ib.set_justify(gtk.JUSTIFY_LEFT)
+#            bg = self.bg_binds[i]
+#            bg.modify_bg(gtk.STATE_NORMAL, refstyle.base[gtk.STATE_NORMAL])
+#            bg.modify_bg(gtk.STATE_ACTIVE, refstyle.base[gtk.STATE_ACTIVE])
+#            bg.modify_bg(gtk.STATE_PRELIGHT, refstyle.base[gtk.STATE_PRELIGHT])
+#            bg.modify_bg(gtk.STATE_SELECTED, refstyle.base[gtk.STATE_SELECTED])
+#            bg.add(ib)
+#            if i != 0:
+#                self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
+#            self.inp_box.pack_start(bg, expand=False, fill=False)
+        self.uibuild_binddisplays()
+
+        #self.inp_box.pack_start(temp)
+        #self.align1.add(self.inp_box)
         self.box_bind.add(self.align1)
 
         self.plane.pack_start(self.box_bind, expand=False, fill=False)
@@ -407,10 +431,50 @@ class KbTop (gtk.Button):
 
         self.update_display()
 
+    def uibuild_binddisplays (self):
+        if self.inp_box:
+            self.align1.remove(self.inp_box)
+
+        self.inp_box = gtk.VBox()
+
+        m = max(1, self.inpdescr.get_numlayers())
+        # Input binding displays.
+        self.inp_binds = [ gtk.Label() for n in range(m) ]
+        #self.inp_bind = self.inp_binds[0]
+        # Background for binding displays.
+        self.bg_binds = [ gtk.EventBox() for n in range(m) ]
+
+        # set up droppable binding display (dressed up as a text entry).
+        #self.inp_bind.set_alignment(0, 0.5)
+        temp = gtk.Entry()
+        self.refstyle = refstyle = temp.get_style()
+        for i in range(0, self.vislayers):
+            ib = self.inp_binds[i]
+            ib.set_alignment(0, 0.5)
+            ib.set_width_chars(4)
+            ib.set_justify(gtk.JUSTIFY_LEFT)
+            bg = self.bg_binds[i]
+            bg.modify_bg(gtk.STATE_NORMAL, refstyle.base[gtk.STATE_NORMAL])
+            bg.modify_bg(gtk.STATE_ACTIVE, refstyle.base[gtk.STATE_ACTIVE])
+            bg.modify_bg(gtk.STATE_PRELIGHT, refstyle.base[gtk.STATE_PRELIGHT])
+            bg.modify_bg(gtk.STATE_SELECTED, refstyle.base[gtk.STATE_SELECTED])
+            bg.add(ib)
+            if i != 0:
+                self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
+            self.inp_box.pack_start(bg, expand=False, fill=False)
+        self.align1.add(self.inp_box)
+        self.inp_box.show_all()
+
     def get_inpsym (self):
         return self.inpsym
     def set_inpsym (self, val):
         self.inpsym = val
+
+    def get_vislayers (self):
+        return self.vislayers
+    def set_vislayers (self, v):
+        self.vislayers = v
+        self.uibuild_binddisplays()
 
     def get_model (self):
         return self.inpdescr
@@ -421,8 +485,8 @@ class KbTop (gtk.Button):
         if self.inpdescr:
             self.inpdescr.connect("bind-changed", self.on_data_change)
             self.inpdescr.connect("label-changed", self.on_data_change)
-            self.inpdescr.connect("layer-changed", self.on_data_change)
-            self.inpdescr.connect("group-changed", self.on_data_change)
+            self.inpdescr.connect("layer-changed", self.on_layer_change)
+            self.inpdescr.connect("group-changed", self.on_group_change)
         # self.emit("data-model-changed")
 
     def set_keytop (self, disp):
@@ -445,18 +509,59 @@ class KbTop (gtk.Button):
 #        else:
 #            val = None
 
-        shadow, val = self.inpdescr.resolve_bind(self.inpsym)
+#        shadow, val = self.inpdescr.resolve_bind(self.inpsym)
+        self._baselayer = self.vislayers * (self._layer / self.vislayers)
+        bindidx = self.vislayers - (self._layer - self._baselayer) - 1
+#
+#        if val is None:
+#            val = ""
+#            #self.inp_bind.set_text(val)
+#            self.inp_binds[bindidx].set_text(val)
+#        elif shadow:
+#            val = "<i><small>%s</small></i>" % val
+#            #self.inp_bind.set_markup(val)
+#            self.inp_binds[bindidx].set_markup(val)
+#        else:
+#            #self.inp_bind.set_text(val)
+#            self.inp_binds[bindidx].set_text(val)
 
-        if val is None:
-            val = ""
-            self.inp_bind.set_text(val)
-        elif shadow:
-            val = "<i><small>%s</small></i>" % val
-            self.inp_bind.set_markup(val)
-        else:
-            self.inp_bind.set_text(val)
+        for i in range(self.vislayers):
+            bg = self.bg_binds[i]
+            layernum = self._baselayer + (self.vislayers - i) - 1
+            if i == bindidx:
+                # highlighted layer.
+                refstyle = self.refstyle.base
+                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
+                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
+                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
+                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
+            else:
+                # unhighlighted layer.
+                refstyle = self.refstyle.bg
+                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
+                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
+                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
+                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
+            shadow, val = self.inpdescr.resolve_bind(self.inpsym, layer=layernum)
+            inp_bind = self.inp_binds[i]
+            layermap = self.inpdescr.get_layermap(layernum)
+            should = self.inpdescr.get_bind(self.inpsym, group=self._group, layer=layernum)
+            should2 = layermap.get_bind(self.inpsym)
+            if val is None:
+                self.inp_binds[i].set_text("")
+            elif shadow:
+                val = "<i><small>%s</small></i>" % val
+                self.inp_binds[i].set_markup(val)
+            else:
+                self.inp_binds[i].set_text(val)
 
     def on_data_change (self, *args):
+        self.update_display()
+    def on_layer_change (self, inpdescr, layernum, *args):
+        self._layer = layernum
+        self.update_display()
+    def on_group_change (self, inpdescr, groupnum, *args):
+        self._group = groupnum
         self.update_display()
 
     def on_drop (self, w, ctx, x, y, time, *args):
@@ -487,6 +592,7 @@ gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NON
 class KblayoutWidget (gtk.VBox):
     def __init__ (self, mdl=None):
         gtk.VBox.__init__(self)
+        self.vislayers = 1
         self.mdl = mdl
         self.keytops = {}
         self.active = False
@@ -526,6 +632,14 @@ class KblayoutWidget (gtk.VBox):
         for k in self.keytops.valueiter():
             k.set_model(mdl)
 
+    def get_vislayers (self):
+        return self.vislayers
+    def set_vislayers (self, v):
+        self.vislayers = v
+        for kt in self.keytops.itervalues():
+            kt.set_vislayers(v)
+            kt.update_display()
+
     @property
     def kbdesc (self):
         return kbd_desc.KBD
@@ -545,7 +659,7 @@ class KblayoutWidget (gtk.VBox):
                             (disp, inpsym) = label.split('\f', 1)
                             if self.mdl:
                                 self.mdl.set_label(inpsym, disp)
-                        keytop = KbTop(inpsym, self.mdl)
+                        keytop = KbTop(inpsym, self.mdl, self.vislayers)
                         l, r = colnum, colnum+width
                         t, b = rownum, rownum+2*height
                         #print("attach %r %r %r %r %r" % (keytop, l, r, t, b))
