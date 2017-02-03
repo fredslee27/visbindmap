@@ -211,23 +211,19 @@ class InpDescrModel (gobject.GObject):
             else:
                 self.groups[n] = m
 
-    def get_layermap (self, g, n):
+    def get_layermap (self, layernum, group=None):
         """Get layer (dict of keysym:binding) in specified group."""
-        if (0 <= n) and (n < self._maxlayers):
-            return self.groups[g].get_layermap(n)
+        groupnum = group or self.get_group()
+        if (0 <= layernum) and (layernum < self._maxlayers):
+            return self.groups[groupnum].get_layermap(layernum)
         return None
-    def set_layermap (self, g, n, m):
-        if (0 <= n) and (n < self._maxlayers):
-            if m is None:
-                self.groups[g].set_layermap(n, InpLayer(n, 0))
+    def set_layermap (self, layernum, value, group=None):
+        groupnum = group or self.get_group()
+        if (0 <= layernum) and (layernum < self._maxlayers):
+            if value is None:
+                self.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
             else:
-                self.groups[g].set_layermap(n, m)
-
-    def get_layermap_activegroup (self, n):
-        """Get layer (dict of keysym:binding) in active group."""
-        return self.get_layermap(self.get_group(), n)
-    def set_layermap_activegroup (self, n, m):
-        return self.set_layermap_activegroup(self.group, n, m)
+                self.groups[groupnum].set_layermap(layernum, value)
 
     def set_numgroups (self, n):
         self._maxgroups = n
@@ -283,6 +279,7 @@ class InpDescrModel (gobject.GObject):
                     else:
                         layerfollow = None
                     passthrough = True
+                layerfollow = None  ## don't follow layer for now.
             if retval is None:
                 passthrough = True
                 if grp.fallback != groupfollow:
@@ -342,6 +339,9 @@ class KbTop (gtk.Button):
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
         self.inp_bind = gtk.Label()
+        self.inp_bind2 = gtk.Label()
+        self.inp_bind3 = gtk.Label()
+        self.inp_bind4 = gtk.Label()
 
         # data model
         self.set_model(inpdescr)
@@ -363,11 +363,13 @@ class KbTop (gtk.Button):
         self.connect("drag-drop", self.on_drop)
         self.connect("drag-data-received", self.on_drag_data_received)
 
+        # Alignment widget.
         self.align0 = gtk.Alignment(0, 0, 0, 0)
         self.align0.add(self.inp_lbl)
         self.plane.pack_start(self.align0, expand=True, fill=True)
         self.plane.pack_start(self.spacer, expand=True, fill=True)
 
+        # Outline of key.
         self.box_bind = gtk.Frame()
         self.box_bind.set_shadow_type(gtk.SHADOW_IN)
         self.align1 = gtk.Alignment(0,0,1,1)
@@ -381,8 +383,21 @@ class KbTop (gtk.Button):
         self.bg_bind.modify_bg(gtk.STATE_SELECTED, bgcolor)
         #self.bg_bind.modify_bg(gtk.STATE_INSENSITIVE, bgcolor)
 
+        # set up droppable binding display (dressed up as a text entry).
         self.inp_bind.set_alignment(0, 0.5)
-        self.bg_bind.add(self.inp_bind)
+        self.inp_bind2.set_alignment(0, 0.5)
+        self.inp_bind3.set_alignment(0, 0.5)
+        self.inp_bind4.set_alignment(0, 0.5)
+        self.inp_box = gtk.VBox()
+        self.inp_box.pack_start(self.inp_bind, expand=False, fill=False)
+#        self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
+#        self.inp_box.pack_start(self.inp_bind2, expand=False, fill=False)
+#        self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
+#        self.inp_box.pack_start(self.inp_bind3, expand=False, fill=False)
+#        self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
+#        self.inp_box.pack_start(self.inp_bind4, expand=False, fill=False)
+
+        self.bg_bind.add(self.inp_box)
         self.align1.add(self.bg_bind)
         self.box_bind.add(self.align1)
 
@@ -424,7 +439,7 @@ class KbTop (gtk.Button):
         # Update binding display
         groupnum = self.inpdescr.get_group()
         layernum = self.inpdescr.get_layer()
-        layermap = self.inpdescr.get_layermap_activegroup(layernum)
+        layermap = self.inpdescr.get_layermap(layernum)
 #        if layermap is not None:
 #            val = layermap.get_bind(self.inpsym)  # could be null.
 #        else:
@@ -434,6 +449,7 @@ class KbTop (gtk.Button):
 
         if val is None:
             val = ""
+            self.inp_bind.set_text(val)
         elif shadow:
             val = "<i><small>%s</small></i>" % val
             self.inp_bind.set_markup(val)
