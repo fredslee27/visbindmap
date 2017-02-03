@@ -2,6 +2,9 @@
 DROP TABLE IF EXISTS cmd;
 DROP TABLE IF EXISTS modes;
 
+DROP VIEW IF EXISTS packname;
+CREATE VIEW packname(packname) AS SELECT 'Kerbal Space Program';
+
 CREATE TABLE cmd (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
 --  modemask INTEGER,  -- mask of modes; command binds to all modes specified.
@@ -44,22 +47,22 @@ INSERT INTO cmd VALUES (NULL, 0, 'Flight', 'Throttle Up', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 0, 'Flight', 'Throttle Down', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 0, 'Flight', 'Launch/Stage', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 0, 'Flight', 'Switch Xlt/Rot', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Pitch Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Pitch Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Roll Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Roll Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Yaw Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Yaw Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Translate Left/Right', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Translate Left/Right', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Translate Up/Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Translate Up/Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Translate Forward/Back', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Translate Up/Down', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+Throttle Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-Throttle Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '+ThrottleIncr Axis', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 0, 'Flight', '-ThrottleIncr Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Pitch Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Pitch Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Roll Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Roll Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Yaw Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Yaw Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Translate Left/Right', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Translate Left/Right', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Translate Up/Down', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Translate Up/Down', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Translate Forward/Back', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Translate Up/Down', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+Throttle Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-Throttle Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '+ThrottleIncr Axis', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Flight/analog', '-ThrottleIncr Axis', NULL, NULL);
 
 
 INSERT INTO cmd VALUES (NULL, 1, 'Vessel', 'Landing Gear', NULL, NULL);

@@ -137,7 +137,13 @@ class Store (object):
     DEFAULT_FILENAME = BASENAME + ".cfg"
 
     def reset (self):
-        self.inpdescr = kblayout.InpDescrModel(self._nummodes, self._numlevels)
+        try:
+            self.inpdescr
+        except AttributeError:
+            self.inpdescr = kblayout.InpDescrModel(self._nummodes, self._numlevels)
+        # TODO: clear inpdescr
+        self.fname = None
+        self.cmdsuri = None
 
     def __init__ (self, nummodes=8, numlevels=8, backingFileName=None):
         # list of bindings, one binding per layer (typically 8 layers).
@@ -153,26 +159,23 @@ class Store (object):
     def load (self, fileobj=None):
         if fileobj is None:
             fileobj = open(self.fname, "rb")
-        #fileobj = open(fname, "rb")
-        #self.binddata = pickle.load(fileobj)
-        #fileobj.close()
         s = fileobj.read()
         astree = ast.parse(s, mode='eval')
         transformed = ObjectReinstantiater().visit(astree)
         storedict = eval(compile(transformed, '', 'eval'))
-        self.modes = storedict['modes']
-        self.inpdescr.layers = self.modes[0]
+#        self.modes = storedict['modes']
+#        self.inpdescr.layers = self.modes[0]
+        self.inpdescr.restore(storedict['inpdescr'])
         self.inpdescr.refresh()
+        self.cmdsuri = storedict.get("cmdsuri", None)
 
     def save (self, fileobj=None):
         if fileobj is None:
             fileobj = open(self.fname, "wb")
             fileobj.write(self.modes)
-        #fileobj = open(fname, "wb")
-        #pickle.dump(self.binddata, fileobj)
-        #fileobj.close()
         storedict = {
             'inpdescr': self.inpdescr,
+            'cmdsuri': self.cmdsuri,
             }
         pprint.pprint(storedict, fileobj, indent=2, width=132)
         fileobj.write("\n")
@@ -288,6 +291,7 @@ class Commands (object):
     """Database of game commands."""
     def __init__ (self, dbname):
         self.dbname = dbname
+        self.packname = None
 #        self.db = [(0, "", "", "(none)", None)]
         # Open DB.
         self.conn = sqlite3.connect(dbname)
@@ -295,12 +299,26 @@ class Commands (object):
         cursor = self.conn.cursor()
         cursor.execute('''SELECT id,layer,grp,cmd,label,hint FROM cmd;''')
 
+    def get_name (self):
+        if self.packname is None:
+            # Extract packname from table packname if it exists.
+            try:
+                cursor = self.conn.cursor()
+                rows = cursor.execute('''SELECT packname FROM packname LIMIT 1;''')
+                row = rows.fetchone()
+                self.packname = row[0]
+            except:
+                pass
+        return self.packname
+    def set_name (self, val):
+        self.packname = val
+
     def get_modes (self):
         cursor = self.conn.cursor()
         rows = cursor.execute('''SELECT name FROM modes ORDER BY id;''')
         modenames = []
         for row in rows:
-            modename = row[0];
+            modename = row[0]
             modenames.append(modename)
         return modenames
 
@@ -625,18 +643,14 @@ class VisMapperWindow (gtk.Window):
         self.menubar = menubar
         self.uibuild()
 
-    def use_filename (self, fname=None):
-        """Set filename portion of window title.
-Provide "" to erase filename portion."""
-        if fname is None:
-            # Do not change.
-            return
-        # Or "" to erase subtitle.
-        self.subtitle = fname
-        if fname:
-            self.set_title("%s: %s" % (self.BASE_TITLE, self.subtitle))
-        else:
-            self.set_title(self.BASE_TITLE)
+    def update_title (self, packname, bindname):
+        wtitleparts = [ self.BASE_TITLE ]
+        if packname:
+            wtitleparts.extend([" ", "(", packname, ")"])
+        if bindname:
+            wtitleparts.extend([" : ", bindname])
+        wtitle = "".join(wtitleparts)
+        self.set_title(wtitle)
 
     def uibuild (self):
         """Build the UI: generate widgets, add children, connect signals."""
@@ -804,7 +818,7 @@ class MainMenubar (gtk.MenuBar):
         return
     def on_debug_2 (self, w, *args):
         app = self.app
-        app.set_cmdsuri("/home/fredslee/devel/vismapping/cmdset/GunsOfIcarusOnline.sqlite3")
+        app.set_cmdsuri("/home/fredslee/devel/vismapping/cmdset/KerbalSpaceProgram.sqlite3")
         app.cmds_in_place()
         return
     def on_debug_3 (self, w, *args):
@@ -878,8 +892,6 @@ class VisMapperApp (object):
     """Overall application object, with app/GUI state information."""
     def __init__ (self):
         self.cmdsrc = None
-        self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
-
         self.modenum = 0
         self.levelnum = 0
 
@@ -892,9 +904,11 @@ class VisMapperApp (object):
         menubar = MainMenubar(self, self.models.accelgroup)
         self.ui = VisMapperWindow(self, menubar=menubar, models=self.models)
         self.ui.add_accel_group(self.models.accelgroup)
-        self.saveuri = None     # Config file.
         # Commands Pack file name.
         self.uibuild()
+
+        self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
+        self.cmds_in_place()
 
     def uibuild (self):
         """Setup and connect UI elements."""
@@ -904,6 +918,15 @@ class VisMapperApp (object):
         visbind = self.ui.bindpad
         visbind.connect('mode-changed', self.on_kbmode_changed)
         visbind.connect('level-changed', self.on_kblevel_changed)
+
+    def update_main_title (self):
+        cmdname = self.cmdsrc and self.cmdsrc.get_name() or None
+        bindname = self.models.bindstore.fname or None
+        if bindname:
+            basename = os.path.basename(bindname)
+        else:
+            basename = None
+        self.ui.update_title(cmdname, basename)
 
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
@@ -946,48 +969,52 @@ class VisMapperApp (object):
 
     # Operations re: File
     def get_saveuri (self):
-        return self.saveuri
+        #return self.saveuri
+        return self.models.bindstore.fname
     def set_saveuri (self, val):
-        self.saveuri = val
-        basename = os.path.basename(val)
-        self.ui.use_filename(basename)
+        self.models.bindstore.fname = val
+        #basename = os.path.basename(val)
+        self.update_main_title()
     def ask_save_uri (self):
         """Called by MenuBar upon File/SaveAs, to run the SaveAs dialog."""
         return self.ui.ask_save()
     def save_in_place (self):
         """Save to file specified by internal state 'saveuri'."""
-        if self.saveuri:
-            savefile = open(self.saveuri, "wb")
+        if self.get_saveuri():
+            savefile = open(self.models.bindstore.fname, "wb")
             self.save(savefile)
             savefile.close()
-        return
+            return True
+        return False
     def ask_load_uri (self):
         """Called by MenuBar upon File/Open, to run the Open dialog"""
         return self.ui.ask_open()
     def load_in_place (self):
         """Load from file specified by internal state 'saveuri'."""
-        if self.saveuri:
-            loadfile = open(self.saveuri, "rb")
+        if self.get_saveuri():
+            loadfile = open(self.models.bindstore.fname, "rb")
             self.load(loadfile)
             loadfile.close()
-        return
+            return True
+        return False
 
     # Operations re: CommandPack
     def get_cmdsuri (self):
-        return self.cmdsuri
+        return self.models.bindstore.cmdsuri
     def set_cmdsuri (self, val):
-        self.cmdsuri = val
+        self.models.bindstore.cmdsuri = val
         if not self.cmdsrc:
-            self.cmdsrc = Commands(self.cmdsuri)
+            self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
     def cmds_in_place (self):
-        if self.cmdsuri:
-            self.cmdsrc = Commands(self.cmdsuri)
+        if self.models.bindstore.cmdsuri:
+            self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
             self.models.cmdstore.clear()
             self.models.cmdstore.import_commands(self.cmdsrc)
             self.models.modestore.clear()
             self.models.modestore.import_commands(self.cmdsrc)
+            self.update_main_title()
         return
 
     def get_vislayers (self):
@@ -1008,6 +1035,7 @@ class VisMapperApp (object):
         """Load configuration from file-like object."""
         log.debug("LOADING %r" % srcfile)
         self.models.bindstore.load(srcfile)
+        self.cmds_in_place()
         return 0
 
     def save (self, destfile):
@@ -1017,8 +1045,9 @@ class VisMapperApp (object):
         return 0
 
     def reset (self):
-        self.modes.bindstore.reset()
+        self.models.bindstore.reset()
         self.ui.reset()
+        self.update_main_title()
 
     def quit (self):
         gtk.main_quit()

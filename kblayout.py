@@ -138,12 +138,13 @@ Multiple layers attach to a group.
     def __len__ (self):
         return len(self.layers)
     def __repr__ (self):
-        return "%s.%s(groupnum=%r, numlayers=%r, layers=%r" % (self.__class__.__module__, self.__class__.__name__, self.groupnum, len(self.layers), self.layers)
+        return "%s.%s(groupnum=%r, fallback=%r, numlayers=%r, layers=%r)" % (self.__class__.__module__, self.__class__.__name__, self.groupnum, self.fallback, len(self.layers), self.layers)
     def __json__ (self):
         return {
             '__module__': self.__class__.__module__,
             '__class__': self.__class__.__class__,
             'groupnum': self.groupnum,
+            'fallback': self.fallback,
             'numlayers': len(self.layers),
             'layers': self.layers,
             }
@@ -170,10 +171,21 @@ class InpDescrModel (gobject.GObject):
         self._maxgroups = 1
         self.set_numgroups(ngroups)
         self.set_numlayers(nlayers)
+        # TODO: these states should not be in data model.
         # active group
         self._group = 0
         # active layer
         self._layer = 0
+
+    def restore (self, other):
+        if not other:
+            return
+        self._maxgroups = other.get_numgroups()
+        self._maxlayers = other.get_numlayers()
+        self._group = 0
+        self._layer = 0
+        for i in range(other.get_numgroups()):
+            self.set_grouplist(i, other.get_grouplist(i))
 
     def get_label (self, inpsym):
         """If no model data, return inpsym as the label."""
@@ -208,10 +220,10 @@ class InpDescrModel (gobject.GObject):
         except AttributeError:
             layercount = 1
         if (0 <= n) and (n < self._maxgroups):
-            if m is None:
+            if l is None:
                 self.groups[n] = InpGroup(n, 0, layercount, None)
             else:
-                self.groups[n] = m
+                self.groups[n] = l
 
     def get_layermap (self, layernum, group=None):
         """Get layer (dict of keysym:binding) in specified group."""
