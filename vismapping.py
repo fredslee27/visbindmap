@@ -151,6 +151,7 @@ class Store (object):
         # modes are list of list-of-binding, typically 1 or 2.
         self._nummodes = nummodes
         self._numlevels = numlevels
+        self.active_layout = None  # last selected layout (restore view on load).
         self.reset()
         self.fname = backingFileName
         if not backingFileName:
@@ -163,17 +164,17 @@ class Store (object):
         astree = ast.parse(s, mode='eval')
         transformed = ObjectReinstantiater().visit(astree)
         storedict = eval(compile(transformed, '', 'eval'))
-#        self.modes = storedict['modes']
-#        self.inpdescr.layers = self.modes[0]
-        self.inpdescr.restore(storedict['inpdescr'])
+        self.inpdescr.restore(storedict.get('inpdescr',None))
         self.inpdescr.refresh()
         self.cmdsuri = storedict.get("cmdsuri", None)
+        self.active_layout = storedict.get('layout', None)
 
     def save (self, fileobj=None):
         if fileobj is None:
             fileobj = open(self.fname, "wb")
             fileobj.write(self.modes)
         storedict = {
+            'layout': self.active_layout,
             'inpdescr': self.inpdescr,
             'cmdsuri': self.cmdsuri,
             }
@@ -491,16 +492,17 @@ Consists of:
         self.reset()
 
     def uibuild (self):
-        self.shiftrow = self.InpSelectLevel()
-        self.pack_start(self.shiftrow)
-
         self.moderow = self.InpSelectMode()
         self.pack_start(self.moderow)
+
+        self.shiftrow = self.InpSelectLevel()
+        self.pack_start(self.shiftrow)
 
         # grid/tablular layout of inpbind+bindcmd
         inpdescr = self.models.bindstore.inpdescr
         self.kbl = kblayout.KblayoutWidget(inpdescr)
         self.kbl.connect('key-selected', self.on_key_selected)
+        self.kbl.connect('layout-changed', self.on_layout_changed)
 
         self.pack_start(self.kbl, expand=False, fill=False)
 
@@ -508,9 +510,23 @@ Consists of:
         binding = self.models.bindstore.inpdescr.get_bind(ksym)
         log.debug("key-selected: %s => %r" % (ksym, binding))
 
+    def get_layout (self):
+        idx = self.kbl.inp_layout.get_active()
+        retval = self.kbl.mdl_layout[idx][0]
+        return retval
+    def set_layout (self, layoutname):
+        sel = self.kbl.inp_layout
+        mdl = self.kbl.mdl_layout
+        idx = -1
+        for rownum in range(len(mdl)):
+            if mdl[rownum][0] == layoutname:
+                idx = rownum
+        if idx > -1:
+            sel.set_active(idx)
+
     def on_layout_changed (self, w, layoutname, *args):
-        self.relabel_keys(self.levelnum)
-        self.load_bindmap(self.layernum)
+        # Record chagne.
+        self.models.bindstore.active_layout = layoutname
 
     def InpSelectMode (self):
         """Generate GUI Widget for selecting mode (layer)."""
@@ -581,10 +597,6 @@ Consists of:
         #return shiftrow
         shiftbox.add(shiftrow)
         return shiftbox
-
-    def relabel_keys (self, levelnum):
-        """Repaint/Update keysyms, typically due to layout change."""
-        pass
 
     def on_mode_toggle (self, w, *args):
         """Load bindings for mode."""
@@ -671,8 +683,8 @@ class VisMapperWindow (gtk.Window):
         self.padpane.pack_start(self.bindrow)
 
         self.spans = gtk.HPaned()
-        self.spans.add(self.padpane)
         self.spans.add(self.cmdcol)
+        self.spans.add(self.padpane)
 
         if self.menubar is None:
             self.menubar = self.MakeMenubar()
@@ -995,6 +1007,8 @@ class VisMapperApp (object):
             loadfile = open(self.models.bindstore.fname, "rb")
             self.load(loadfile)
             loadfile.close()
+            if self.models.bindstore.active_layout:
+                self.ui.bindpad.set_layout(self.models.bindstore.active_layout)
             return True
         return False
 
