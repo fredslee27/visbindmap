@@ -209,6 +209,7 @@ INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Mouse2', NULl, NULL);
 INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Mouse3', NULl, NULL);
 INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Undo', NULl, NULL);
 INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Redo', NULl, NULL);
+INSERT INTO cmd VALUES (NULL, 5, 'Consolized', 'Delete Part', NULl, NULL);
 
 COMMIT TRANSACTION;
 

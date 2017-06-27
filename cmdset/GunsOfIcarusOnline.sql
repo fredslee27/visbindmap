@@ -91,6 +91,7 @@ INSERT INTO cmd VALUES (NULL, 1, "Player", "Skill1", NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, "Player", "Skill2", NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, "Player", "Skill3", NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, "Player", "Skill4", NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 1, "Player", "SpecialAbility", NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, "Player", "NextSkill", NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, "Player", "PreviousSkill", NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, "Player", "ScoreLog", NULL, NULL);
