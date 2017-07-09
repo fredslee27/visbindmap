@@ -42,7 +42,7 @@ INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Shift Down', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Shift to Neutral', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Shift Up Hint', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Shift Down Hint', NULL, NULL);
-INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Gearbox Auto||Seq\'l', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Gearbox Auto||Seq', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Start/Stop Engine', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Parking Brake', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 1, 'Truck', 'Engine Brake', NULL, NULL);
@@ -120,3 +120,4 @@ INSERT INTO cmd VALUES (NULL, 4, 'Other', 'World Map', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 4, 'Other', 'Garage Manager', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 4, 'Other', 'Screenshot', NULL, NULL);
 
+COMMIT TRANSACTION;
