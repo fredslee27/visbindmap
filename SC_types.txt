@@ -58,3 +58,21 @@ Steam Controller input element type
  5 6 7 8
  9 A B C
  D E F 0
+
+
+
+
+Cluster types:
+D-pad
+Diamond (buttons)
+Scroll
+Mouse.Pad
+Mouse.Region
+Joystick.Mouse
+Joystick.Move
+Joystick.Camera
+Menu.Touch
+ { 2, 4, 7, 9, 12, 13, 16 }
+Menu.Radial
+OneButton
+
