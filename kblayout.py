@@ -471,6 +471,7 @@ class KbTop (gtk.Button):
         # set up droppable binding display (dressed up as a text entry).
         temp = gtk.Entry()  # copy style from Entry.
         self.refstyle = refstyle = temp.get_style().copy()
+        # Prepare multi-layer view.
         for i in range(0, self.vislayers):
             ib = self.inp_binds[i]
             ib.set_alignment(0, 0.5)
@@ -948,38 +949,40 @@ Applicable to: touch menu, radial menu, scrollwheel items.
 
 
 class KbMenuList (gtk.ScrolledWindow):
+    """TreeView of list-based cluster types."""
     def __init__ (self, inpsymprefix=None, inpdescr=None):
+        # Based on ScrollWindowed, containing a TreeView
         gtk.ScrolledWindow.__init__(self)
         self.inpdescr = inpdescr
         self.inpsymprefix = inpsymprefix or ""
+        # The TreeView
         self.treeview = gtk.TreeView()
         self.rendertext = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
         self.col1 = gtk.TreeViewColumn("bind", self.rendertext, markup=1)
         self.treeview.append_column(self.col0)
         self.treeview.append_column(self.col1)
-        self.vadj = gtk.Adjustment()
-        self.vadj.set_lower(0)
-        self.set_vadjustment(self.vadj)
-        self.add(self.treeview)
-        # local-only store b/c TreeView absolutely insists; updated from InpDescrModel.
+        self.add(self.treeview)  # and not with viewport.
+        # private model updated from InpDescrModel, prefill with 20 inpsyms.
         self.scratch = gtk.ListStore(str,str)
         for i in range(0, 20):
             inpsym = "{}{}".format(self.inpsymprefix, i+1)
             self.scratch.append((inpsym, None))
-        self.pull_data()
-        self.set_vadjustment(self.vadj)
+        self.pull_data()  # Populate .scratch from InpDescrModel
         self.treeview.set_model(self.scratch)
+        # Listen for changes to/in InpDescrModel (update .scratch)
         if self.inpdescr:
             self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
             self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
             self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
             self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
+        # Set up drag-and-drop.
         self.setup_dnd()
 
         self.show_all()
 
     def setup_dnd (self):
+        """Set up drag-and-drop."""
         dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 10) ]
         dnd_actions = gtk.gdk.ACTION_LINK
         self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
@@ -988,12 +991,12 @@ class KbMenuList (gtk.ScrolledWindow):
         self.droppath = None
 
     def on_drop (self, w, ctx, x, y, time, *args):
-        # Drop started; ask for data.
+        """Drop started; ask for data."""
         w.drag_get_data(ctx, "STRING", time)
         return False
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
-        # Data that was asked for is now received.
+        """Data that was asked for is now received."""
         srcw = ctx.get_source_widget()
         seltext = sel.get_text()
         ctx.finish(True, False, time)
@@ -1005,11 +1008,13 @@ class KbMenuList (gtk.ScrolledWindow):
         return False
 
     def drop_in_bind (self, treepath, newval):
+        """Carry out action of (completing) a drop of a command on tree at path."""
         inpsym = self.scratch[treepath][0]
         self.inpdescr.set_bind(inpsym, newval)
         # Update inpdescr model, then rely on signals to auto-update scratch.
 
     def pull_data (self):
+        """Synchronize .scratch based on InpDescrModel"""
         for row in self.scratch:
             inpsym = row[0]
             if self.inpdescr:
@@ -1375,6 +1380,8 @@ class KblayoutWidget (gtk.VBox):
                             #print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
                             #grid.attach(planar, l, r, t, b, xoptions=0, yoptions=0)
                             grid.attach(planar, l, r, t, b, xoptions=gtk.FILL, yoptions=gtk.FILL, xpadding=4, ypadding=4)
+                            planar.show_all()
+                            planar.update_display()
                             #grid.attach(planar, l, r, t, b)
                         else:
                             keytop = KbTop(inpsym, self.mdl, self.vislayers)
@@ -1383,6 +1390,7 @@ class KblayoutWidget (gtk.VBox):
                             keytops[inpsym] = keytop
                             self.active = keytop
                             grid.attach(keytop, l, r, t, b)
+                            keytop.show_all()
                         if keytops.has_key(inpsym):
                             logger.warn("potential duplicate: %s" % inpsym)
                     colnum += width
@@ -1406,7 +1414,8 @@ class KblayoutWidget (gtk.VBox):
         kbdata = self.kbdesc[val]
         self.clear_board()
         self.fill_board(kbdata)
-        self.show_all()
+        #self.show_all()
+        self.show()
         self.emit("layout-changed", val)
 
     def on_keytop_clicked (self, w, *args):
