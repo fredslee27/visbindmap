@@ -574,7 +574,7 @@ class ArrangerEmpty (object):
                 self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
         self.build_widget_pool()
 
-    def build_widget_pool (self):
+    def _populate_widget_pool (self, suffices):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         suffices = self.placements.keys()
         for suffix in suffices:
@@ -582,8 +582,11 @@ class ArrangerEmpty (object):
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
                 self.parent.kbtops[inpsym] = kbtop
-                print("bind kbtop button-press-event")
                 kbtop.connect("button-press-event", self.parent.on_button_press)
+
+    def build_widget_pool (self):
+        suffices = self.placements.keys()
+        self._populate_widget_pool(suffices)
 
     def inpsymof (self, suffix):
         return "{}{}".format(self.parent.inpsymprefix, suffix)
@@ -693,6 +696,21 @@ class ArrangerJoystick (ArrangerEmpty):
         'o': (2,2),
     }
 
+class ArrangerGyrotilt (ArrangerEmpty):
+    NAME = "GyroTilt"
+    # x-, x+, y-, y+, w-, w+, Click, OuterRing
+    W = 4
+    H = 4
+    SIMPLE_PLACEMENTS = {
+        'w-': (0,0),
+        'y-': (0,1),
+        'w+': (0,2),
+        'x-': (1,0),
+        'c':  (1,1),
+        'x+': (1,2),
+        'y+': (2,1),
+    }
+
 class ArrangerTouchmenu (ArrangerEmpty):
     NAME = "Touch Menu"
     ALL_PLACEMENTS = {
@@ -740,14 +758,9 @@ class ArrangerTouchmenu (ArrangerEmpty):
 
     def build_widget_pool (self):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
-        for ofs in range(1,17):  # Generate '1'..'16' inclusive.
-            suffix = '{}'.format(ofs)
-            inpsym = self.inpsymof(suffix)
-            if not inpsym in self.parent.kbtops:
-                kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
-                self.parent.kbtops[inpsym] = kbtop
-                print("bind kbtop button-press-event")
-                kbtop.connect("button-press-event", self.parent.on_button_press)
+        # Generate '1'..'16' inclusive.
+        suffices = [ str(ofs) for ofs in range(1, 17) ]
+        self._populate_widget_pool(suffices)
 
     def set_capacity (self, cap):
         thresholds = self.ALL_PLACEMENTS.keys()
@@ -799,12 +812,9 @@ class ArrangerRadialmenu (ArrangerEmpty):
 
     def build_widget_pool (self):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
-        for ofs in range(1,21):  # Generate '1'..'20' inclusive.
-            suffix = '{}'.format(ofs)
-            inpsym = self.inpsymof(suffix)
-            if not inpsym in self.parent.kbtops:
-                kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
-                self.parent.kbtops[inpsym] = kbtop
+        # Generate '1'..'20' inclusive.
+        suffices = [ str(ofs) for ofs in range(1, 21) ]
+        self._populate_widget_pool(suffices)
 
     def set_capacity (self, cap=2):
         if (cap < 1):
@@ -862,6 +872,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 * (m) Mouse : x,y,c
 * (u) MouseRegion :
 * (j) Joystick {Move,Camera,Mouse} : x-, x+, y-, y+, c
+* (g) GyroTilt : x-, x+, y-, y+, w-, w+
 * (t) Menu.Touch {2,4,7,9,12,13,16) : #1..#16
 * (r) RadialMenu {1..20} : #1..#20
 * (l) ListMenu {1..20} : #1..#20
@@ -894,12 +905,12 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arrangerMouse = ArrangerMouse(self)
         self.arrangerMouseRegion = ArrangerMouseRegion(self)
         self.arrangerJoystick = ArrangerJoystick(self)
+        self.arrangerGyrotilt = ArrangerGyrotilt(self)
         self.arrangerTouchmenu0 = ArrangerTouchmenu(self, 20)
         self.arrangerRadialmenu0 = ArrangerRadialmenu(self, 20)
         self.arrangerListmenu = ArrangerListmenu(self)
 
         self.arranger = self.arrangerEmpty
-        self.set_arranger(self.arrangerOneButton)
 
         self.ctxmenu = self.make_context_menu()
         self.connect_menuitems(self.ctxmenu)
@@ -913,29 +924,31 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arrangerRadialmenu0.set_capacity(cap)
         return self.arrangerRadialmenu0
 
+    def find_arranger (self, name):
+        match = [ a for a in self.__dict__.itervalues() if isinstance(a, ArrangerEmpty) and a.NAME == name ]
+        if match:
+            return match[0]
+        return None
     def get_arranger (self):
         return self.arranger
     def set_arranger (self, arranger):
         if callable(arranger):
             self.arranger = arranger()
+        elif arranger is None:
+            self.arranger = self.arrangerEmpty
         else:
             self.arranger = arranger
         self.arranger.rearrange()
-        #self.frame.set_label("<{!s}> {}".format(self.arranger, self.inpsymprefix))
-        self.frame.set_label("<{!s}> {}".format(self.arranger.NAME, self.inpsymprefix))
+        self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
         self.show_all()
+        self.inpdescr.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
 
     def get_cluster_type (self):
-        return
+        return self.arrange.NAME
     def set_cluster_type (self, cltype):
+        arranger = self.find_arranger(cltype)
+        self.set_arranger(arranger)
         return
-
-#    def get_vislayers (self):
-#        return self.inivislayers
-#    def set_vislayers (self, val):
-#        self.inivislayers = val
-#        for inpsym in self.kbtops:
-#            self.kbtops[inpsym].set_vislayers(self.inivislayers)
 
     def make_menu (self, menudesc):
         menu = gtk.Menu()
@@ -963,6 +976,7 @@ As arrangments can change during run-time, use strategies for rearranging:
             ( "_ButtonQuad", self.arrangerButtons ),
             ( "_Mouse", self.arrangerMouse ),
             ( "_Joystick", self.arrangerJoystick ),
+            ( "_GyroTilt", self.arrangerGyrotilt ),
             ( "_Touch Menu", [
                 ( "_2 items", lambda: self.arrangerTouchmenu(2) ),
                 ( "_4 items", lambda: self.arrangerTouchmenu(4) ),
@@ -1035,7 +1049,6 @@ As arrangments can change during run-time, use strategies for rearranging:
         return False
 
     def on_context_menuitem (self, w, userdata):
-        print("on_context_menuitem %r, %r" % (w, userdata))
         arranger = userdata
         if arranger:
             self.set_arranger(arranger)
@@ -1043,6 +1056,8 @@ As arrangments can change during run-time, use strategies for rearranging:
 
     def update_display (self):
         self.detach_all()
+        cluster_type = self.inpdescr.get_bind(self.inpsymprefix, 0, 0)
+        self.set_cluster_type(cluster_type)
         if self.arranger:
             self.arranger.rearrange()
         return
@@ -1138,7 +1153,7 @@ class KblayoutWidget (gtk.VBox):
                                 kbtop.connect("dnd-link", self.on_keytop_bound)
                                 keytops[inpsym] = kbtop
                                 self.active = kbtop
-                            print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
+                            #print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
                             #grid.attach(planar, l, r, t, b, xoptions=0, yoptions=0)
                             grid.attach(planar, l, r, t, b, xoptions=gtk.FILL, yoptions=gtk.FILL)
                             #grid.attach(planar, l, r, t, b)

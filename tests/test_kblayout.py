@@ -103,25 +103,25 @@ class TestKblayout(unittest.TestCase):
         def use_arranger (arranger):
             b.set_arranger(arranger)
             lbl.set_label("Testing: %s " % b.get_arranger())
-        use_arranger(b.arrangerOneButton())
+        use_arranger(b.arrangerOneButton)
 
         w.show_all()
 
         playback = [ lambda: None,
                      2,
-                     lambda: use_arranger(b.arrangerScrollwheel()),
+                     lambda: use_arranger(b.arrangerScrollwheel),
                      2,
-                     lambda: use_arranger(b.arrangerListmenu()),
+                     lambda: use_arranger(b.arrangerListmenu),
                      4,
-                     lambda: use_arranger(b.arrangerDpad()),
+                     lambda: use_arranger(b.arrangerDpad),
                      2,
-                     lambda: use_arranger(b.arrangerMouse()),
+                     lambda: use_arranger(b.arrangerMouse),
                      2,
-                     lambda: use_arranger(b.arrangerDiamond()),
+                     lambda: use_arranger(b.arrangerDiamond),
                      2,
-                     lambda: use_arranger(b.arrangerJoystick()),
+                     lambda: use_arranger(b.arrangerJoystick),
                      2,
-                     lambda: use_arranger(b.arrangerTouchmenu()),
+                     lambda: use_arranger(b.arrangerTouchmenu),
                      2,
                      lambda: use_arranger(b.arrangerTouchmenu(4)),
                      2,
@@ -217,7 +217,7 @@ class TestKblayout(unittest.TestCase):
 
         def popup_ctx_menu ():
             b.ctxmenu.popup(None,None,None,gtk.gdk.RIGHTBUTTON,0)
-        b.set_arranger(b.arrangerDpad())
+        b.set_arranger(b.arrangerDpad)
 
         w.show_all()
 
@@ -229,6 +229,52 @@ class TestKblayout(unittest.TestCase):
                      1,
                      lambda: b.ctxmenu.activate_item(b.ctxmenu.get_children()[2], False),
                      8,
+                     ]
+
+        self.runloop(playback)
+        #time.sleep(4)
+        w.hide()
+
+    def test_kbplanar_persist (self):
+        def on_bindchange(w, *args):
+            pass
+        mdl = kblayout.InpDescrModel(1)
+        mdl.connect("bind-changed", on_bindchange)
+
+        w = gtk.Window()
+        w.set_title("Test KbTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        class data:
+            b = None
+
+        def popup_ctx_menu ():
+            data.b.ctxmenu.popup(None,None,None,gtk.gdk.RIGHTBUTTON,0)
+        def rebuild ():
+            if data.b:
+                layout.remove(data.b)
+            data.b = kblayout.KbPlanar("L", mdl)
+            layout.pack_start(data.b, expand=True, fill=True, padding=0)
+            lbl = gtk.Label("Testing...")
+            layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        rebuild()
+        data.b.set_arranger(data.b.arrangerDpad)
+
+        w.show_all()
+
+        playback = [ lambda: None,
+                     2,
+                     lambda: popup_ctx_menu(),
+                     lambda: data.b.ctxmenu.select_item(data.b.ctxmenu.get_children()[2]),
+                     lambda: data.b.ctxmenu.activate_item(data.b.ctxmenu.get_children()[2], False),
+                     2,
+                     lambda: rebuild(),
+                     2,
+                     lambda: data.b.update_display(),
+                     2,
                      ]
 
         self.runloop(playback)
