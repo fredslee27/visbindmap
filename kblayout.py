@@ -186,20 +186,14 @@ class InpDescrModel (gobject.GObject):
         self._group = 0
         # active layer
         self._layer = 0
-
-        # Handful of default binds.
-        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
-        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
-        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
-        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
-        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
-        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
+        self.cluster_defaults()
 
     def clear (self):
         for grp in self.groups:
             grp.clear()
         self.set_group(0)
         self.set_layer(0)
+        self.cluster_defaults()
         return
 
     def restore (self, other):
@@ -211,6 +205,16 @@ class InpDescrModel (gobject.GObject):
         self._layer = 0
         for i in range(other.get_numgroups()):
             self.set_grouplist(i, other.get_grouplist(i))
+
+    def cluster_defaults (self):
+        # Handful of default binds.
+        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
+        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
+        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
+        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
+        return
 
     def get_label (self, inpsym):
         """If no model data, return inpsym as the label."""
