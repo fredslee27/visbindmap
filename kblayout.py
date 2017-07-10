@@ -572,6 +572,7 @@ class ArrangerEmpty (object):
             for k,v in self.SIMPLE_PLACEMENTS.iteritems():
                 row,col = v
                 self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
+        self.build_widget_pool()
 
     def build_widget_pool (self):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
@@ -592,7 +593,6 @@ class ArrangerEmpty (object):
 placements = dict of kbtop suffix to (row,col, width,height) tuple
 """
         self.parent.detach_all()
-        self.build_widget_pool()
         for suffix,elt in placements.iteritems():
             row,col,xspan,yspan = elt
             inpsym = self.inpsymof(suffix)
@@ -680,7 +680,7 @@ class ArrangerMouseRegion (ArrangerEmpty):
     }
 
 class ArrangerJoystick (ArrangerEmpty):
-    NAME = "Joystick Move/Camera/Mouse"
+    NAME = "Joystick"
     # x-, x+, y-, y+, Click, OuterRing
     W = 4
     H = 4
@@ -697,50 +697,51 @@ class ArrangerTouchmenu (ArrangerEmpty):
     NAME = "Touch Menu"
     ALL_PLACEMENTS = {
     2: {
-        '#1': (0,0,6,12),  '#2': (0,6,6,12),
+        '1': (0,0,6,12),  '2': (0,6,6,12),
     },
     4: {
-        '#1': (0,0,6,6),  '#2': (0,6,6,6),
-        '#3': (6,0,6,6),  '#4': (6,6,6,6),
+        '1': (0,0,6,6),  '2': (0,6,6,6),
+        '3': (6,0,6,6),  '4': (6,6,6,6),
     },
     7: {
-        '#1': (0,2,4,4),  '#2': (0,6,4,4),
-        '#3': (4,0,4,4),  '#4': (4,4,4,4), '#5': (4,8,4,4),
-        '#6': (8,2,4,4),  '#7': (8,6,4,4),
+        '1': (0,2,4,4),  '2': (0,6,4,4),
+        '3': (4,0,4,4),  '4': (4,4,4,4), '5': (4,8,4,4),
+        '6': (8,2,4,4),  '7': (8,6,4,4),
     },
     9: {
-        '#1': (0,0,4,4),  '#2': (0,4,4,4), '#3': (0,8,4,4),
-        '#4': (4,0,4,4),  '#5': (4,4,4,4), '#6': (4,8,4,4),
-        '#7': (8,0,4,4),  '#8': (8,4,4,4), '#9': (8,8,4,4),
+        '1': (0,0,4,4),  '2': (0,4,4,4), '3': (0,8,4,4),
+        '4': (4,0,4,4),  '5': (4,4,4,4), '6': (4,8,4,4),
+        '7': (8,0,4,4),  '8': (8,4,4,4), '9': (8,8,4,4),
     },
     12: {
-        '#1': (0,0,3,4),  '#2': (0,3,3,4),  '#3': (0,6,3,4),  '#4': (0,9,3,4),
-        '#5': (4,0,3,4),  '#6': (4,3,3,4),  '#7': (4,6,3,4),  '#8': (4,9,3,4),
-        '#9': (8,0,3,4), '#10': (8,3,3,4), '#11': (8,6,3,4), '#12': (8,9,3,4),
+        '1': (0,0,3,4),  '2': (0,3,3,4),  '3': (0,6,3,4),  '4': (0,9,3,4),
+        '5': (4,0,3,4),  '6': (4,3,3,4),  '7': (4,6,3,4),  '8': (4,9,3,4),
+        '9': (8,0,3,4), '10': (8,3,3,4), '11': (8,6,3,4), '12': (8,9,3,4),
     },
     13: {
-        '#1': (0,0,3,3),  '#2': (0,3,3,3),  '#3': (0,6,3,3),  '#4': (0,9,3,3),
-        '#5': (3,0,3,3),                                      '#6': (3,9,3,3),
-                                '#13': (3,3,6,6),
-        '#7': (6,0,3,3),                                      '#8': (6,9,3,3),
-        '#9': (9,0,3,3), '#10': (9,3,3,3), '#11': (9,6,3,3), '#12': (9,9,3,3),
+        '1': (0,0,3,3),  '2': (0,3,3,3),  '3': (0,6,3,3),  '4': (0,9,3,3),
+        '5': (3,0,3,3),                                      '6': (3,9,3,3),
+                                '13': (3,3,6,6),
+        '7': (6,0,3,3),                                      '8': (6,9,3,3),
+        '9': (9,0,3,3), '10': (9,3,3,3), '11': (9,6,3,3), '12': (9,9,3,3),
     },
     16: {
-        '#1': (0,0,3,3),  '#2': (0,3,3,3),  '#3': (0,6,3,3),  '#4': (0,9,3,3),
-        '#5': (3,0,3,3),  '#6': (3,3,3,3),  '#7': (3,6,3,3),  '#8': (3,9,3,3),
-        '#9': (6,0,3,3), '#10': (6,3,3,3), '#11': (6,6,3,3), '#12': (6,9,3,3),
-       '#13': (9,0,3,3), '#14': (9,3,3,3), '#15': (9,6,3,3), '#16': (9,9,3,3),
+        '1': (0,0,3,3),  '2': (0,3,3,3),  '3': (0,6,3,3),  '4': (0,9,3,3),
+        '5': (3,0,3,3),  '6': (3,3,3,3),  '7': (3,6,3,3),  '8': (3,9,3,3),
+        '9': (6,0,3,3), '10': (6,3,3,3), '11': (6,6,3,3), '12': (6,9,3,3),
+       '13': (9,0,3,3), '14': (9,3,3,3), '15': (9,6,3,3), '16': (9,9,3,3),
     },
     }
 
     def __init__ (self, parent, cap=2):
         ArrangerEmpty.__init__(self, parent)
         self.set_capacity(cap)
+        self.build_widget_pool()
 
     def build_widget_pool (self):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         for ofs in range(1,17):  # Generate '1'..'16' inclusive.
-            suffix = '#{}'.format(ofs)
+            suffix = '{}'.format(ofs)
             inpsym = self.inpsymof(suffix)
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
@@ -789,16 +790,17 @@ class ArrangerRadialmenu (ArrangerEmpty):
         ArrangerEmpty.__init__(self, parent)
         #self.placements = [ (0,6,1,1), (12,6,1,1) ]
         self.placements = {
-            '#1':  (0,6),
-            '#2': (12,6),
+            '1':  (0,6),
+            '2': (12,6),
         }
         self.cap = 2
         self.set_capacity(cap)
+        self.build_widget_pool()
 
     def build_widget_pool (self):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         for ofs in range(1,21):  # Generate '1'..'20' inclusive.
-            suffix = '#{}'.format(ofs)
+            suffix = '{}'.format(ofs)
             inpsym = self.inpsymof(suffix)
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
@@ -821,7 +823,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
             r = 6
             row = int((tx * r) + r + .5)
             col = int((ty * r) + r + .5)
-            suffix = "#{}".format(idx+1)
+            suffix = "{}".format(idx+1)
             self.placements[suffix] = (row, col, w,h)
         return
 
@@ -841,11 +843,12 @@ Applicable to: touch menu, radial menu, scrollwheel items.
             elif idx in [21,22,23]:
                 suffix = [ "u", "c", "d" ][idx-21]
             else:
-                suffix = "#{}".format(idx+1)
+                suffix = "{}".format(idx+1)
             col = int(idx / 6)
             row = idx % 6
             w, h = 3, 2
             self.placements[suffix] = (row*h, col*w, w-1,h)
+        self.build_widget_pool()
 
 
 class KbPlanar (gtk.EventBox):
@@ -881,29 +884,42 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.add(self.frame)
 
         self.inivislayers = vislayers
-        self.arranger = self.arrangerEmpty()
+
+        self.arrangerEmpty = ArrangerEmpty(self)
+        self.arrangerOneButton = ArrangerOneButton(self)
+        self.arrangerScrollwheel = ArrangerScrollwheel(self)
+        self.arrangerDpad = ArrangerDpad(self)
+        self.arrangerDiamond = ArrangerDiamond(self)
+        self.arrangerButtons = ArrangerDiamond(self)
+        self.arrangerMouse = ArrangerMouse(self)
+        self.arrangerMouseRegion = ArrangerMouseRegion(self)
+        self.arrangerJoystick = ArrangerJoystick(self)
+        self.arrangerTouchmenu0 = ArrangerTouchmenu(self, 20)
+        self.arrangerRadialmenu0 = ArrangerRadialmenu(self, 20)
+        self.arrangerListmenu = ArrangerListmenu(self)
+
+        self.arranger = self.arrangerEmpty
+        self.set_arranger(self.arrangerOneButton)
+
         self.ctxmenu = self.make_context_menu()
         self.connect_menuitems(self.ctxmenu)
         self.connect_ctxmenu()
         self.update_display()
 
-    def arrangerEmpty (self): return ArrangerEmpty(self)
-    def arrangerOneButton (self): return ArrangerOneButton(self)
-    def arrangerScrollwheel (self): return ArrangerScrollwheel(self)
-    def arrangerDpad (self): return ArrangerDpad(self)
-    def arrangerDiamond (self): return ArrangerDiamond(self)
-    def arrangerButtons (self): return ArrangerDiamond(self)
-    def arrangerMouse (self): return ArrangerMouse(self)
-    def arrangerMouseRegion (self): return ArrangerMouseRegion(self)
-    def arrangerJoystick (self): return ArrangerJoystick(self)
-    def arrangerTouchmenu (self, cap=2): return ArrangerTouchmenu(self, cap)
-    def arrangerRadialmenu (self, cap=2): return ArrangerRadialmenu(self, cap)
-    def arrangerListmenu (self): return ArrangerListmenu(self)
+    def arrangerTouchmenu (self, cap=2):
+        self.arrangerTouchmenu0.set_capacity(cap)
+        return self.arrangerTouchmenu0
+    def arrangerRadialmenu (self, cap=2):
+        self.arrangerRadialmenu0.set_capacity(cap)
+        return self.arrangerRadialmenu0
 
     def get_arranger (self):
         return self.arranger
     def set_arranger (self, arranger):
-        self.arranger = arranger
+        if callable(arranger):
+            self.arranger = arranger()
+        else:
+            self.arranger = arranger
         self.arranger.rearrange()
         #self.frame.set_label("<{!s}> {}".format(self.arranger, self.inpsymprefix))
         self.frame.set_label("<{!s}> {}".format(self.arranger.NAME, self.inpsymprefix))
@@ -913,6 +929,13 @@ As arrangments can change during run-time, use strategies for rearranging:
         return
     def set_cluster_type (self, cltype):
         return
+
+#    def get_vislayers (self):
+#        return self.inivislayers
+#    def set_vislayers (self, val):
+#        self.inivislayers = val
+#        for inpsym in self.kbtops:
+#            self.kbtops[inpsym].set_vislayers(self.inivislayers)
 
     def make_menu (self, menudesc):
         menu = gtk.Menu()
@@ -934,7 +957,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         context_menu_desc = [
             # Tuples of (item_lable, arranger_factory)
             ( "_None", self.arrangerEmpty ),
-            ( "_SingleButton", self.arrangerEmpty ),
+            ( "_SingleButton", self.arrangerOneButton ),
             ( "Scroll_Wheel", self.arrangerScrollwheel ),
             ( "_DPad", self.arrangerDpad ),
             ( "_ButtonQuad", self.arrangerButtons ),
@@ -1004,13 +1027,17 @@ As arrangments can change during run-time, use strategies for rearranging:
         if ev.button == 3:
             self.ctxmenu.popup(None,None,None,ev.button,ev.time)
             return True
+        elif ev.button == 1:
+            try:
+                self.clicked()
+            except AttributeError:
+                pass
         return False
 
     def on_context_menuitem (self, w, userdata):
         print("on_context_menuitem %r, %r" % (w, userdata))
-        arranger_factory = userdata
-        if callable(arranger_factory):
-            arranger = arranger_factory()
+        arranger = userdata
+        if arranger:
             self.set_arranger(arranger)
         return True
 
@@ -1025,6 +1052,9 @@ As arrangments can change during run-time, use strategies for rearranging:
             if v.get_parent() != None:
                 self.grid.remove(v)
 
+    def get_kbtops (self):
+        return self.kbtops.values()
+
 
 class KblayoutWidget (gtk.VBox):
     def __init__ (self, mdl=None):
@@ -1034,6 +1064,7 @@ class KblayoutWidget (gtk.VBox):
         self.keytops = {}
         self.active = False
         self.grid = gtk.Table(homogeneous=True)
+        #self.grid = gtk.Table(homogeneous=False)
 
         # Selector for specific layout.
         self.mdl_layout = gtk.ListStore(str)
@@ -1045,7 +1076,8 @@ class KblayoutWidget (gtk.VBox):
         self.inp_layout.pack_start(self.cell_layout)
         self.inp_layout.add_attribute(self.cell_layout, 'text', 0)
         #idx = kbnames.index("en_US (pc104)")
-        idx = kbnames.index("PS3")
+        #idx = kbnames.index("PS3")
+        idx = kbnames.index("SteamController")
         self.inp_layout.set_active(idx)
         self.inp_layout.connect('changed', self.on_changed)
 
@@ -1096,17 +1128,29 @@ class KblayoutWidget (gtk.VBox):
                             (disp, inpsym) = label.split('\f', 1)
                             if self.mdl:
                                 self.mdl.set_label(inpsym, disp)
-                        keytop = KbTop(inpsym, self.mdl, self.vislayers)
                         l, r = colnum, colnum+width
                         t, b = rownum, rownum+2*height
                         #print("attach %r %r %r %r %r" % (keytop, l, r, t, b))
-                        grid.attach(keytop, l, r, t, b)
+                        if inpsym.endswith("#"):
+                            planar = KbPlanar(inpsym, self.mdl, self.vislayers)
+                            for inpsym,kbtop in planar.kbtops.iteritems():
+                                kbtop.connect("clicked", self.on_keytop_clicked)
+                                kbtop.connect("dnd-link", self.on_keytop_bound)
+                                keytops[inpsym] = kbtop
+                                self.active = kbtop
+                            print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
+                            #grid.attach(planar, l, r, t, b, xoptions=0, yoptions=0)
+                            grid.attach(planar, l, r, t, b, xoptions=gtk.FILL, yoptions=gtk.FILL)
+                            #grid.attach(planar, l, r, t, b)
+                        else:
+                            keytop = KbTop(inpsym, self.mdl, self.vislayers)
+                            keytop.connect("clicked", self.on_keytop_clicked)
+                            keytop.connect("dnd-link", self.on_keytop_bound)
+                            keytops[inpsym] = keytop
+                            self.active = keytop
+                            grid.attach(keytop, l, r, t, b)
                         if keytops.has_key(inpsym):
                             logger.warn("potential duplicate: %s" % inpsym)
-                        keytops[inpsym] = keytop
-                        keytop.connect("clicked", self.on_keytop_clicked)
-                        keytop.connect("dnd-link", self.on_keytop_bound)
-                        self.active = keytop
                     colnum += width
                 rownum += 1  # totals 2 for non-empty row.
             rownum += 1
