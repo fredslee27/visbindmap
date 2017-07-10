@@ -617,6 +617,8 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
         #self.parent.show_all()
 
     def rearrange (self):
+        self.parent.vadj.set_lower(0)
+        self.parent.vadj.set_upper(0)
         self.full_rearrange(self.placements)
 
     def __repr__ (self):
@@ -849,6 +851,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
     def __repr__ (self):
         return "{!s}({:d})".format(self.__class__.__name__, self.cap)
 
+# TODO: just use a TreeView?
 class ArrangerListmenu (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
@@ -868,6 +871,11 @@ Applicable to: touch menu, radial menu, scrollwheel items.
             w, h = 3, 2
             self.placements[suffix] = (row*h, col*w, w-1,h)
         self.build_widget_pool()
+
+    def rearrange (self):
+        self.parent.vadj.set_lower(0)
+        self.parent.vadj.set_upper(12)
+        self.full_rearrange(self.placements)
 
 
 class KbPlanar (gtk.EventBox):
@@ -908,11 +916,15 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.frame_title.pack_start(self.frame_lbl_sym, False, False, 0)
         self.frame.set_label_widget(self.frame_title)
 
-
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
         self.grid = gtk.Table(12,12,True)
 
-        self.frame.add(self.grid)
+        self.hadj = gtk.Adjustment()
+        self.vadj = gtk.Adjustment()
+        self.viewport = gtk.ScrolledWindow(self.hadj, self.vadj)
+
+        self.viewport.add_with_viewport(self.grid)
+        self.frame.add(self.viewport)
         self.add(self.frame)
 
         self.inivislayers = vislayers
@@ -1131,11 +1143,7 @@ class KblayoutWidget (gtk.VBox):
         self.cell_layout = gtk.CellRendererText()
         self.inp_layout.pack_start(self.cell_layout)
         self.inp_layout.add_attribute(self.cell_layout, 'text', 0)
-        #idx = kbnames.index("en_US (pc104)")
-        #idx = kbnames.index("PS3")
-        idx = kbnames.index("SteamController")
-        #idx = kbnames.index("PS4/Steam")
-        self.inp_layout.set_active(idx)
+        self.inp_layout.set_active(0)
         self.inp_layout.connect('changed', self.on_changed)
 
         # GUI Layout for KB Layout.

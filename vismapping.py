@@ -489,6 +489,8 @@ Consists of:
 
         self.uibuild()
 
+        self.set_layout("SteamController")
+
         self.reset()
 
     def uibuild (self):
