@@ -3,7 +3,7 @@
 from __future__ import print_function
 
 import sys
-import gtk, gobject
+import gtk, gobject, glib
 import math
 
 import kbd_desc
@@ -302,7 +302,7 @@ class InpDescrModel (gobject.GObject):
         layernum = layer if layer is not None else self.get_layer()
         self.get_grouplist(groupnum).get_layermap(layernum).set_bind(inpsym, v)
         self.emit('bind-changed', groupnum, layernum, inpsym)
-        
+
 
     def resolve_bind (self, inpsym,  group=None, layer=None):
         """Determine effective binding of a inpsym based on passthrough rules.
@@ -334,6 +334,21 @@ class InpDescrModel (gobject.GObject):
                 else:
                     groupfollow = None
         return passthrough, retval
+
+    def resolve_bind_markup (self, inpsym, group=None, layer=None):
+        passthrough, plaintext = self.resolve_bind(inpsym, group, layer)
+        if plaintext:
+            if passthrough:
+                # Fell back to group 0; italicize.
+                escbindlit = glib.markup_escape_text(plaintext)
+                retval = "<i><small>{}</small></i>".format(escbindlit)
+                return retval
+            else:
+                # Direct hit; return unadorned.
+                escbindlit = glib.markup_escape_text(plaintext)
+                return escbindlit
+        return ""
+
 
     def refresh (self):
         """Induce update of viewers of this model."""
@@ -538,15 +553,8 @@ class KbTop (gtk.Button):
                 bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
                 bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
                 bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
-            shadow, val = self.inpdescr.resolve_bind(self.inpsym, layer=layernum)
-            inp_bind = self.inp_binds[i]
-            if val is None:
-                self.inp_binds[i].set_text("")
-            elif shadow:
-                val = "<i><small>%s</small></i>" % val
-                self.inp_binds[i].set_markup(val)
-            else:
-                self.inp_binds[i].set_text(val)
+            val = self.inpdescr.resolve_bind_markup(self.inpsym, layer=layernum)
+            self.inp_binds[i].set_markup(val)
             # install level prefix for multi-level view.
             if self.vislayers > 1:
                 self.lvl_lbls[i].set_markup("<small>%s:</small>" % layernum)
@@ -947,7 +955,7 @@ class KbMenuList (gtk.ScrolledWindow):
         self.treeview = gtk.TreeView()
         self.rendertext = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
-        self.col1 = gtk.TreeViewColumn("bind", self.rendertext, text=1)
+        self.col1 = gtk.TreeViewColumn("bind", self.rendertext, markup=1)
         self.treeview.append_column(self.col0)
         self.treeview.append_column(self.col1)
         self.vadj = gtk.Adjustment()
@@ -964,6 +972,9 @@ class KbMenuList (gtk.ScrolledWindow):
         self.treeview.set_model(self.scratch)
         if self.inpdescr:
             self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+            self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+            self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
+            self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
         self.setup_dnd()
 
         self.show_all()
@@ -1002,8 +1013,8 @@ class KbMenuList (gtk.ScrolledWindow):
         for row in self.scratch:
             inpsym = row[0]
             if self.inpdescr:
-                bind = self.inpdescr.get_bind(inpsym)
-                row[1] = bind
+                bind_markedup = self.inpdescr.resolve_bind_markup(inpsym)
+                row[1] = bind_markedup
 
     def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
 #        if (grp == self.inpdescr._group) and (lyr == self.inpdescr._layer):
@@ -1011,6 +1022,13 @@ class KbMenuList (gtk.ScrolledWindow):
 #                for row in self.scratch:
 #                    if row[0] == inpsym:
 #                        pass
+        self.pull_data()
+
+    def on_inpdescr_label_changed (self, *args):
+        self.pull_data()
+    def on_inpdescr_layer_changed (self, *args):
+        self.pull_data()
+    def on_inpdescr_group_changed (self, *args):
         self.pull_data()
 
 
