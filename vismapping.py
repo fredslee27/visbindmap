@@ -10,7 +10,7 @@ import pickle
 import ast, parser
 
 import kblayout
-from kblayout import Log
+from kblayout import Logger
 
 
 BASENAME="generic_game"
@@ -44,7 +44,7 @@ class TeeLog (object):
         # let gc close the file, in case it's stderr.
     def closed (self):
         return (self.outstream is not None)
-log = Log(Log.debug)
+logger = Logger(Logger.debug)
 
 
 
@@ -123,7 +123,7 @@ class ObjectReinstantiater(ast.NodeTransformer):
         cclass = node.func.attr
         ckey = "%s.%s" % (cmodule, cclass)
         if ckey in self.REINSTANCERS:
-            #log.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
+            #logger.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
             return node
         else:
             return ast.parse("None", mode='eval')
@@ -337,7 +337,7 @@ class Commands (object):
     def get_by_id (self, val):
         # TODO: look through tree model instead?
         if val is None:
-            log.debug("[None]=>None...")
+            logger.debug("[None]=>None...")
             return [ None, 0x1f, "", "", "", "" ]
 
         cursor = self.conn.cursor()
@@ -358,7 +358,7 @@ class Commands (object):
 
     def find (self, cmdname):
         if cmdname is None:
-            log.debug("find(None) => None")
+            logger.debug("find(None) => None")
             return None
 
         cursor = self.conn.cursor()
@@ -429,7 +429,7 @@ class VisCmds (gtk.VBox):
         treesel = srcw.get_selection()
         (treemdl, treeiter) = treesel.get_selected()
         if sel.target == "bind":
-            log.debug("target is bind")
+            logger.debug("target is bind")
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -440,7 +440,7 @@ class VisCmds (gtk.VBox):
 
             sel.set("STRING", 8, val)  # 8 bits per unit.
         elif sel.target == "bindid":
-            log.debug("target is bindid")
+            logger.debug("target is bindid")
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -451,10 +451,10 @@ class VisCmds (gtk.VBox):
 
             sel.set("STRING", 8, str(val))  # 8 bits per unit.
         elif sel.target == "binduri":
-            log.debug("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
+            logger.debug("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
             # Find out target, get its inpsym, assign binding.
             # Send displayed text to target.
-            log.debug("+++ target is bindref")
+            logger.debug("+++ target is bindref")
 
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
@@ -464,7 +464,7 @@ class VisCmds (gtk.VBox):
             num = treemdl.get_value(treeiter, 0)
             name = treemdl.get_value(treeiter, 1)
             val = "cmdbind://%s/%s" % (num, name)
-            log.debug("val = %r" % val)
+            logger.debug("val = %r" % val)
             sel.set("STRING", 8, str(val))  # 8 bits per unit.
 
 
@@ -508,7 +508,7 @@ Consists of:
 
     def on_key_selected (self, w, ksym, *args):
         binding = self.models.bindstore.inpdescr.get_bind(ksym)
-        log.debug("key-selected: %s => %r" % (ksym, binding))
+        logger.debug("key-selected: %s => %r" % (ksym, binding))
 
     def get_layout (self):
         idx = self.kbl.inp_layout.get_active()
@@ -615,11 +615,11 @@ Consists of:
         return
 
     def bind_cmd (self, ksym, cmdinfo):
-        log.debug("bind");
+        logger.debug("bind");
         pass
 
     def unbind_cmd (self, ksym):
-        log.debug("unbind");
+        logger.debug("unbind");
         pass
 
 gobject.type_register(VisBind)
@@ -712,7 +712,7 @@ class VisMapperWindow (gtk.Window):
         self.debugbuf.insert_at_cursor(" ready:")
         self.debugbuf.insert_at_cursor("\n")
         # Overwrite global log object to take a tee stream.
-        globals()['log'] = Log(Log.debug, TeeLog(self.debugbuf, sys.stderr))
+        globals()['logger'] = Logger(Logger.debug, TeeLog(self.debugbuf, sys.stderr))
 
     def on_delete_event (self, w, *args):
         """Closing window with the [X] button."""
@@ -824,7 +824,7 @@ class MainMenubar (gtk.MenuBar):
         return
     def on_debug_1 (self, w, *args):
         app = self.app
-        log.debug("DEBUG 1")
+        logger.debug("DEBUG 1")
         app.set_saveuri("/home/fredslee/devel/vismapping/testout.cfg")
         app.load_in_place()
         return
@@ -846,7 +846,7 @@ class MainMenubar (gtk.MenuBar):
 
     def on_view_levels (self, w, count, *args):
         app = self.app
-        log.debug("View levels = %d" % count)
+        logger.debug("View levels = %d" % count)
         app.set_vislayers(count)
         pass
 
@@ -945,18 +945,18 @@ class VisMapperApp (object):
         self.modenum = modenum
         mdl = self.models.bindstore.inpdescr
         mdl.set_group(modenum)
-        log.debug(" ? changing to mode %d" % modenum)
+        logger.debug(" ? changing to mode %d" % modenum)
         return
 
     def on_kblevel_changed (self, w, levelnum, *args):
         self.levelnum = levelnum
         mdl = self.models.bindstore.inpdescr
         mdl.set_layer(levelnum)
-        log.debug("changing to shift level %d" % levelnum)
+        logger.debug("changing to shift level %d" % levelnum)
         return
 
     def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
-        log.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
+        logger.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
         inpsym = dstw.inpsym
         modenum = self.modenum
         levelnum = self.levelnum
@@ -1042,12 +1042,12 @@ class VisMapperApp (object):
 
 
     def cmds (self, srcpath):
-        log.debug("LOADING CMDS: %r" % srcpath)
+        logger.debug("LOADING CMDS: %r" % srcpath)
         return 0
 
     def load (self, srcfile):
         """Load configuration from file-like object."""
-        log.debug("LOADING %r" % srcfile)
+        logger.debug("LOADING %r" % srcfile)
         self.models.bindstore.load(srcfile)
         self.cmds_in_place()
         return 0
@@ -1055,7 +1055,7 @@ class VisMapperApp (object):
     def save (self, destfile):
         """Save configuration to file-like object."""
         self.models.bindstore.save(destfile)
-        log.debug("SAVING %r" % destfile)
+        logger.debug("SAVING %r" % destfile)
         return 0
 
     def reset (self):
