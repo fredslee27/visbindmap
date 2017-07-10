@@ -560,15 +560,14 @@ gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NON
 
 
 
-class KbPlanarArranger (object):
+class ArrangerEmpty (object):
     W = 12
     H = 12
     SIMPLE_PLACEMENTS = { }
     def __init__ (self, parent):
         self.parent = parent
-        transform_placements = False
+        self.placements = dict()
         if self.SIMPLE_PLACEMENTS:
-            self.placements = dict()
             for k,v in self.SIMPLE_PLACEMENTS.iteritems():
                 row,col = v
                 self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
@@ -608,16 +607,27 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
     def __repr__ (self):
         return "{!s}()".format(self.__class__.__name__)
 
-class ArrangerOneButton (KbPlanarArranger):
+class ArrangerOneButton (ArrangerEmpty):
+    # Click
     W = 12
     H = 12
     SIMPLE_PLACEMENTS = {
            # (row,col, colspan,rowspan)
-        'o': (0,0),
+        'c': (0,0),
     }
 
-class ArrangerDpad (KbPlanarArranger):
-    # Up Down Left Right Center/Click
+class ArrangerScrollwheel (ArrangerEmpty):
+    # Up Click Down
+    W = 4
+    H = 4
+    SIMPLE_PLACEMENTS = {
+        'u': (0,1),
+        'c': (1,1),
+        'd': (2,1),
+    }
+
+class ArrangerDpad (ArrangerEmpty):
+    # Up Down Left Right Center/Click OuterRing
     W = 4
     H = 4
     SIMPLE_PLACEMENTS = {
@@ -626,9 +636,10 @@ class ArrangerDpad (KbPlanarArranger):
         'c': (1,1),
         'r': (1,2),
         'd': (2,1),
+        'o': (2,2),
     }
 
-class ArrangerDiamond (KbPlanarArranger):
+class ArrangerDiamond (ArrangerEmpty):
     # North East West South Click/Center
     W = 4
     H = 4
@@ -640,25 +651,27 @@ class ArrangerDiamond (KbPlanarArranger):
         's': (2,1),
     }
 
-class ArrangerMouse (KbPlanarArranger):
-    # x, y, Click
+class ArrangerMouse (ArrangerEmpty):
+    # touch click double-tap x y
     W = 4
     H = 4
     SIMPLE_PLACEMENTS = {
+        't': (0,0),
+        'tt': (0,2),
         'c': (1,1),
         'x': (1,2),
         'y': (2,1),
     }
 
-class ArrangerMouseRegion (KbPlanarArranger):
+class ArrangerMouseRegion (ArrangerEmpty):
     W = 12
     H = 12
     SIMPLE_PLACEMENTS = {
         'c': (0,0),
     }
 
-class ArrangerJoystick (KbPlanarArranger):
-    # x-, x+, y-, y+, Click
+class ArrangerJoystick (ArrangerEmpty):
+    # x-, x+, y-, y+, Click, OuterRing
     W = 4
     H = 4
     SIMPLE_PLACEMENTS = {
@@ -667,9 +680,10 @@ class ArrangerJoystick (KbPlanarArranger):
         'c':  (1,1),
         'x+': (1,2),
         'y+': (2,1),
+        'o': (2,2),
     }
 
-class ArrangerTouchmenu (KbPlanarArranger):
+class ArrangerTouchmenu (ArrangerEmpty):
     ALL_PLACEMENTS = {
     2: {
         '#1': (0,0,6,12),  '#2': (0,6,6,12),
@@ -709,7 +723,7 @@ class ArrangerTouchmenu (KbPlanarArranger):
     }
 
     def __init__ (self, parent, cap=2):
-        KbPlanarArranger.__init__(self, parent)
+        ArrangerEmpty.__init__(self, parent)
         self.set_capacity(cap)
 
     def build_widget_pool (self):
@@ -728,14 +742,12 @@ class ArrangerTouchmenu (KbPlanarArranger):
             del thresholds[0]
         lim = thresholds[0]
         self.cap = lim
-
-    @property
-    def placements (self):
-        return self.ALL_PLACEMENTS[self.cap]
+        self.placements = self.ALL_PLACEMENTS[self.cap]
 
     def __repr__ (self):
         return "{!s}({})".format(self.__class__.__name__, self.cap)
 
+# Explicitly-numbered aliases.
 class ArrangerTouchmenu2 (ArrangerTouchmenu):
     def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 2)
 
@@ -758,9 +770,9 @@ class ArrangerTouchmenu16 (ArrangerTouchmenu):
     def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 16)
 
 
-class ArrangerRadialmenu (KbPlanarArranger):
+class ArrangerRadialmenu (ArrangerEmpty):
     def __init__ (self, parent, cap=2):
-        KbPlanarArranger.__init__(self, parent)
+        ArrangerEmpty.__init__(self, parent)
         #self.placements = [ (0,6,1,1), (12,6,1,1) ]
         self.placements = {
             '#1':  (0,6),
@@ -802,6 +814,24 @@ class ArrangerRadialmenu (KbPlanarArranger):
     def __repr__ (self):
         return "{!s}({:d})".format(self.__class__.__name__, self.cap)
 
+class ArrangerListmenu (ArrangerEmpty):
+    """Flat view of menu for brainstorming bind contents.
+Applicable to: touch menu, radial menu, scrollwheel items.
+"""
+    def __init__ (self, parent):
+        ArrangerEmpty.__init__(self, parent)
+        for idx in range(0,24):
+            if idx == 20:
+                continue  # ignore/empty
+            elif idx in [21,22,23]:
+                suffix = [ "u", "c", "d" ][idx-21]
+            else:
+                suffix = "#{}".format(idx+1)
+            col = int(idx / 6)
+            row = idx % 6
+            w, h = 3, 2
+            self.placements[suffix] = (row*h, col*w, w-1,h)
+
 
 class KbPlanar (gtk.Frame):
     """Planar control cluster (stick, touchpad, etc.)
@@ -816,6 +846,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 * (j) Joystick {Move,Camera,Mouse} : x-, x+, y-, y+, c
 * (t) Menu.Touch {2,4,7,9,12,13,16) : #1..#16
 * (r) RadialMenu {1..20} : #1..#20
+* (l) ListMenu {1..20} : #1..#20
 * (o) OneButton : o
     """
 
@@ -831,18 +862,12 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.inpdescr = inpdescr
         self.add(self.grid)
         self.inivislayers = vislayers
-        self.arranger = None
-        #self.arranger = ArrangerDpad(self)
-        #self.arranger = ArrangerDiamond(self)
-        #self.arranger = ArrangerMouse(self)
-        #self.arranger = ArrangerTouchmenu(self)
-        #self.arranger = ArrangerTouchmenu2(self)
-        #self.arranger = self.arrangerTouchmenu(14)
-        #self.arranger = self.arrangerMouseRegion()
-        #self.arranger = self.arrangerJoystick()
+        self.arranger = self.arrangerEmpty()
         self.update_display()
 
+    def arrangerEmpty (self): return ArrangerEmpty(self)
     def arrangerOneButton (self): return ArrangerOneButton(self)
+    def arrangerScrollwheel (self): return ArrangerScrollwheel(self)
     def arrangerDpad (self): return ArrangerDpad(self)
     def arrangerDiamond (self): return ArrangerDiamond(self)
     def arrangerButtons (self): return ArrangerButtons(self)
@@ -851,6 +876,7 @@ As arrangments can change during run-time, use strategies for rearranging:
     def arrangerJoystick (self): return ArrangerJoystick(self)
     def arrangerTouchmenu (self, cap=2): return ArrangerTouchmenu(self, cap)
     def arrangerRadialmenu (self, cap=2): return ArrangerRadialmenu(self, cap)
+    def arrangerListmenu (self): return ArrangerListmenu(self)
 
     def get_arranger (self):
         return self.arranger
