@@ -197,6 +197,44 @@ class TestKblayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
+    def test_kbplanar_ctxmenu (self):
+        def on_bindchange(w, *args):
+            pass
+        mdl = kblayout.InpDescrModel(1)
+        mdl.connect("bind-changed", on_bindchange)
+
+        w = gtk.Window()
+        w.set_title("Test KbTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = kblayout.KbPlanar("L", mdl)
+        layout.pack_start(b, expand=True, fill=True, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+
+        def popup_ctx_menu ():
+            b.ctxmenu.popup(None,None,None,gtk.gdk.RIGHTBUTTON,0)
+        b.set_arranger(b.arrangerDpad())
+
+        w.show_all()
+
+        playback = [ lambda: None,
+                     2,
+                     lambda: popup_ctx_menu(),
+                     1,
+                     lambda: b.ctxmenu.select_item(b.ctxmenu.get_children()[2]),
+                     1,
+                     lambda: b.ctxmenu.activate_item(b.ctxmenu.get_children()[2], False),
+                     8,
+                     ]
+
+        self.runloop(playback)
+        #time.sleep(4)
+        w.hide()
+
     def test_kblayout (self):
         mdl = kblayout.InpDescrModel(1)
         class KblayoutWindow (gtk.Window):

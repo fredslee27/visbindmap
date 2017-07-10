@@ -561,6 +561,7 @@ gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NON
 
 
 class ArrangerEmpty (object):
+    NAME = "empty"
     W = 12
     H = 12
     SIMPLE_PLACEMENTS = { }
@@ -580,6 +581,8 @@ class ArrangerEmpty (object):
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
                 self.parent.kbtops[inpsym] = kbtop
+                print("bind kbtop button-press-event")
+                kbtop.connect("button-press-event", self.parent.on_button_press)
 
     def inpsymof (self, suffix):
         return "{}{}".format(self.parent.inpsymprefix, suffix)
@@ -608,6 +611,7 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
         return "{!s}()".format(self.__class__.__name__)
 
 class ArrangerOneButton (ArrangerEmpty):
+    NAME = "SingleButton"
     # Click
     W = 12
     H = 12
@@ -617,6 +621,7 @@ class ArrangerOneButton (ArrangerEmpty):
     }
 
 class ArrangerScrollwheel (ArrangerEmpty):
+    NAME = "ScrollWheel"
     # Up Click Down
     W = 4
     H = 4
@@ -627,6 +632,7 @@ class ArrangerScrollwheel (ArrangerEmpty):
     }
 
 class ArrangerDpad (ArrangerEmpty):
+    NAME = "Dpad"
     # Up Down Left Right Center/Click OuterRing
     W = 4
     H = 4
@@ -640,6 +646,7 @@ class ArrangerDpad (ArrangerEmpty):
     }
 
 class ArrangerDiamond (ArrangerEmpty):
+    NAME = "ButtonQuad"
     # North East West South Click/Center
     W = 4
     H = 4
@@ -652,6 +659,7 @@ class ArrangerDiamond (ArrangerEmpty):
     }
 
 class ArrangerMouse (ArrangerEmpty):
+    NAME = "Mouse[Region]"
     # touch click double-tap x y
     W = 4
     H = 4
@@ -664,6 +672,7 @@ class ArrangerMouse (ArrangerEmpty):
     }
 
 class ArrangerMouseRegion (ArrangerEmpty):
+    NAME = "MouseRegion"
     W = 12
     H = 12
     SIMPLE_PLACEMENTS = {
@@ -671,6 +680,7 @@ class ArrangerMouseRegion (ArrangerEmpty):
     }
 
 class ArrangerJoystick (ArrangerEmpty):
+    NAME = "Joystick Move/Camera/Mouse"
     # x-, x+, y-, y+, Click, OuterRing
     W = 4
     H = 4
@@ -684,6 +694,7 @@ class ArrangerJoystick (ArrangerEmpty):
     }
 
 class ArrangerTouchmenu (ArrangerEmpty):
+    NAME = "Touch Menu"
     ALL_PLACEMENTS = {
     2: {
         '#1': (0,0,6,12),  '#2': (0,6,6,12),
@@ -734,6 +745,8 @@ class ArrangerTouchmenu (ArrangerEmpty):
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
                 self.parent.kbtops[inpsym] = kbtop
+                print("bind kbtop button-press-event")
+                kbtop.connect("button-press-event", self.parent.on_button_press)
 
     def set_capacity (self, cap):
         thresholds = self.ALL_PLACEMENTS.keys()
@@ -771,6 +784,7 @@ class ArrangerTouchmenu16 (ArrangerTouchmenu):
 
 
 class ArrangerRadialmenu (ArrangerEmpty):
+    NAME = "Radial Menu"
     def __init__ (self, parent, cap=2):
         ArrangerEmpty.__init__(self, parent)
         #self.placements = [ (0,6,1,1), (12,6,1,1) ]
@@ -818,6 +832,7 @@ class ArrangerListmenu (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
 """
+    NAME = "menu list"
     def __init__ (self, parent):
         ArrangerEmpty.__init__(self, parent)
         for idx in range(0,24):
@@ -833,7 +848,7 @@ Applicable to: touch menu, radial menu, scrollwheel items.
             self.placements[suffix] = (row*h, col*w, w-1,h)
 
 
-class KbPlanar (gtk.Frame):
+class KbPlanar (gtk.EventBox):
     """Planar control cluster (stick, touchpad, etc.)
 Contents to display are packaged in a data model (InpDescrModel)
 Children are KbTop, but selectively shown and placed to reflect cluster type.
@@ -853,16 +868,23 @@ As arrangments can change during run-time, use strategies for rearranging:
     def __init__ (self, inpsymprefix, inpdescr=None, vislayers=1):
         """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
         # UI elements
-        gtk.Frame.__init__(self)
-        self.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
+        gtk.EventBox.__init__(self)
+        self.frame = gtk.Frame(inpsymprefix)
+        self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
         self.grid = gtk.Table(12,12,True)
         self.inpsymprefix = inpsymprefix
         self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
         self.inpdescr = inpdescr
-        self.add(self.grid)
+
+        self.frame.add(self.grid)
+        self.add(self.frame)
+
         self.inivislayers = vislayers
         self.arranger = self.arrangerEmpty()
+        self.ctxmenu = self.make_context_menu()
+        self.connect_menuitems(self.ctxmenu)
+        self.connect_ctxmenu()
         self.update_display()
 
     def arrangerEmpty (self): return ArrangerEmpty(self)
@@ -870,7 +892,7 @@ As arrangments can change during run-time, use strategies for rearranging:
     def arrangerScrollwheel (self): return ArrangerScrollwheel(self)
     def arrangerDpad (self): return ArrangerDpad(self)
     def arrangerDiamond (self): return ArrangerDiamond(self)
-    def arrangerButtons (self): return ArrangerButtons(self)
+    def arrangerButtons (self): return ArrangerDiamond(self)
     def arrangerMouse (self): return ArrangerMouse(self)
     def arrangerMouseRegion (self): return ArrangerMouseRegion(self)
     def arrangerJoystick (self): return ArrangerJoystick(self)
@@ -883,12 +905,114 @@ As arrangments can change during run-time, use strategies for rearranging:
     def set_arranger (self, arranger):
         self.arranger = arranger
         self.arranger.rearrange()
+        #self.frame.set_label("<{!s}> {}".format(self.arranger, self.inpsymprefix))
+        self.frame.set_label("<{!s}> {}".format(self.arranger.NAME, self.inpsymprefix))
         self.show_all()
 
     def get_cluster_type (self):
         return
     def set_cluster_type (self, cltype):
         return
+
+    def make_menu (self, menudesc):
+        menu = gtk.Menu()
+        for itemdesc in menudesc:
+            menuitem = gtk.MenuItem(itemdesc[0], True)
+            if type(itemdesc[1]) == list:
+                # submenu
+                submenu = self.make_menu(itemdesc[1])
+                menuitem.set_submenu(submenu)
+            else:
+                # leaf
+                menuitem.userdata = itemdesc[1]
+            menu.append(menuitem)
+        menu.show_all()
+        return menu
+
+    def make_context_menu (self):
+        """Create context menu of changing cluster types by GUI."""
+        context_menu_desc = [
+            # Tuples of (item_lable, arranger_factory)
+            ( "_None", self.arrangerEmpty ),
+            ( "_SingleButton", self.arrangerEmpty ),
+            ( "Scroll_Wheel", self.arrangerScrollwheel ),
+            ( "_DPad", self.arrangerDpad ),
+            ( "_ButtonQuad", self.arrangerButtons ),
+            ( "_Mouse", self.arrangerMouse ),
+            ( "_Joystick", self.arrangerJoystick ),
+            ( "_Touch Menu", [
+                ( "_2 items", lambda: self.arrangerTouchmenu(2) ),
+                ( "_4 items", lambda: self.arrangerTouchmenu(4) ),
+                ( "_7 items", lambda: self.arrangerTouchmenu(7) ),
+                ( "_9 items", lambda: self.arrangerTouchmenu(9) ),
+                ( "_12 items", lambda: self.arrangerTouchmenu(12) ),
+                ( "_13 items", lambda: self.arrangerTouchmenu(13) ),
+                ( "_16 items", lambda: self.arrangerTouchmenu(16) ),
+                ]),
+            ( "_Radial Menu", [
+                ( "_01..09 items", [
+                    ("_1 item", lambda: self.arrangerRadialmenu(1) ),
+                    ("_2 items", lambda: self.arrangerRadialmenu(2) ),
+                    ("_3 items", lambda: self.arrangerRadialmenu(3) ),
+                    ("_4 items", lambda: self.arrangerRadialmenu(4) ),
+                    ("_5 items", lambda: self.arrangerRadialmenu(5) ),
+                    ("_6 items", lambda: self.arrangerRadialmenu(6) ),
+                    ("_7 items", lambda: self.arrangerRadialmenu(7) ),
+                    ("_8 items", lambda: self.arrangerRadialmenu(8) ),
+                    ("_9 items", lambda: self.arrangerRadialmenu(9) ),
+                    ]),
+                ( "_10..19 items", [
+                    ("1_0 items", lambda: self.arrangerRadialmenu(10)),
+                    ("1_1 items", lambda: self.arrangerRadialmenu(11)),
+                    ("1_2 items", lambda: self.arrangerRadialmenu(12)),
+                    ("1_3 items", lambda: self.arrangerRadialmenu(13)),
+                    ("1_4 items", lambda: self.arrangerRadialmenu(14)),
+                    ("1_5 items", lambda: self.arrangerRadialmenu(15)),
+                    ("1_6 items", lambda: self.arrangerRadialmenu(16)),
+                    ("1_7 items", lambda: self.arrangerRadialmenu(17)),
+                    ("1_8 items", lambda: self.arrangerRadialmenu(18)),
+                    ("1_9 items", lambda: self.arrangerRadialmenu(19)),
+                    ]),
+                ( "_20.._29 items", [
+                    ("2_0 items", lambda: self.arrangerRadialmenu(20)),
+                    ]),
+                ]),
+            ( "_List Menu", self.arrangerListmenu ),
+            ]
+        menu = self.make_menu(context_menu_desc)
+        return menu
+
+    def connect_menuitems (self, submenu=None):
+        if not submenu:
+            return
+        for menuitem in submenu.get_children()[:]:
+            userdata = None
+            try:
+                userdata = menuitem.userdata
+            except AttributeError:
+                pass
+            if userdata:
+                menuitem.connect("activate", self.on_context_menuitem, userdata)
+            submenu = menuitem.get_submenu()
+            if submenu:
+                self.connect_menuitems(submenu)
+
+    def connect_ctxmenu (self):
+        self.connect("button-press-event", self.on_button_press)
+
+    def on_button_press (self, w, ev):
+        if ev.button == 3:
+            self.ctxmenu.popup(None,None,None,ev.button,ev.time)
+            return True
+        return False
+
+    def on_context_menuitem (self, w, userdata):
+        print("on_context_menuitem %r, %r" % (w, userdata))
+        arranger_factory = userdata
+        if callable(arranger_factory):
+            arranger = arranger_factory()
+            self.set_arranger(arranger)
+        return True
 
     def update_display (self):
         self.detach_all()
