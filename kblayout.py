@@ -178,6 +178,12 @@ class InpDescrModel (gobject.GObject):
         # active layer
         self._layer = 0
 
+        # Handful of default binds.
+        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
+        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
+        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
+
     def restore (self, other):
         if not other:
             return
@@ -605,7 +611,8 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
             bottom = row + yspan
             kbtop = self.parent.kbtops[inpsym]
             self.parent.grid.attach(kbtop, left, right, top, bottom)
-        self.parent.show_all()
+            kbtop.show()
+        #self.parent.show_all()
 
     def rearrange (self):
         self.full_rearrange(self.placements)
@@ -823,7 +830,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
             cap = 20
         self.cap = cap
         # Radial places from top going clockwise.
-        #self.placements = []
+        self.placements.clear()
         for idx in range(0, self.cap):
             angle = idx * (2 * math.pi) / cap
             theta = math.pi - angle
@@ -906,21 +913,23 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arrangerMouseRegion = ArrangerMouseRegion(self)
         self.arrangerJoystick = ArrangerJoystick(self)
         self.arrangerGyrotilt = ArrangerGyrotilt(self)
-        self.arrangerTouchmenu0 = ArrangerTouchmenu(self, 20)
-        self.arrangerRadialmenu0 = ArrangerRadialmenu(self, 20)
+        self.arrangerTouchmenu0 = ArrangerTouchmenu(self, 2)
+        self.arrangerRadialmenu0 = ArrangerRadialmenu(self, 2)
         self.arrangerListmenu = ArrangerListmenu(self)
 
         self.arranger = self.arrangerEmpty
 
-        self.ctxmenu = self.make_context_menu()
+        self.ctxmenu = self.make_context_menu(self.inpsymprefix)
         self.connect_menuitems(self.ctxmenu)
         self.connect_ctxmenu()
         self.update_display()
 
     def arrangerTouchmenu (self, cap=2):
+        self.detach_all()
         self.arrangerTouchmenu0.set_capacity(cap)
         return self.arrangerTouchmenu0
     def arrangerRadialmenu (self, cap=2):
+        self.detach_all()
         self.arrangerRadialmenu0.set_capacity(cap)
         return self.arrangerRadialmenu0
 
@@ -939,8 +948,10 @@ As arrangments can change during run-time, use strategies for rearranging:
         else:
             self.arranger = arranger
         self.arranger.rearrange()
+        print("rearrange as %r" % self.arranger)
         self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
         self.show_all()
+        # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
         self.inpdescr.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
 
     def get_cluster_type (self):
@@ -965,7 +976,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         menu.show_all()
         return menu
 
-    def make_context_menu (self):
+    def make_context_menu (self, menu_title=None):
         """Create context menu of changing cluster types by GUI."""
         context_menu_desc = [
             # Tuples of (item_lable, arranger_factory)
@@ -1017,6 +1028,11 @@ As arrangments can change during run-time, use strategies for rearranging:
             ( "_List Menu", self.arrangerListmenu ),
             ]
         menu = self.make_menu(context_menu_desc)
+        if menu_title:
+            title = gtk.MenuItem(menu_title, False)
+            title.set_sensitive(False)
+            menu.prepend(title)
+        menu.show_all()
         return menu
 
     def connect_menuitems (self, submenu=None):
@@ -1056,6 +1072,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 
     def update_display (self):
         self.detach_all()
+        # Retrieve intended cluster type by name from InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
         cluster_type = self.inpdescr.get_bind(self.inpsymprefix, 0, 0)
         self.set_cluster_type(cluster_type)
         if self.arranger:
@@ -1063,9 +1080,13 @@ As arrangments can change during run-time, use strategies for rearranging:
         return
 
     def detach_all (self):
-        for k,v in self.kbtops.iteritems():
-            if v.get_parent() != None:
-                self.grid.remove(v)
+        """Remove all widgets from table."""
+#        for k,v in self.kbtops.iteritems():
+#            v.hide()
+#            if v.get_parent() != None:
+#                self.grid.remove(v)
+        for ch in self.grid.get_children():
+            self.grid.remove(ch)
 
     def get_kbtops (self):
         return self.kbtops.values()

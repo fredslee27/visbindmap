@@ -188,12 +188,18 @@ class TestKblayout(unittest.TestCase):
                      lambda: b.set_arranger(b.arrangerRadialmenu(16)),
                      1,
                      lambda: b.set_arranger(b.arrangerRadialmenu(20)),
+                     3,
+                     lambda: b.set_arranger(b.arrangerRadialmenu(16)),
                      1,
-                     2
+                     lambda: b.set_arranger(b.arrangerRadialmenu(12)),
+                     1,
+                     lambda: b.set_arranger(b.arrangerRadialmenu(8)),
+                     1,
+                     lambda: b.set_arranger(b.arrangerRadialmenu(2)),
+                     1,
                      ]
 
         self.runloop(playback)
-        self.assertEqual(b.inp_lbl.get_text(), "TEST")
         #time.sleep(4)
         w.hide()
 
