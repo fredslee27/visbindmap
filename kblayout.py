@@ -182,7 +182,9 @@ class InpDescrModel (gobject.GObject):
         self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
         self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
         self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
         self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
+        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
 
     def restore (self, other):
         if not other:
@@ -948,7 +950,6 @@ As arrangments can change during run-time, use strategies for rearranging:
         else:
             self.arranger = arranger
         self.arranger.rearrange()
-        print("rearrange as %r" % self.arranger)
         self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
         self.show_all()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
@@ -1114,6 +1115,7 @@ class KblayoutWidget (gtk.VBox):
         #idx = kbnames.index("en_US (pc104)")
         #idx = kbnames.index("PS3")
         idx = kbnames.index("SteamController")
+        #idx = kbnames.index("PS4/Steam")
         self.inp_layout.set_active(idx)
         self.inp_layout.connect('changed', self.on_changed)
 
@@ -1176,7 +1178,7 @@ class KblayoutWidget (gtk.VBox):
                                 self.active = kbtop
                             #print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
                             #grid.attach(planar, l, r, t, b, xoptions=0, yoptions=0)
-                            grid.attach(planar, l, r, t, b, xoptions=gtk.FILL, yoptions=gtk.FILL)
+                            grid.attach(planar, l, r, t, b, xoptions=gtk.FILL, yoptions=gtk.FILL, xpadding=4, ypadding=4)
                             #grid.attach(planar, l, r, t, b)
                         else:
                             keytop = KbTop(inpsym, self.mdl, self.vislayers)
