@@ -637,8 +637,13 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
         #self.parent.show_all()
 
     def rearrange (self):
-        self.parent.vadj.set_lower(0)
-        self.parent.vadj.set_upper(0)
+        #self.parent.vadj.set_lower(0)
+        #self.parent.vadj.set_upper(0)
+        #if self.parent.listmenu:
+        #    self.parent.listmenu.hide()
+        #self.parent.grid.show()
+        self.parent.stack1.hide()
+        self.parent.stack0.show()
         self.full_rearrange(self.placements)
 
     def __repr__ (self):
@@ -872,7 +877,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
         return "{!s}({:d})".format(self.__class__.__name__, self.cap)
 
 # TODO: just use a TreeView?
-class ArrangerListmenu (ArrangerEmpty):
+class ArrangerListmenu0 (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
 """
@@ -893,9 +898,120 @@ Applicable to: touch menu, radial menu, scrollwheel items.
         self.build_widget_pool()
 
     def rearrange (self):
-        self.parent.vadj.set_lower(0)
-        self.parent.vadj.set_upper(12)
+        #self.parent.vadj.set_lower(0)
+        #self.parent.vadj.set_upper(12)
+        if self.parent.listmenu:
+            self.parent.listmenu.show_all()
+        else:
+            self.parent.listmenu = gtk.TreeView()
+            self.parent.cluster.pack_start(self.parent.listmenu, True, True, 0)
         self.full_rearrange(self.placements)
+class ArrangerListmenu (ArrangerEmpty):
+    """Flat view of menu for brainstorming bind contents.
+Applicable to: touch menu, radial menu, scrollwheel items.
+"""
+    NAME = "MenuList"
+    def __init__ (self, parent):
+        ArrangerEmpty.__init__(self, parent)
+        for idx in range(0,24):
+            if idx == 20:
+                continue  # ignore/empty
+            elif idx in [21,22,23]:
+                suffix = [ "u", "c", "d" ][idx-21]
+            else:
+                suffix = "{}".format(idx+1)
+            col = int(idx / 6)
+            row = idx % 6
+            w, h = 3, 2
+            self.placements[suffix] = (row*h, col*w, w-1,h)
+        self.build_widget_pool()
+
+    def rearrange (self):
+        if not self.parent.listmenu:
+            self.parent.listmenu = KbMenuList(self.parent.inpsymprefix, self.parent.inpdescr)
+            #self.parent.liststore = gtk.ListStore(str, str)
+            #self.parent.liststore = KbMenuList.sample_data0()
+            #self.parent.listmenu.set_model(self.parent.liststore)
+            self.parent.stack1.pack_start(self.parent.listmenu, True, True, 0)
+        self.parent.listmenu.pull_data()
+        self.parent.stack1.show_all()
+        self.parent.stack0.hide()
+
+
+
+class KbMenuList (gtk.ScrolledWindow):
+    def __init__ (self, inpsymprefix=None, inpdescr=None):
+        gtk.ScrolledWindow.__init__(self)
+        self.inpdescr = inpdescr
+        self.inpsymprefix = inpsymprefix or ""
+        self.treeview = gtk.TreeView()
+        self.rendertext = gtk.CellRendererText()
+        self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
+        self.col1 = gtk.TreeViewColumn("bind", self.rendertext, text=1)
+        self.treeview.append_column(self.col0)
+        self.treeview.append_column(self.col1)
+        self.vadj = gtk.Adjustment()
+        self.vadj.set_lower(0)
+        self.set_vadjustment(self.vadj)
+        self.add(self.treeview)
+        # local-only store b/c TreeView absolutely insists; updated from InpDescrModel.
+        self.scratch = gtk.ListStore(str,str)
+        for i in range(0, 20):
+            inpsym = "{}{}".format(self.inpsymprefix, i+1)
+            self.scratch.append((inpsym, None))
+        self.pull_data()
+        self.set_vadjustment(self.vadj)
+        self.treeview.set_model(self.scratch)
+        if self.inpdescr:
+            self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+        self.setup_dnd()
+
+        self.show_all()
+
+    def setup_dnd (self):
+        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 10) ]
+        dnd_actions = gtk.gdk.ACTION_LINK
+        self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
+        self.treeview.connect("drag-drop", self.on_drop)
+        self.treeview.connect("drag-data-received", self.on_drag_data_received)
+        self.droppath = None
+
+    def on_drop (self, w, ctx, x, y, time, *args):
+        # Drop started; ask for data.
+        w.drag_get_data(ctx, "STRING", time)
+        return False
+
+    def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
+        # Data that was asked for is now received.
+        srcw = ctx.get_source_widget()
+        seltext = sel.get_text()
+        ctx.finish(True, False, time)
+        tx, ty = w.convert_widget_to_bin_window_coords(x,y)
+        droppath = w.get_path_at_pos(tx,ty)
+        if droppath:
+            treepath = droppath[0]
+            self.drop_in_bind(treepath, seltext)
+        return False
+
+    def drop_in_bind (self, treepath, newval):
+        inpsym = self.scratch[treepath][0]
+        self.inpdescr.set_bind(inpsym, newval)
+        # Update inpdescr model, then rely on signals to auto-update scratch.
+
+    def pull_data (self):
+        for row in self.scratch:
+            inpsym = row[0]
+            if self.inpdescr:
+                bind = self.inpdescr.get_bind(inpsym)
+                row[1] = bind
+
+    def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
+#        if (grp == self.inpdescr._group) and (lyr == self.inpdescr._layer):
+#            if inpsym.startswith(self.inpsymprefix):
+#                for row in self.scratch:
+#                    if row[0] == inpsym:
+#                        pass
+        self.pull_data()
 
 
 class KbPlanar (gtk.EventBox):
@@ -939,12 +1055,26 @@ As arrangments can change during run-time, use strategies for rearranging:
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
         self.grid = gtk.Table(12,12,True)
 
-        self.hadj = gtk.Adjustment()
-        self.vadj = gtk.Adjustment()
-        self.viewport = gtk.ScrolledWindow(self.hadj, self.vadj)
+#        self.hadj = gtk.Adjustment()
+#        self.vadj = gtk.Adjustment()
+#        self.viewport = gtk.ScrolledWindow(self.hadj, self.vadj)
+#
+#        self.cluster = gtk.VBox()
+#        self.cluster.pack_start(self.grid, True, True, 0)
+#        self.cluster.pack_start(self.listmenu, True, True, 0)
+#
+#        self.viewport.add_with_viewport(self.cluster)
+#        self.frame.add(self.viewport)
 
-        self.viewport.add_with_viewport(self.grid)
-        self.frame.add(self.viewport)
+        self.cluster = gtk.VBox()
+        self.stack0 = gtk.VBox()
+        self.stack1 = gtk.VBox()
+        self.listmenu = None
+        self.stack0.pack_start(self.grid, True, True, 0)
+        #self.stack1.pack_start(self.listmenu, True, True, 0)
+        self.cluster.pack_start(self.stack0, True, True, 0)
+        self.cluster.pack_start(self.stack1, True, True, 0)
+        self.frame.add(self.cluster)
         self.add(self.frame)
 
         self.inivislayers = vislayers
@@ -997,7 +1127,8 @@ As arrangments can change during run-time, use strategies for rearranging:
         #self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
         self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
         #self.frame_lbl_sym.set_markup("<a href='#a'>{} &lt;{!s}&gt;</a>".format(self.inpsymprefix, self.arranger.NAME))
-        self.show_all()
+        #self.show_all()
+        self.grid.show_all()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
         self.inpdescr.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
 
