@@ -4,6 +4,7 @@ from __future__ import print_function
 
 import sys
 import gtk, gobject
+import math
 
 import kbd_desc
 
@@ -558,6 +559,316 @@ gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NON
 
 
 
+
+class KbPlanarArranger (object):
+    SUFFIX = [ 'o' ]
+    def __init__ (self, parent):
+        self.parent = parent
+
+    def rearrange (self):
+        raise NotImplementedError("rearrange() not implemented for {}".format(self.__class__.__name__))
+
+    def build_widget_pool (self):
+        """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+        for suffix in self.SUFFIX:
+            inpsym = self.inpsymof(suffix)
+            if not inpsym in self.parent.kbtops:
+                kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
+                self.parent.kbtops[inpsym] = kbtop
+
+    def inpsymof (self, suffix):
+        return "{}{}".format(self.parent.inpsymprefix, suffix)
+
+    def grid_rearrange (self, placements, xspan=1, yspan=1):
+        """Common case of gridded arrangement, where
+placements = dict of kbtop suffix to (row,col) tuple
+xspan = column span multiplier for widget (LCD number of cells)
+yspan = row span multipler for widget
+"""
+        self.parent.detach_all()
+        self.build_widget_pool()
+        for suffix,coord in placements.iteritems():
+            row,col = coord
+            inpsym = self.inpsymof(suffix)
+            left = col * xspan
+            right = (col+1)*xspan
+            top = row * yspan
+            bottom = (row+1) * yspan
+            kbtop = self.parent.kbtops[inpsym]
+            self.parent.grid.attach(kbtop, left, right, top, bottom)
+        self.parent.show_all()
+
+class ArrangerDpad (KbPlanarArranger):
+    # Up Down Left Right Center/Click
+    SUFFIX = [ 'u', 'd', 'l', 'r', 'c' ]
+
+    def rearrange (self):
+        placements = {  # coordinates are (row,col)
+            'u': (0,1),
+            'l': (1,0),
+            'c': (1,1),
+            'r': (1,2),
+            'd': (2,1),
+        }
+        self.grid_rearrange(placements, 4, 4)
+
+class ArrangerDiamond (KbPlanarArranger):
+    # North East West South Click/Center
+    SUFFIX = [ 'n', 'e', 'w', 's', 'c' ]
+
+    def rearrange (self):
+        placements = {  # coordinates are (row,col)
+            'n': (0,1),
+            'w': (1,0),
+            'c': (1,1),
+            'e': (1,2),
+            's': (2,1),
+        }
+        self.grid_rearrange(placements, 4, 4)
+
+class ArrangerMouse (KbPlanarArranger):
+    # x, y, Click
+    SUFFIX = [ 'x', 'y', 'c' ]
+
+    def rearrange (self):
+        placements = {  # coordinates are (row,col)
+            'c': (1,1),
+            'x': (1,2),
+            'y': (2,1),
+        }
+        self.grid_rearrange(placements, 4, 4)
+
+class ArrangerMouseRegion (KbPlanarArranger):
+    SUFFIX = [ 'c' ]
+    def rearrange (self):
+        placements = {  # coordinates are (row,col)
+            'c': (0,0),
+        }
+        self.grid_rearrange(placements, 12, 12)
+
+class ArrangerJoystick (KbPlanarArranger):
+    # x-, x+, y-, y+, Click
+    SUFFIX = [ 'x-', 'x+', 'y-', 'y+', 'c' ]
+
+    def rearrange (self):
+        placements = {  # coordinates are (row,col)
+            'y-': (0,1),
+            'x-': (1,0),
+            'c': (1,1),
+            'x+': (1,2),
+            'y+': (2,1),
+        }
+        self.grid_rearrange(placements, 4, 4)
+
+class ArrangerTouchmenu (KbPlanarArranger):
+    PLACEMENTS = {
+    2: {
+        '#1': (0,0,6,12),  '#2': (0,6,6,12),
+    },
+    4: {
+        '#1': (0,0,6,6),  '#2': (0,6,6,6),
+        '#3': (6,0,6,6),  '#4': (6,6,6,6),
+    },
+    7: {
+        '#1': (0,2,4,4),  '#2': (0,6,4,4),
+        '#3': (4,0,4,4),  '#4': (4,4,4,4), '#5': (4,8,4,4),
+        '#6': (8,2,4,4),  '#7': (8,6,4,4),
+    },
+    9: {
+        '#1': (0,0,4,4),  '#2': (0,4,4,4), '#3': (0,8,4,4),
+        '#4': (4,0,4,4),  '#5': (4,4,4,4), '#6': (4,8,4,4),
+        '#7': (8,0,4,4),  '#8': (8,4,4,4), '#9': (8,8,4,4),
+    },
+    12: {
+        '#1': (0,0,3,4),  '#2': (0,3,3,4),  '#3': (0,6,3,4),  '#4': (0,9,3,4),
+        '#5': (4,0,3,4),  '#6': (4,3,3,4),  '#7': (4,6,3,4),  '#8': (4,9,3,4),
+        '#9': (8,0,3,4), '#10': (8,3,3,4), '#11': (8,6,3,4), '#12': (8,9,3,4),
+    },
+    13: {
+        '#1': (0,0,3,3),  '#2': (0,3,3,3),  '#3': (0,6,3,3),  '#4': (0,9,3,3),
+        '#5': (3,0,3,3),                                      '#6': (3,9,3,3),
+                                '#13': (3,3,6,6),
+        '#7': (6,0,3,3),                                      '#8': (6,9,3,3),
+        '#9': (9,0,3,3), '#10': (9,3,3,3), '#11': (9,6,3,3), '#12': (9,9,3,3),
+    },
+    16: {
+        '#1': (0,0,3,3),  '#2': (0,3,3,3),  '#3': (0,6,3,3),  '#4': (0,9,3,3),
+        '#5': (3,0,3,3),  '#6': (3,3,3,3),  '#7': (3,6,3,3),  '#8': (3,9,3,3),
+        '#9': (6,0,3,3), '#10': (6,3,3,3), '#11': (6,6,3,3), '#12': (6,9,3,3),
+       '#13': (9,0,3,3), '#14': (9,3,3,3), '#15': (9,6,3,3), '#16': (9,9,3,3),
+    },
+    }
+
+    def __init__ (self, parent, cap=2):
+        KbPlanarArranger.__init__(self, parent)
+        self.set_capacity(cap)
+
+    def build_widget_pool (self):
+        """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+        for ofs in range(1,17):  # Generate '1'..'16' inclusive.
+            suffix = '#{}'.format(ofs)
+            inpsym = self.inpsymof(suffix)
+            if not inpsym in self.parent.kbtops:
+                kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
+                self.parent.kbtops[inpsym] = kbtop
+
+    def set_capacity (self, cap):
+        thresholds = self.PLACEMENTS.keys()
+        thresholds.sort()
+        while len(thresholds) > 0 and thresholds[0] < cap:
+            del thresholds[0]
+        lim = thresholds[0]
+        self.cap = lim
+
+    def rearrange (self):
+        self.parent.detach_all()
+        self.build_widget_pool()
+        for suffix,elt in self.PLACEMENTS[self.cap].iteritems():
+            row, col, xspan, yspan = elt
+            inpsym = self.inpsymof(suffix)
+            kbtop = self.parent.kbtops[inpsym]
+            print("attach %s @ %dx%d+%d+%d" % (inpsym, xspan,yspan, col,row))
+            self.parent.grid.attach(kbtop, col, col+xspan, row, row+yspan)
+        self.parent.show_all()
+
+class ArrangerTouchmenu2 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 2)
+
+class ArrangerTouchmenu4 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 4)
+
+class ArrangerTouchmenu7 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 7)
+
+class ArrangerTouchmenu9 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 9)
+
+class ArrangerTouchmenu12 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 12)
+
+class ArrangerTouchmenu13 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 13)
+
+class ArrangerTouchmenu16 (ArrangerTouchmenu):
+    def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 16)
+
+
+class ArrangerRadialmenu (KbPlanarArranger):
+    def __init__ (self, parent, cap=2):
+        KbPlanarArranger.__init__(self, parent)
+        #self.placements = [ (0,6,1,1), (12,6,1,1) ]
+        self.placements = {
+            '#1':  (0,6),
+            '#2': (12,6),
+        }
+        self.cap = 2
+        self.set_capacity(cap)
+
+    def build_widget_pool (self):
+        """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+        for ofs in range(1,21):  # Generate '1'..'20' inclusive.
+            suffix = '#{}'.format(ofs)
+            inpsym = self.inpsymof(suffix)
+            if not inpsym in self.parent.kbtops:
+                kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
+                self.parent.kbtops[inpsym] = kbtop
+
+    def set_capacity (self, cap=2):
+        if (cap < 1):
+            cap = 1
+        if (cap > 20):
+            cap = 20
+        self.cap = cap
+        # Radial places from top going clockwise.
+        #self.placements = []
+        for idx in range(0, self.cap):
+            angle = idx * (2 * math.pi) / cap
+            theta = math.pi - angle
+            tx = math.cos(theta)
+            ty = math.sin(theta)
+            r = 6
+            row = int((tx * r) + r + .5)
+            col = int((ty * r) + r + .5)
+            #self.placements.append((y,x,1,1))
+            suffix = "#{}".format(idx+1)
+            #inpsym = self.inpsymof(suffix)
+            #self.placements.append((y,x,1,1))
+            self.placements[suffix] = (row, col)
+        print("calc placements = %r" % (self.placements,))
+
+    def rearrange (self):
+        self.grid_rearrange(self.placements)
+
+
+class KbPlanar (gtk.Frame):
+    """Planar control cluster (stick, touchpad, etc.)
+Contents to display are packaged in a data model (InpDescrModel)
+Children are KbTop, but selectively shown and placed to reflect cluster type.
+
+As arrangments can change during run-time, use strategies for rearranging:
+* (d) Dpad : u,d,l,r,c
+* (b) Diamond : n,e,w,s,c
+* (m) Mouse : x,y,c
+* (u) MouseRegion :
+* (j) Joystick {Move,Camera,Mouse} : x-, x+, y-, y+, c
+* (t) Menu.Touch {2,4,7,9,12,13,16) : #1..#16
+* (r) RadialMenu {1..20} : #1..#20
+* (o) OneButton : o
+    """
+
+    def __init__ (self, inpsymprefix, inpdescr=None, vislayers=1):
+        """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
+        # UI elements
+        gtk.Frame.__init__(self)
+        self.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
+        # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
+        self.grid = gtk.Table(12,12,True)
+        self.inpsymprefix = inpsymprefix
+        self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
+        self.inpdescr = inpdescr
+        self.add(self.grid)
+        self.inivislayers = vislayers
+        self.arranger = None
+        #self.arranger = ArrangerDpad(self)
+        #self.arranger = ArrangerDiamond(self)
+        #self.arranger = ArrangerMouse(self)
+        #self.arranger = ArrangerTouchmenu(self)
+        #self.arranger = ArrangerTouchmenu2(self)
+        #self.arranger = self.arrangerTouchmenu(14)
+        #self.arranger = self.arrangerMouseRegion()
+        #self.arranger = self.arrangerJoystick()
+        self.update_display()
+
+    def arrangerDpad (self): return ArrangerDpad(self)
+    def arrangerDiamond (self): return ArrangerDiamond(self)
+    def arrangerButtons (self): return ArrangerButtons(self)
+    def arrangerMouse (self): return ArrangerMouse(self)
+    def arrangerMouseRegion (self): return ArrangerMouseRegion(self)
+    def arrangerJoystick (self): return ArrangerJoystick(self)
+    def arrangerTouchmenu (self, cap=2): return ArrangerTouchmenu(self, cap)
+    def arrangerRadialmenu (self, cap=2): return ArrangerRadialmenu(self, cap)
+
+    def set_arranger (self, arranger):
+        self.arranger = arranger
+        self.arranger.rearrange()
+        self.show_all()
+
+    def get_cluster_type (self):
+        return
+    def set_cluster_type (self, cltype):
+        return
+
+    def update_display (self):
+        self.detach_all()
+        if self.arranger:
+            self.arranger.rearrange()
+        return
+
+    def detach_all (self):
+        for k,v in self.kbtops.iteritems():
+            self.grid.remove(v)
+
+
 class KblayoutWidget (gtk.VBox):
     def __init__ (self, mdl=None):
         gtk.VBox.__init__(self)
@@ -697,6 +1008,7 @@ gobject.signal_new("bind-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gob
 gobject.signal_new("bindid-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("layout-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("dnd-link", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, object, str))
+
 
 
 

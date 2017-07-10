@@ -79,6 +79,84 @@ class TestKblayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
+    def test_kbplanar (self):
+        def on_bindchange(w, *args):
+            pass
+        mdl = kblayout.InpDescrModel(1)
+        mdl.connect("bind-changed", on_bindchange)
+
+        w = gtk.Window()
+        w.set_title("Test KbTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = kblayout.KbPlanar("L", mdl)
+        layout.pack_start(b, expand=False, fill=False, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        w.show_all()
+
+        playback = [ lambda: None,
+                     1,
+                     lambda: mdl.set_label("Lu", "Lu"),
+                     1,
+                     lambda: mdl.set_bind(0, "Lu", "test_changer"),
+                     2
+                     ]
+
+        self.runloop(playback)
+        self.assertEqual(b.inp_lbl.get_text(), "TEST")
+        #time.sleep(4)
+        w.hide()
+
+    def test_kbplanar_radial_calc (self):
+        def on_bindchange(w, *args):
+            pass
+        mdl = kblayout.InpDescrModel(1)
+        mdl.connect("bind-changed", on_bindchange)
+
+        w = gtk.Window()
+        w.set_title("Test KbTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = kblayout.KbPlanar("L", mdl)
+        b.set_arranger(b.arrangerRadialmenu(3))
+        layout.pack_start(b, expand=False, fill=False, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        w.show_all()
+
+        playback = [ lambda: None,
+                     1,
+		     lambda: b.set_arranger(b.arrangerRadialmenu(4)),
+                     1,
+		     lambda: b.set_arranger(b.arrangerRadialmenu(7)),
+                     1,
+		     lambda: b.set_arranger(b.arrangerRadialmenu(10)),
+                     1,
+		     lambda: b.set_arranger(b.arrangerRadialmenu(14)),
+                     1,
+		     lambda: b.set_arranger(b.arrangerRadialmenu(16)),
+                     1,
+		     lambda: b.set_arranger(b.arrangerRadialmenu(20)),
+                     1,
+                     2
+                     ]
+
+        self.runloop(playback)
+        self.assertEqual(b.inp_lbl.get_text(), "TEST")
+        #time.sleep(4)
+        w.hide()
+
     def test_kblayout (self):
         mdl = kblayout.InpDescrModel(1)
         class KblayoutWindow (gtk.Window):
