@@ -1090,11 +1090,6 @@ class VisMapperApp (object):
         return self.models.bindstore.cmdsuri
     def set_cmdsuri (self, val):
         self.models.bindstore.cmdsuri = val
-#        if not self.cmdsrc:
-#            try:
-#                self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
-#            except sqlite3.OperationalError:
-#                self.cmdsrc = CommandsFallback()
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
     def cmds_in_place (self):
