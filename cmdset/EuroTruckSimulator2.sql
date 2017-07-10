@@ -28,6 +28,8 @@ INSERT INTO modes VALUES
  (NULL, 'Menu'),
  (NULL, 'Game');
 
+INSERT INTO cmd VALUES (NULL, 0, 'Menu', 'Escape', NULL, NULL);
+INSERT INTO cmd VALUES (NULL, 0, 'Menu', 'Pause', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 0, 'Menu', 'Mouse Motion', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 0, 'Menu', 'Mouse1', NULL, NULL);
 INSERT INTO cmd VALUES (NULL, 0, 'Menu', 'Mouse2', NULL, NULL);

@@ -141,7 +141,7 @@ class Store (object):
             self.inpdescr
         except AttributeError:
             self.inpdescr = kblayout.InpDescrModel(self._nummodes, self._numlevels)
-        # TODO: clear inpdescr
+        self.inpdescr.clear()
         self.fname = None
         self.cmdsuri = None
 
