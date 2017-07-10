@@ -93,23 +93,57 @@ class TestKblayout(unittest.TestCase):
         w.add(layout)
 
         b = kblayout.KbPlanar("L", mdl)
-        layout.pack_start(b, expand=False, fill=False, padding=0)
+#        b.set_arranger(b.arrangerDpad())
+        #layout.pack_start(b, expand=False, fill=False, padding=0)
+        layout.pack_start(b, expand=True, fill=True, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
-        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+        #layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        def use_arranger (arranger):
+            b.set_arranger(arranger)
+            lbl.set_label("Testing: %s " % b.get_arranger())
+        use_arranger(b.arrangerOneButton())
 
         w.show_all()
 
         playback = [ lambda: None,
-                     1,
-                     lambda: mdl.set_label("Lu", "Lu"),
-                     1,
-                     lambda: mdl.set_bind(0, "Lu", "test_changer"),
-                     2
+                     2,
+                     lambda: use_arranger(b.arrangerDpad()),
+                     2,
+                     lambda: use_arranger(b.arrangerMouse()),
+                     2,
+                     lambda: use_arranger(b.arrangerDiamond()),
+                     2,
+                     lambda: use_arranger(b.arrangerJoystick()),
+                     2,
+                     lambda: use_arranger(b.arrangerTouchmenu()),
+                     2,
+                     lambda: use_arranger(b.arrangerTouchmenu(4)),
+                     2,
+                     lambda: use_arranger(b.arrangerTouchmenu(10)),
+                     2,
+                     lambda: use_arranger(b.arrangerTouchmenu(20)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(2)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(3)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(4)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(7)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(8)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(12)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(15)),
+                     2,
+                     lambda: use_arranger(b.arrangerRadialmenu(20)),
+                     2,
                      ]
 
         self.runloop(playback)
-        self.assertEqual(b.inp_lbl.get_text(), "TEST")
         #time.sleep(4)
         w.hide()
 
@@ -137,17 +171,17 @@ class TestKblayout(unittest.TestCase):
 
         playback = [ lambda: None,
                      1,
-		     lambda: b.set_arranger(b.arrangerRadialmenu(4)),
+                     lambda: b.set_arranger(b.arrangerRadialmenu(4)),
                      1,
-		     lambda: b.set_arranger(b.arrangerRadialmenu(7)),
+                     lambda: b.set_arranger(b.arrangerRadialmenu(7)),
                      1,
-		     lambda: b.set_arranger(b.arrangerRadialmenu(10)),
+                     lambda: b.set_arranger(b.arrangerRadialmenu(10)),
                      1,
-		     lambda: b.set_arranger(b.arrangerRadialmenu(14)),
+                     lambda: b.set_arranger(b.arrangerRadialmenu(14)),
                      1,
-		     lambda: b.set_arranger(b.arrangerRadialmenu(16)),
+                     lambda: b.set_arranger(b.arrangerRadialmenu(16)),
                      1,
-		     lambda: b.set_arranger(b.arrangerRadialmenu(20)),
+                     lambda: b.set_arranger(b.arrangerRadialmenu(20)),
                      1,
                      2
                      ]

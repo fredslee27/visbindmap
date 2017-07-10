@@ -561,16 +561,22 @@ gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NON
 
 
 class KbPlanarArranger (object):
-    SUFFIX = [ 'o' ]
+    W = 12
+    H = 12
+    SIMPLE_PLACEMENTS = { }
     def __init__ (self, parent):
         self.parent = parent
-
-    def rearrange (self):
-        raise NotImplementedError("rearrange() not implemented for {}".format(self.__class__.__name__))
+        transform_placements = False
+        if self.SIMPLE_PLACEMENTS:
+            self.placements = dict()
+            for k,v in self.SIMPLE_PLACEMENTS.iteritems():
+                row,col = v
+                self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
 
     def build_widget_pool (self):
         """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
-        for suffix in self.SUFFIX:
+        suffices = self.placements.keys()
+        for suffix in suffices:
             inpsym = self.inpsymof(suffix)
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
@@ -579,89 +585,92 @@ class KbPlanarArranger (object):
     def inpsymof (self, suffix):
         return "{}{}".format(self.parent.inpsymprefix, suffix)
 
-    def grid_rearrange (self, placements, xspan=1, yspan=1):
+    def full_rearrange (self, placements):
         """Common case of gridded arrangement, where
-placements = dict of kbtop suffix to (row,col) tuple
-xspan = column span multiplier for widget (LCD number of cells)
-yspan = row span multipler for widget
+placements = dict of kbtop suffix to (row,col, width,height) tuple
 """
         self.parent.detach_all()
         self.build_widget_pool()
-        for suffix,coord in placements.iteritems():
-            row,col = coord
+        for suffix,elt in placements.iteritems():
+            row,col,xspan,yspan = elt
             inpsym = self.inpsymof(suffix)
-            left = col * xspan
-            right = (col+1)*xspan
-            top = row * yspan
-            bottom = (row+1) * yspan
+            left = col
+            right = col + xspan
+            top = row
+            bottom = row + yspan
             kbtop = self.parent.kbtops[inpsym]
             self.parent.grid.attach(kbtop, left, right, top, bottom)
         self.parent.show_all()
 
+    def rearrange (self):
+        self.full_rearrange(self.placements)
+
+    def __repr__ (self):
+        return "{!s}()".format(self.__class__.__name__)
+
+class ArrangerOneButton (KbPlanarArranger):
+    W = 12
+    H = 12
+    SIMPLE_PLACEMENTS = {
+           # (row,col, colspan,rowspan)
+        'o': (0,0),
+    }
+
 class ArrangerDpad (KbPlanarArranger):
     # Up Down Left Right Center/Click
-    SUFFIX = [ 'u', 'd', 'l', 'r', 'c' ]
-
-    def rearrange (self):
-        placements = {  # coordinates are (row,col)
-            'u': (0,1),
-            'l': (1,0),
-            'c': (1,1),
-            'r': (1,2),
-            'd': (2,1),
-        }
-        self.grid_rearrange(placements, 4, 4)
+    W = 4
+    H = 4
+    SIMPLE_PLACEMENTS = {
+        'u': (0,1),
+        'l': (1,0),
+        'c': (1,1),
+        'r': (1,2),
+        'd': (2,1),
+    }
 
 class ArrangerDiamond (KbPlanarArranger):
     # North East West South Click/Center
-    SUFFIX = [ 'n', 'e', 'w', 's', 'c' ]
-
-    def rearrange (self):
-        placements = {  # coordinates are (row,col)
-            'n': (0,1),
-            'w': (1,0),
-            'c': (1,1),
-            'e': (1,2),
-            's': (2,1),
-        }
-        self.grid_rearrange(placements, 4, 4)
+    W = 4
+    H = 4
+    SIMPLE_PLACEMENTS = {
+        'n': (0,1),
+        'w': (1,0),
+#        'c': (1,1),
+        'e': (1,2),
+        's': (2,1),
+    }
 
 class ArrangerMouse (KbPlanarArranger):
     # x, y, Click
-    SUFFIX = [ 'x', 'y', 'c' ]
-
-    def rearrange (self):
-        placements = {  # coordinates are (row,col)
-            'c': (1,1),
-            'x': (1,2),
-            'y': (2,1),
-        }
-        self.grid_rearrange(placements, 4, 4)
+    W = 4
+    H = 4
+    SIMPLE_PLACEMENTS = {
+        'c': (1,1),
+        'x': (1,2),
+        'y': (2,1),
+    }
 
 class ArrangerMouseRegion (KbPlanarArranger):
-    SUFFIX = [ 'c' ]
-    def rearrange (self):
-        placements = {  # coordinates are (row,col)
-            'c': (0,0),
-        }
-        self.grid_rearrange(placements, 12, 12)
+    W = 12
+    H = 12
+    SIMPLE_PLACEMENTS = {
+        'c': (0,0),
+    }
 
 class ArrangerJoystick (KbPlanarArranger):
     # x-, x+, y-, y+, Click
-    SUFFIX = [ 'x-', 'x+', 'y-', 'y+', 'c' ]
-
-    def rearrange (self):
-        placements = {  # coordinates are (row,col)
-            'y-': (0,1),
-            'x-': (1,0),
-            'c': (1,1),
-            'x+': (1,2),
-            'y+': (2,1),
-        }
-        self.grid_rearrange(placements, 4, 4)
+    W = 4
+    H = 4
+    SIMPLE_PLACEMENTS = {
+        'y-': (0,1),
+        'x-': (1,0),
+        'c':  (1,1),
+        'x+': (1,2),
+        'y+': (2,1),
+    }
 
 class ArrangerTouchmenu (KbPlanarArranger):
-    PLACEMENTS = {
+    ALL_PLACEMENTS = {
     2: {
         '#1': (0,0,6,12),  '#2': (0,6,6,12),
     },
@@ -713,23 +722,19 @@ class ArrangerTouchmenu (KbPlanarArranger):
                 self.parent.kbtops[inpsym] = kbtop
 
     def set_capacity (self, cap):
-        thresholds = self.PLACEMENTS.keys()
+        thresholds = self.ALL_PLACEMENTS.keys()
         thresholds.sort()
-        while len(thresholds) > 0 and thresholds[0] < cap:
+        while len(thresholds) > 1 and thresholds[0] < cap:
             del thresholds[0]
         lim = thresholds[0]
         self.cap = lim
 
-    def rearrange (self):
-        self.parent.detach_all()
-        self.build_widget_pool()
-        for suffix,elt in self.PLACEMENTS[self.cap].iteritems():
-            row, col, xspan, yspan = elt
-            inpsym = self.inpsymof(suffix)
-            kbtop = self.parent.kbtops[inpsym]
-            print("attach %s @ %dx%d+%d+%d" % (inpsym, xspan,yspan, col,row))
-            self.parent.grid.attach(kbtop, col, col+xspan, row, row+yspan)
-        self.parent.show_all()
+    @property
+    def placements (self):
+        return self.ALL_PLACEMENTS[self.cap]
+
+    def __repr__ (self):
+        return "{!s}({})".format(self.__class__.__name__, self.cap)
 
 class ArrangerTouchmenu2 (ArrangerTouchmenu):
     def __init__ (self, parent): ArrangerTouchmenu.__init__(self, parent, 2)
@@ -784,20 +789,18 @@ class ArrangerRadialmenu (KbPlanarArranger):
         for idx in range(0, self.cap):
             angle = idx * (2 * math.pi) / cap
             theta = math.pi - angle
+            w, h = 1, 1
             tx = math.cos(theta)
             ty = math.sin(theta)
             r = 6
             row = int((tx * r) + r + .5)
             col = int((ty * r) + r + .5)
-            #self.placements.append((y,x,1,1))
             suffix = "#{}".format(idx+1)
-            #inpsym = self.inpsymof(suffix)
-            #self.placements.append((y,x,1,1))
-            self.placements[suffix] = (row, col)
-        print("calc placements = %r" % (self.placements,))
+            self.placements[suffix] = (row, col, w,h)
+        return
 
-    def rearrange (self):
-        self.grid_rearrange(self.placements)
+    def __repr__ (self):
+        return "{!s}({:d})".format(self.__class__.__name__, self.cap)
 
 
 class KbPlanar (gtk.Frame):
@@ -839,6 +842,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         #self.arranger = self.arrangerJoystick()
         self.update_display()
 
+    def arrangerOneButton (self): return ArrangerOneButton(self)
     def arrangerDpad (self): return ArrangerDpad(self)
     def arrangerDiamond (self): return ArrangerDiamond(self)
     def arrangerButtons (self): return ArrangerButtons(self)
@@ -848,6 +852,8 @@ As arrangments can change during run-time, use strategies for rearranging:
     def arrangerTouchmenu (self, cap=2): return ArrangerTouchmenu(self, cap)
     def arrangerRadialmenu (self, cap=2): return ArrangerRadialmenu(self, cap)
 
+    def get_arranger (self):
+        return self.arranger
     def set_arranger (self, arranger):
         self.arranger = arranger
         self.arranger.rearrange()
@@ -866,7 +872,8 @@ As arrangments can change during run-time, use strategies for rearranging:
 
     def detach_all (self):
         for k,v in self.kbtops.iteritems():
-            self.grid.remove(v)
+            if v.get_parent() != None:
+                self.grid.remove(v)
 
 
 class KblayoutWidget (gtk.VBox):
