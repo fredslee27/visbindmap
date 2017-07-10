@@ -222,6 +222,7 @@ def build_treestore_from_commands(cmds_db, treestore=None):
 
 
 class CmdStore (gtk.TreeStore):
+    """GUI data model for list of commands available for binding."""
     def __init__ (self, cmds_db=None):
         #                            id, cmd, display, hint
         gtk.TreeStore.__init__(self,  int, str, str, str)
@@ -392,6 +393,76 @@ class Commands (object):
 
     def build_treestore (self, store):
         return build_treestore_from_commands(self, store)
+
+
+class CommandsFallback (Commands):
+    """Minimalist hardcoded/builtin command set in case cmds.sqlite3 fails to read."""
+    MODES = [ "Menu", "Game" ]
+    COMMANDS = [
+        # Layer: [ tuples... ]
+        ("Shifter", [ ("^1",), ("^2",), ("^3",), ("^4",), ("^5",) ] ),
+        ("Menu", [
+            # Tuples (command_codename, displayed_name, hint)
+            ("Pause", None, None),
+            ("Minimize", None, None),
+            ]),
+        ("Game", [
+            ("Up",), ("Down",), ("Left",), ("Right",),
+            ("Jump",), ("Action",),
+            ]),
+        ]
+    def __init__ (self, _=None):
+        self.dbname = None
+        self.packname = "(builtin)"
+        cmdid, grpid = 1, 0
+        self.commands = []
+        for grp in self.COMMANDS:
+            grpname, grpdata = grp
+            for cmdentry in grpdata:
+                cmd, lbl, hint = None, None, None
+                try:
+                    cmd = cmdentry[0]
+                    lbl = cmdentry[1]
+                    hint = cmdentry[2]
+                except IndexError:
+                    lbl = cmd
+                row = (cmdid, grpid, grpname, cmd, lbl, hint)
+                self.commands.append(row)
+                cmdid += 1
+            grpid += 1
+
+    def get_name (self): return self.packname
+    def set_name (self, val): self.packname = val
+    def get_modes (self): return self.MODES
+    def get_groups (self): return [ x[0] for x in self.COMMANDS ]
+    groups = property(get_groups)
+    def get_by_id (self, val):
+        # TODO: look through tree model instead?
+        if val is None: return ( None, 0x1f, "", "", "", "" )
+
+        result = [ x for x in self.commands if x[0] == val ][0]
+        if result:
+            if not result[4]:
+                result = result[:4] + (result[3],) + result[5:]
+            return result
+        else:
+            return None
+
+    def get_count (self): return len(self.commands)
+
+    def find (self, cmdname):
+        if cmdname is None: return None
+
+        try:
+            return [ x for x in self.commands if x[3] == cmdname ][0]
+        except IndexError:
+            return -1
+
+    def __iter__ (self):
+        for row in self.commands:
+            yield row
+        raise StopIteration()
+
 
 
 class VisCmds (gtk.VBox):
@@ -1019,13 +1090,19 @@ class VisMapperApp (object):
         return self.models.bindstore.cmdsuri
     def set_cmdsuri (self, val):
         self.models.bindstore.cmdsuri = val
-        if not self.cmdsrc:
-            self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
+#        if not self.cmdsrc:
+#            try:
+#                self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
+#            except sqlite3.OperationalError:
+#                self.cmdsrc = CommandsFallback()
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
     def cmds_in_place (self):
         if self.models.bindstore.cmdsuri:
-            self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
+            try:
+                self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
+            except sqlite3.OperationalError:
+                self.cmdsrc = CommandsFallback()
             self.models.cmdstore.clear()
             self.models.cmdstore.import_commands(self.cmdsrc)
             self.models.modestore.clear()
