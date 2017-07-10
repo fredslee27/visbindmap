@@ -50,6 +50,10 @@ Multiple layers attach to a group.
         # if the binding resolution fails, borrow from the fallback layer.
         self._fallback = None
 
+    def clear (self):
+        self._binds = dict()
+        return
+
     def get_bind (self, k):
         retval = None
         if self._binds.has_key(k):
@@ -112,6 +116,11 @@ Multiple layers attach to a group.
             for i in range(groupnum):
                 fallback = max(i-1, 0)
                 self.layers.append(InpLayer(i, fallback, None))
+
+    def clear (self):
+        for lyr in self.layers:
+            lyr.clear()
+        return
 
     def get_layermap (self, n):
         return self.layers[n]
@@ -185,6 +194,13 @@ class InpDescrModel (gobject.GObject):
         self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
         self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
         self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
+
+    def clear (self):
+        for grp in self.groups:
+            grp.clear()
+        self.set_group(0)
+        self.set_layer(0)
+        return
 
     def restore (self, other):
         if not other:
