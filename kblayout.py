@@ -438,7 +438,7 @@ class KbTop (gtk.Button):
         self.bg_bind = gtk.EventBox()
 
         self.inp_binds = []
-        self.lvl_lbls = []
+        self.lyr_lbls = []
         self.bg_binds = []
         self.inp_box = None
 
@@ -465,8 +465,8 @@ class KbTop (gtk.Button):
         self.inp_binds = [ gtk.Label() for n in range(m) ]
         # Background for binding displays.
         self.bg_binds = [ gtk.EventBox() for n in range(m) ]
-        # label for binding display levels.
-        self.lvl_lbls = [ gtk.Label() for n in range(m) ]
+        # label for binding display layers.
+        self.lyr_lbls = [ gtk.Label() for n in range(m) ]
 
         # set up droppable binding display (dressed up as a text entry).
         temp = gtk.Entry()  # copy style from Entry.
@@ -487,7 +487,7 @@ class KbTop (gtk.Button):
 
             #self.inp_box.pack_start(bg, expand=False, fill=False)
             bindline = gtk.HBox()
-            bindline.pack_start(self.lvl_lbls[i], expand=False, fill=False)
+            bindline.pack_start(self.lyr_lbls[i], expand=False, fill=False)
             bindline.pack_start(bg, expand=True, fill=True)
             self.inp_box.pack_start(bindline, expand=False, fill=False)
         self.align1.add(self.inp_box)
@@ -555,11 +555,11 @@ class KbTop (gtk.Button):
                 bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
             val = self.inpdescr.resolve_bind_markup(self.inpsym, layer=layernum)
             self.inp_binds[i].set_markup(val)
-            # install level prefix for multi-level view.
+            # install layer prefix for multi-layer view.
             if self.vislayers > 1:
-                self.lvl_lbls[i].set_markup("<small>%s:</small>" % layernum)
+                self.lyr_lbls[i].set_markup("<small>%s:</small>" % layernum)
             else:
-                self.lvl_lbls[i].set_text("")
+                self.lyr_lbls[i].set_text("")
 
     def on_data_change (self, *args):
         self.update_display()
