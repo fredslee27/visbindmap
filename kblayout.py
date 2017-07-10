@@ -892,13 +892,25 @@ As arrangments can change during run-time, use strategies for rearranging:
         """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
         # UI elements
         gtk.EventBox.__init__(self)
+
+        self.inpsymprefix = inpsymprefix
+        self.inpdescr = inpdescr
+        self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
+
         self.frame = gtk.Frame(inpsymprefix)
         self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
+        self.frame_title = gtk.HBox()
+        self.frame_lbl_sym = gtk.Label()
+        #self.frame_lbl_sym.set_markup("<a href='#a'>{}</a>".format(self.inpsymprefix))
+        self.frame_btn = gtk.Button(unichr(0x2026))
+        self.frame_btn.set_tooltip_text("Change variant for this planar cluster")
+        self.frame_title.pack_start(self.frame_btn, False, False, 0)
+        self.frame_title.pack_start(self.frame_lbl_sym, False, False, 0)
+        self.frame.set_label_widget(self.frame_title)
+
+
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
         self.grid = gtk.Table(12,12,True)
-        self.inpsymprefix = inpsymprefix
-        self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
-        self.inpdescr = inpdescr
 
         self.frame.add(self.grid)
         self.add(self.frame)
@@ -950,7 +962,9 @@ As arrangments can change during run-time, use strategies for rearranging:
         else:
             self.arranger = arranger
         self.arranger.rearrange()
-        self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
+        #self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
+        self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
+        #self.frame_lbl_sym.set_markup("<a href='#a'>{} &lt;{!s}&gt;</a>".format(self.inpsymprefix, self.arranger.NAME))
         self.show_all()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
         self.inpdescr.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
@@ -1053,6 +1067,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 
     def connect_ctxmenu (self):
         self.connect("button-press-event", self.on_button_press)
+        self.frame_btn.connect("clicked", self.on_cluster_menu)
 
     def on_button_press (self, w, ev):
         if ev.button == 3:
@@ -1064,6 +1079,10 @@ As arrangments can change during run-time, use strategies for rearranging:
             except AttributeError:
                 pass
         return False
+
+    def on_cluster_menu (self, w, *args):
+        self.ctxmenu.popup(None,None,None,1,0)
+        return True
 
     def on_context_menuitem (self, w, userdata):
         arranger = userdata
