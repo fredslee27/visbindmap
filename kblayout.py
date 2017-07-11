@@ -983,28 +983,91 @@ class KbMenuList (gtk.ScrolledWindow):
 
     def setup_dnd (self):
         """Set up drag-and-drop."""
-        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 10) ]
+        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 10),
+                        ("GTK_TREE_MODEL_ROW", gtk.TARGET_SAME_WIDGET, 11), ]
         dnd_actions = gtk.gdk.ACTION_LINK
         self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
         self.treeview.connect("drag-drop", self.on_drop)
         self.treeview.connect("drag-data-received", self.on_drag_data_received)
+
+        dnd_targets = [ ("GTK_TREE_MODEL_ROW", gtk.TARGET_SAME_WIDGET, 11) ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.treeview.connect("drag-data-get", self.on_drag_data_get)
+#        self.treeview.set_reorderable(True)
+
         self.droppath = None
+
+    def on_rows_reordered (self, mdl, path, treeiter, new_order, *args):
+        print("reordered")
+        pass
 
     def on_drop (self, w, ctx, x, y, time, *args):
         """Drop started; ask for data."""
-        w.drag_get_data(ctx, "STRING", time)
+        print("on_drop, %r" % (ctx.targets,))
+        if "GTK_TREE_MODEL_ROW" in ctx.targets:
+            w.drag_get_data(ctx, "GTK_TREE_MODEL_ROW", time)
+        elif "bind" in ctx.targets:
+            w.drag_get_data(ctx, "STRING", time)
+
+        tx, ty = x, y
+#        if ctx.get_source_widget() != w:
+#            tx, ty = w.convert_widget_to_bin_window_coords(x,y)
+        tx, ty = w.convert_widget_to_bin_window_coords(x,y)
+        self.droppath = w.get_path_at_pos(tx, ty)
+
+        return False
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        print("<drag-data-get : targets = %r" % (ctx.targets,))
+        treesel = w.get_selection()
+        mdl, pathsels = treesel.get_selected_rows()
+        #mdl.drag_data_get(pathsels[0], seldata)
+        res = seldata.tree_set_row_drag_data(mdl, pathsels[0])
+        print("<res = %r : %r" % (res, seldata.get_targets()))
+        #seldata.tree_set_row_drag_data(self.scratch, (0,))
+#        chk = seldata.tree_get_row_drag_data()
+#        print("<chk = %r" % (chk,))
         return False
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
         """Data that was asked for is now received."""
+        print(">drag-data-received: %r" % ( ctx.targets,))
         srcw = ctx.get_source_widget()
-        seltext = sel.get_text()
-        ctx.finish(True, False, time)
-        tx, ty = w.convert_widget_to_bin_window_coords(x,y)
-        droppath = w.get_path_at_pos(tx,ty)
-        if droppath:
-            treepath = droppath[0]
-            self.drop_in_bind(treepath, seltext)
+#        tx, ty = x, y
+#        if srcw != w:
+#            tx, ty = w.convert_widget_to_bin_window_coords(x,y)
+#        droppath = w.get_path_at_pos(tx,ty)
+        droppath = self.droppath
+        print("droppath ?= %r" % (droppath,))
+        if "GTK_TREE_MODEL_ROW" in ctx.targets:
+            if srcw == w:
+                # Same widget
+                if self.droppath:
+                    treepath = self.droppath[0]
+                    self.droppath = None
+                    treesel = sel.tree_get_row_drag_data()
+                    mdl, path = treesel
+                    print(">  reorder %r, %r" % (path, treepath))
+                    self.drop_reorder(path, treepath)
+                    ctx.finish(True, False, time)
+                    return True
+                return False
+            else:
+                ctx.drag_status(gtk.gdk.ACTION_COPY, time)
+                return False
+        elif "bind" in ctx.targets:
+            if self.droppath:
+                treepath = droppath[0]
+                self.droppath = None
+                seltext = sel.get_text()
+                print(">  drop-bind")
+                self.drop_in_bind(treepath, seltext)
+                ctx.finish(True, False, time)
+                return True
+            else:
+                ctx.drag_status(gtk.gdk.ACTION_LINK, time)
+                return False
         return False
 
     def drop_in_bind (self, treepath, newval):
@@ -1012,6 +1075,20 @@ class KbMenuList (gtk.ScrolledWindow):
         inpsym = self.scratch[treepath][0]
         self.inpdescr.set_bind(inpsym, newval)
         # Update inpdescr model, then rely on signals to auto-update scratch.
+        return
+
+    def drop_reorder (self, oldpath, newpath):
+#        deliter = self.scratch.get_iter(oldpath)
+        for i in range(0, len(self.scratch)):
+            inpsym = "{}{}".format(self.inpsymprefix, i)
+            self.scratch[i][0] = inpsym
+        ordering = range(len(self.scratch))
+        self.scratch.reorder(ordering)
+#        self.scratch.remove(deliter)
+        print("dump:")
+        for row in self.scratch:
+            print(row[0])
+        return
 
     def pull_data (self):
         """Synchronize .scratch based on InpDescrModel"""
