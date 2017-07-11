@@ -333,6 +333,43 @@ class TestKblayout(unittest.TestCase):
         self.runloop(playback)
         w.hide()
 
+    def test_change_vislayers (self):
+        mdl = kblayout.InpDescrModel(1,8)
+        ds = kblayout.InpDisplayState(mdl)
+
+        w = gtk.Window()
+        w.set_title("Test KbTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = kblayout.KbTop("K_TEST", ds)
+        layout.pack_start(b, expand=False, fill=False, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        w.show_all()
+
+        playback = [ lambda: None,
+                     1,
+                     lambda: mdl.set_label("K_TEST", "TEST"),
+                     1,
+                     lambda: mdl.set_bind("K_TEST", "test_changer", 0, 0),
+                     2,
+                     lambda: ds.set_vislayers(2),
+                     2
+                     ]
+
+        self.runloop(playback)
+        self.assertEqual(b.inp_lbl.get_text(), "TEST")
+        self.assertEqual(b.inp_binds[1].get_text(), "test_changer")
+        self.assertEqual(ds.get_vislayers(), 2)
+        self.assertEqual(b.vislayers, 2)
+        #time.sleep(4)
+        w.hide()
+
 
 
 if __name__ == '__main__':

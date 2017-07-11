@@ -589,6 +589,31 @@ class KbBindable (object):
         self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
         self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
 
+    @property
+    def layer (self): return self.dispstate.get_layer()
+    @layer.setter
+    def set_layer (self, val): self.dispstate.set_layer(val)
+    @property
+    def group (self): return self.dispstate.get_group()
+    @group.setter
+    def set_group (self, val): self.dispstate.set_group(val)
+    @property
+    def vislayers (self): return self.dispstate.get_vislayers()
+    @vislayers.setter
+    def set_vislayers (self, val):
+        logger.debug("changing vislayers")
+        self.dispstate.set_vislayers(val)
+    def get_bind (self, inpsym, group=None, layer=None):
+        return self.dispstate.get_bind(inpsym, group, layer)
+    def set_bind (self, inpsym, v, group=None, layer=None):
+        self.dispstate.set_bind(inpsym, v, group, layer)
+    def resolve_bind (self, inpsym, group=None, layer=None):
+        return self.dispstate.resolve_bind(inpsym, group, layer)
+    def resolve_bind_markup (self, inpsym, group=None, layer=None):
+        return self.dispstate.resolve_bind_markup(inpsym, group, layer)
+    def swap_bind (self, firstsym, secondsym, group=None, layer=None):
+        return self.dispstate.swap_bind(firstsym, secondsym, group, layer)
+
     def on_display_adjusted (self, dispstate, *args):
         self.update_display()
 
@@ -616,25 +641,9 @@ class KbTop (gtk.Button, KbBindable):
         self.plane = gtk.VBox()
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
-#        self.vislayers = vislayers  # Visible layers.
-
-        # data model
-#        self.set_model(inpdescr)
-#        self.inpdescr = inpdescr
-#        self.inpsym = inpsym
-#        self._baselayer = 0  # partial layers view; what the lowest layer number is.
-#        self._layer = 0  # Currently active layer shown.
-#        self._group = 0  # Currently active group shown.
 
         # Fill label (first row)
         self.label = self.dispstate.inpdescr.get_label(self.inpsym)
-        #self.set_keytop(self.label)
-
-#        # Adjust bind display (second row)
-#        self.inp_bind.set_width_chars(4)
-#        self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
-
-        self.setup_dnd()
 
         # Alignment widget.
         self.align0 = gtk.Alignment(0, 0, 0, 0)
@@ -655,14 +664,13 @@ class KbTop (gtk.Button, KbBindable):
 
         self.uibuild_binddisplays()
 
-        #self.inp_box.pack_start(temp)
-        #self.align1.add(self.inp_box)
         self.box_bind.add(self.align1)
 
         self.plane.pack_start(self.box_bind, expand=False, fill=False)
 
         self.add(self.plane)
 
+        self.setup_dnd()
         self.update_display()
 
     def uibuild_binddisplays (self):
@@ -683,7 +691,7 @@ class KbTop (gtk.Button, KbBindable):
         temp = gtk.Entry()  # copy style from Entry.
         self.refstyle = refstyle = temp.get_style().copy()
         # Prepare multi-layer view.
-        for i in range(0, self.dispstate.vislayers):
+        for i in range(0, self.vislayers):
             ib = self.inp_binds[i]
             ib.set_alignment(0, 0.5)
             ib.set_width_chars(4)
@@ -710,25 +718,6 @@ class KbTop (gtk.Button, KbBindable):
     def set_inpsym (self, val):
         self.inpsym = val
 
-#    def get_vislayers (self):
-#        return self.vislayers
-#    def set_vislayers (self, v):
-#        self.vislayers = v
-#        self.uibuild_binddisplays()
-
-#    def get_model (self):
-#        return self.inpdescr
-#    def set_model (self, mdl):
-#        if mdl is None:
-#            mdl = InpDescrModel()
-#        self.inpdescr = mdl
-#        if self.inpdescr:
-#            self.inpdescr.connect("bind-changed", self.on_data_change)
-#            self.inpdescr.connect("label-changed", self.on_data_change)
-#            self.inpdescr.connect("layer-changed", self.on_layer_change)
-#            self.inpdescr.connect("group-changed", self.on_group_change)
-#        # self.emit("data-model-changed")
-
     def set_keytop (self, disp):
         if len(disp) > 2:
             self.inp_lbl.set_markup("<small>%s</small>" % disp)
@@ -742,16 +731,17 @@ class KbTop (gtk.Button, KbBindable):
         lbl = self.dispstate.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
         # Update binding display
-        groupnum = self.dispstate.group
-        layernum = self.dispstate.layer
+        self.uibuild_binddisplays()
+        groupnum = self.group
+        layernum = self.layer
         layermap = self.dispstate.get_layermap(layernum)
 
-        self._baselayer = self.dispstate.vislayers * (self.dispstate.layer / self.dispstate.vislayers)
-        bindidx = self.dispstate.vislayers - (self.dispstate.layer - self._baselayer) - 1
+        self._baselayer = self.vislayers * (self.layer / self.vislayers)
+        bindidx = self.vislayers - (self.layer - self._baselayer) - 1
 
-        for i in range(self.dispstate.vislayers):
+        for i in range(self.vislayers):
             bg = self.bg_binds[i]
-            layernum = self._baselayer + (self.dispstate.vislayers - i) - 1
+            layernum = self._baselayer + (self.vislayers - i) - 1
             if i == bindidx:
                 # highlighted layer.
                 refstyle = self.refstyle.base
@@ -766,22 +756,14 @@ class KbTop (gtk.Button, KbBindable):
                 bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
                 bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
                 bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
-            val = self.dispstate.resolve_bind_markup(self.inpsym, layer=layernum)
+            val = self.resolve_bind_markup(self.inpsym, layer=layernum)
             self.inp_binds[i].set_markup(val)
             # install layer prefix for multi-layer view.
-            if self.dispstate.vislayers > 1:
+            if self.vislayers > 1:
+                logger.debug("multi-vislayers")
                 self.lyr_lbls[i].set_markup("<small>%s:</small>" % layernum)
             else:
                 self.lyr_lbls[i].set_text("")
-
-#    def on_data_change (self, *args):
-#        self.update_display()
-#    def on_layer_change (self, inpdescr, layernum, *args):
-#        self._layer = layernum
-#        self.update_display()
-#    def on_group_change (self, inpdescr, groupnum, *args):
-#        self._group = groupnum
-#        self.update_display()
 
     def setup_dnd (self):
         # Set up drag-and-drop for KbTop.
@@ -824,7 +806,7 @@ class KbTop (gtk.Button, KbBindable):
     def on_drag_end (self, w, ctx, *args):
         if self.pending_drag_unbinding:
             logger.debug("kbtop unbind %s" % self.inpsym)
-            self.dispstate.set_bind(self.inpsym, "")
+            self.set_bind(self.inpsym, "")
             self.pending_drag_unbinding = False
         return
 
@@ -835,13 +817,13 @@ class KbTop (gtk.Button, KbBindable):
             # Commands dropping.
             seltext = seldata.data
             logger.debug("kbtop Command install: %s <= %s" % (w.inpsym, seltext))
-            self.dispstate.set_bind(self.inpsym, seltext)
+            self.set_bind(self.inpsym, seltext)
             ctx.finish(True, False, 0)
             return True
         elif info == DndOpcodes.SWAP:
             othersym = seldata.data
             logger.debug("kbtop Command swap: %s <=> %s" % (w.inpsym, othersym))
-            self.dispstate.swap_bind(w.inpsym, othersym)
+            self.swap_bind(w.inpsym, othersym)
             ctx.finish(True, False, 0)
             return True
 
@@ -1805,9 +1787,10 @@ class KblayoutWidget (gtk.VBox):
         return self.vislayers
     def set_vislayers (self, v):
         self.vislayers = v
-        for kt in self.keytops.itervalues():
-            kt.set_vislayers(v)
-            kt.update_display()
+        self.dispstate.set_vislayers(v)
+#        for kt in self.keytops.itervalues():
+#            kt.set_vislayers(v)
+#            kt.update_display()
 #        for ch in self.grid.get_children():
 #            ch.set_vislayers(v)
 #            ch.update_display()

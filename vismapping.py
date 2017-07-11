@@ -558,7 +558,7 @@ Consists of:
 
         self.uibuild()
 
-        self.set_layout("PS3")
+        self.set_layout("SteamController")
 
         self.reset()
 
@@ -570,9 +570,8 @@ Consists of:
         self.pack_start(self.shiftrow)
 
         # grid/tablular layout of inpbind+bindcmd
-        inpdescr = self.models.bindstore.inpdescr
-        self.dispstate = kblayout.InpDisplayState(inpdescr)
-        self.kbl = kblayout.KblayoutWidget(self.dispstate)
+        #inpdescr = self.models.bindstore.inpdescr
+        self.kbl = kblayout.KblayoutWidget(self.models.dispstate)
         self.kbl.connect('key-selected', self.on_key_selected)
         self.kbl.connect('layout-changed', self.on_layout_changed)
 
@@ -580,7 +579,7 @@ Consists of:
 
     def on_key_selected (self, w, ksym, *args):
         #binding = self.models.bindstore.inpdescr.get_bind(ksym)
-        binding = self.dispstate.get_bind(ksym)
+        binding = self.models.dispstate.get_bind(ksym)
         logger.debug("key-selected: %s => %r" % (ksym, binding))
 
     def get_layout (self):
@@ -965,7 +964,8 @@ class MainMenubar (gtk.MenuBar):
 
 class VisMapperModels (object):
     """Collection of data models for the GUI."""
-    def __init__ (self, cmdstore=None, modestore=None, bindstore=None, accelgroup=None):
+    def __init__ (self, cmdstore=None, modestore=None, bindstore=None, dispstate=None, accelgroup=None):
+        self.dispstate = dispstate
         self.cmdstore = cmdstore
         self.modestore = modestore
         self.bindstore = bindstore
@@ -984,6 +984,7 @@ class VisMapperApp (object):
         self.models.cmdstore = CmdStore(self.cmdsrc)
         self.models.bindstore = Store(8)
         self.models.modestore = ModeStore(self.cmdsrc)
+        self.models.dispstate = kblayout.InpDisplayState(self.models.bindstore.inpdescr)
         self.models.accelgroup = gtk.AccelGroup()
 
         menubar = MainMenubar(self, self.models.accelgroup)
@@ -1015,15 +1016,17 @@ class VisMapperApp (object):
     def on_kbmode_changed (self, w, modenum, *args):
         """Keyboard layout mode changed; update mdl."""
         self.modenum = modenum
-        mdl = self.models.bindstore.inpdescr
-        mdl.set_group(modenum)
+        #mdl = self.models.bindstore.inpdescr
+        #mdl.set_group(modenum)
+        self.models.dispstate.set_group(modenum)
         logger.debug(" ? changing to mode %d" % modenum)
         return
 
     def on_kblevel_changed (self, w, levelnum, *args):
         self.levelnum = levelnum
-        mdl = self.models.bindstore.inpdescr
-        mdl.set_layer(levelnum)
+        #mdl = self.models.bindstore.inpdescr
+        #mdl.set_layer(levelnum)
+        self.models.dispstate.set_layer(levelnum)
         logger.debug("changing to shift level %d" % levelnum)
         return
 
