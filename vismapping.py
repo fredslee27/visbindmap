@@ -337,7 +337,6 @@ class Commands (object):
     groups = property(get_groups)
 
     def get_by_id (self, val):
-        # TODO: look through tree model instead?
         if val is None:
             logger.debug("[None]=>None...")
             return [ None, 0x1f, "", "", "", "" ]
@@ -438,7 +437,6 @@ class CommandsFallback (Commands):
     def get_groups (self): return [ x[0] for x in self.COMMANDS ]
     groups = property(get_groups)
     def get_by_id (self, val):
-        # TODO: look through tree model instead?
         if val is None: return ( None, 0x1f, "", "", "", "" )
 
         result = [ x for x in self.commands if x[0] == val ][0]
@@ -493,7 +491,6 @@ class VisCmds (gtk.VBox):
     def set_cmdstore (self, cmdstore):
         self.cmdstore = cmdstore
         self.entry.set_model(self.cmdstore)
-        # TODO: update TreeView?
 
     def setup_dnd (self):
         """Set up drag-and-drop."""

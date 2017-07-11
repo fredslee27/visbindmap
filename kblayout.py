@@ -1014,9 +1014,6 @@ Presents all menuitems in a TreeView.
         self.build_widget_pool()
 
     def rearrange (self):
-        if not self.parent.menulist:
-            self.parent.menulist = KbMenuList(self.parent.inpsymprefix, self.parent.inpdescr)
-            self.parent.stack1.pack_start(self.parent.menulist, True, True, 0)
         self.parent.menulist.pull_data()
         self.parent.stacked.set_visible_child_name("1")
 
