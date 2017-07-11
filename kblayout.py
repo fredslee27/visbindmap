@@ -11,8 +11,12 @@ import kbd_desc
 
 
 class DndOpcode (object):
-    def __init__ (self, name, val):
+    _GENSYM = 1
+    def __init__ (self, name, val=None):
         self.name = name
+        if val is None:
+            val = self.__class__._GENSYM
+            self.__class__._GENSYM += 1
         self.val = val
     def __int__ (self):
         return self.val
@@ -607,7 +611,8 @@ class KbTop (gtk.Button):
           ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
           ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
         ]
-        dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
+        #dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
+        dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_ASK
         self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.connect("drag-data-get", self.on_drag_data_get)
         self.connect("drag-end", self.on_drag_end)
@@ -1073,7 +1078,8 @@ class KbMenuList (gtk.ScrolledWindow):
           ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
           ("unbind", gtk.TARGET_SAME_WIDGET, DndOpcodes.UNBIND),
         ]
-        dnd_actions = gtk.gdk.ACTION_MOVE
+        #dnd_actions = gtk.gdk.ACTION_MOVE
+        dnd_actions = gtk.gdk.ACTION_ASK
         self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.treeview.connect("drag-data-get", self.on_drag_data_get)
         self.treeview.connect("drag-end", self.on_drag_end)
@@ -1085,7 +1091,7 @@ class KbMenuList (gtk.ScrolledWindow):
         logger.debug("kbmenulist drag-end")
         if self.dropunbind:
             logger.debug("drop-unbind inpsym %s" % self.dropunbind)
-            self.inpdescr.set_bind(self.dropunbind, "Nope")
+            self.inpdescr.set_bind(self.dropunbind, "")
             self.dropunbind = None
         return True
 

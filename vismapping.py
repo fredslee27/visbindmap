@@ -509,18 +509,29 @@ class VisCmds (gtk.VBox):
         dnd_targets = [
           ("unbind", gtk.TARGET_SAME_APP, 2),
         ]
-        dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
+        #dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
+        dnd_actions = gtk.gdk.ACTION_ASK
         dropw = self
         dropw.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
         #dropw.enable_model_drag_dest(dnd_targets, dnd_actions)
         dropw.connect("drag-data-received", self.on_drag_data_received)
+        #dropw.connect("drag-motion", self.on_drag_motion)
+
+    def on_drag_motion (self, w, ctx, x, y, time, *args):
+        logger.debug("viscmds drag-motion")
+        #ctx.drag_status(gtk.gdk.ACTION_DEFAULT, time)
+        #ctx.drag_status(gtk.gdk.ACTION_MOVE, time)
+        ctx.drag_status(gtk.gdk.ACTION_PRIVATE, time)
+        return True
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         logger.debug("cmdset drag-data-received %r" % info)
         if info == 2:
-            if ctx.actions == gtk.gdk.ACTION_MOVE:
-                ctx.finish(True, True, time)
-                return True
+#            if ctx.actions == gtk.gdk.ACTION_DEFAULT:
+#                ctx.finish(True, True, time)
+#                return True
+            ctx.finish(True, False, time)
+            return True
         return False
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
