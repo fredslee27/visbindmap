@@ -39,6 +39,7 @@ class DndOpcode (object):
 class DndOpcodes:
     BIND = DndOpcode("bind", 1)
     UNBIND = DndOpcode("unbind", 2)
+    SWAP = DndOpcode("swap", 3)
     REORDER = DndOpcode("reorder", 11)
 
 
@@ -382,6 +383,12 @@ class InpDescrModel (gobject.GObject):
                 return escbindlit
         return ""
 
+    def swap_bind (self, firstsym, secondsym, group=None, layer=None):
+        firstbind = self.get_bind(firstsym, group, layer)
+        secondbind = self.get_bind(secondsym, group, layer)
+        self.set_bind(firstsym, secondbind)
+        self.set_bind(secondsym, firstbind)
+        return
 
     def refresh (self):
         """Induce update of viewers of this model."""
@@ -600,24 +607,25 @@ class KbTop (gtk.Button):
         self.update_display()
 
     def setup_dnd (self):
-        # Set up drag-and-drop
+        # Set up drag-and-drop for KbTop.
+        # DnD source.
         dnd_targets = [
-          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
-        ]
-        # Accept LINK from CommandSet, accept MOVE from other KbTop.
-        dnd_actions = gtk.gdk.ACTION_LINK | gtk.gdk.ACTION_MOVE
-        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
-        self.connect("drag-data-received", self.on_drag_data_received)
-
-        # As DnD source, only generate MOVE.
-        dnd_targets = [
-          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
           ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
         ]
-        dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_ASK
+        dnd_actions = gtk.gdk.ACTION_COPY
         self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.connect("drag-data-get", self.on_drag_data_get)
         self.connect("drag-end", self.on_drag_end)
+
+        # DnD destination.
+        dnd_targets = [
+          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
 
         self.pending_drag_unbinding = False
 
@@ -629,10 +637,9 @@ class KbTop (gtk.Button):
             seldata.set(seldata.target, 8, str(self.inpsym))
             self.pending_drag_unbinding = True
             return True
-        if info == DndOpcodes.BIND:
-            logger.debug("kbtop.drag-data-get for dragging from")
-            val = self.inpdescr.get_bind(self.inpsym)
-            val = "" if val is None else val
+        if info == DndOpcodes.SWAP:
+            logger.debug("kbtop.drag-data-get for swap")
+            val = self.inpsym
             seldata.set(seldata.target, 8, str(val))
             return True
         return False
@@ -649,29 +656,32 @@ class KbTop (gtk.Button):
         logger.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
         if info == DndOpcodes.BIND:
             # Commands dropping.
-            logger.debug("info is 1 => Command dropping")
             seltext = seldata.data
-            logger.debug(" seldata.text = %r" % seltext)
-            if ctx.action == gtk.gdk.ACTION_MOVE:
-                # swap.
-                other = ctx.get_source_widget()
-                self.swap_bind(other)
-                ctx.finish(True, False, 0)
-            elif ctx.action == gtk.gdk.ACTION_LINK:
-                # copy.
-                logger.debug(" copying")
-                self.inpdescr.set_bind(self.inpsym, seltext)
-                ctx.finish(True, False, 0)
+            logger.debug("kbtop Command install: %s <= %s" % (w.inpsym, seltext))
+#            if ctx.action == gtk.gdk.ACTION_MOVE:
+#                # swap with kbtop.
+#                other = ctx.get_source_widget()
+#                self.swap_bind(other.inpsym)
+#                ctx.finish(True, False, 0)
+#            elif ctx.action == gtk.gdk.ACTION_ASK:
+#                # swap with list.
+#                othersym = seldata.data
+#                self.swap_bind(othersym)
+#                ctx.finish(True, False, 0)
+#            elif ctx.action == gtk.gdk.ACTION_COPY:
+#                # copy.
+#                logger.debug(" copying")
+#                self.inpdescr.set_bind(self.inpsym, seltext)
+#                ctx.finish(True, False, 0)
+            self.inpdescr.set_bind(self.inpsym, seltext)
+            ctx.finish(True, False, 0)
             return True
-
-    def swap_bind (self, other_kbtop):
-        othersym = other_kbtop.inpsym
-        logger.debug("swapping %s <=> %s" % (self.inpsym, othersym))
-        otherbind = self.inpdescr.get_bind(othersym)
-        thisbind = self.inpdescr.get_bind(self.inpsym)
-        self.inpdescr.set_bind(othersym, thisbind)
-        self.inpdescr.set_bind(self.inpsym, otherbind)
-        return
+        elif info == DndOpcodes.SWAP:
+            othersym = seldata.data
+            logger.debug("kbtop Command swap: %s <=> %s" % (w.inpsym, othersym))
+            self.inpdescr.swap_bind(w.inpsym, othersym)
+            ctx.finish(True, False, 0)
+            return True
 
 gobject.type_register(KbTop)
 gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
@@ -1067,25 +1077,26 @@ class KbMenuList (gtk.ScrolledWindow):
 
     def setup_dnd (self):
         """Set up drag-and-drop."""
-        # DnD Destination
-        dnd_targets = [
-          ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
-          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
-        ]
-        dnd_actions = gtk.gdk.ACTION_LINK
-        self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
-        self.treeview.connect("drag-data-received", self.on_drag_data_received)
-
         # DnD Source
         dnd_targets = [
           ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
           ("unbind", gtk.TARGET_SAME_WIDGET, DndOpcodes.UNBIND),
+          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
         ]
-        #dnd_actions = gtk.gdk.ACTION_MOVE
-        dnd_actions = gtk.gdk.ACTION_ASK
+        dnd_actions = gtk.gdk.ACTION_COPY
         self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.treeview.connect("drag-data-get", self.on_drag_data_get)
         self.treeview.connect("drag-end", self.on_drag_end)
+
+        # DnD Destination
+        dnd_targets = [
+          ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
+        self.treeview.connect("drag-data-received", self.on_drag_data_received)
 
         self.droppath = None
         self.dropunbind = None
@@ -1099,55 +1110,77 @@ class KbMenuList (gtk.ScrolledWindow):
         return True
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        treesel = w.get_selection()
+        mdl, pathsels = treesel.get_selected_rows()
+        firstpath = pathsels[0]
+        selrow = mdl[firstpath]
+        inpsym = selrow[0]
+        bind = selrow[1] if selrow[1] is not None else ""
+        data = None
         if info == DndOpcodes.REORDER:
             # Reordering.  Encoding source path into string.
-            treesel = w.get_selection()
-            mdl, pathsels = treesel.get_selected_rows()
-            data = repr(pathsels[0])
-            seldata.set(seldata.target, 8, data)
+            logger.debug("kbmenulist drag-data-get reorder")
+            data = repr(firstpath)
         elif info == DndOpcodes.UNBIND:
-            treesel = w.get_selection()
-            mdl, pathsels = treesel.get_selected_rows()
-            inpsym = mdl[pathsels[0]][0]
-            val = str(self.inpdescr.get_bind(inpsym))
-            seldata.set(seldata.target, 8, val)
+            logger.debug("kbmenulist drag-data-get unbind")
+            data = inpsym
             self.dropunbind = inpsym
+        elif info == DndOpcodes.SWAP:
+            logger.debug("kbmenulist drag-data-get swap")
+            data = inpsym
+        if data is not None:
+            seldata.set(seldata.target, 8, data)
         return True
 
-    def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         """Data that was asked for is now received."""
         srcw = ctx.get_source_widget()
         droppath = self.droppath
+        dropinfo = w.get_dest_row_at_pos(x,y)
+        destpath, destpos = None, None
+        if dropinfo:
+            destpath, destpos = dropinfo
+        else:
+            # all cases rely on dropinfo being valid.
+            return False
+
         if info == DndOpcodes.REORDER:
-            # Reordering internally.
-            dropinfo = w.get_dest_row_at_pos(x,y)
-            if dropinfo:
-                destpath, destpos = dropinfo
-                encoded = sel.data
-                srcpath = ast.literal_eval(encoded)
-                func, bias = {
-                    gtk.TREE_VIEW_DROP_INTO_OR_BEFORE: (self.drag_bind, 0),
-                    gtk.TREE_VIEW_DROP_INTO_OR_AFTER: (self.drag_bind, 0),
-                    gtk.TREE_VIEW_DROP_BEFORE: (self.drag_bind, -1),
-                    gtk.TREE_VIEW_DROP_AFTER: (self.drag_bind, +1),
-                }.get(destpos, (None,None))
-                logger.debug("reordering internally: %r vs %r" % (srcpath, destpath))
-                if callable(func):
-                    func(*(bias, srcpath, destpath))
-                if ctx.action == gtk.gdk.ACTION_MOVE:
-                    ctx.finish(True, True, time)
-                return True
+            logger.debug("kbmenulist reorder")
+            # Reordering internally, seldata.data is tree path.
+            encoded = seldata.data
+            srcpath = ast.literal_eval(encoded)
+            func, bias = {
+                gtk.TREE_VIEW_DROP_INTO_OR_BEFORE: (self.drag_bind, 0),
+                gtk.TREE_VIEW_DROP_INTO_OR_AFTER: (self.drag_bind, 0),
+                gtk.TREE_VIEW_DROP_BEFORE: (self.drag_bind, -1),
+                gtk.TREE_VIEW_DROP_AFTER: (self.drag_bind, +1),
+            }.get(destpos, (None,None))
+            logger.debug("reordering internally: %r vs %r" % (srcpath, destpath))
+            if callable(func):
+                func(*(bias, srcpath, destpath))
+            if ctx.action == gtk.gdk.ACTION_MOVE:
+                ctx.finish(True, True, time)
+            return True
         elif info == DndOpcodes.BIND:
-            # bind-drop from commands set.
+            # bind-drop from commands set, seldata.data is bind (str).
+            logger.debug("kbmenulist bind-drop")
             dropinfo = w.get_dest_row_at_pos(x,y)
-            if dropinfo:
-                destpath, destpos = dropinfo
-                seltext = sel.data
-                logger.debug("command-dropping: %r" % seltext)
-                self.drop_in_bind(destpath, seltext)
-                ctx.finish(True, False, time)
-                return True
+            seltext = seldata.data
+            logger.debug("command-dropping: %r" % seltext)
+            self.drop_in_bind(destpath, seltext)
+            ctx.finish(True, False, time)
+            return True
+        elif info == DndOpcodes.SWAP:
+            # swap with a kbtop, seldata.data is inpsym.
+            logger.debug("kbmenulist swap")
+            othersym = seldata.data
+            destsym = self.scratch[destpath][0]
+            logger.debug("command-swapping: %r,%r" % (destsym, othersym))
+            self.inpdescr.swap_bind(destsym, othersym)
+            ctx.finish(True, False, time)
+            return True
         return False
+
 
     def drop_in_bind (self, treepath, newval):
         """Carry out action of (completing) a drop of a command on tree at path."""

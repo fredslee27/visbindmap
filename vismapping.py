@@ -499,21 +499,19 @@ class VisCmds (gtk.VBox):
         """Set up drag-and-drop."""
         # DnD Source.
         dnd_targets = [
-          ("bind", gtk.TARGET_SAME_APP, 1),
+          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
         ]
-        dnd_actions = gtk.gdk.ACTION_LINK | 0
+        dnd_actions = gtk.gdk.ACTION_COPY
         self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
 
         # DnD Destination.
         dnd_targets = [
-          ("unbind", gtk.TARGET_SAME_APP, 2),
+          ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
         ]
-        dnd_actions = gtk.gdk.ACTION_ASK
-        dropw = self
-        dropw.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
-        #dropw.enable_model_drag_dest(dnd_targets, dnd_actions)
-        dropw.connect("drag-data-received", self.on_drag_data_received)
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         logger.debug("cmdset drag-data-received %r" % info)
