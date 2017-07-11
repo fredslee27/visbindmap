@@ -10,37 +10,39 @@ import ast
 import kbd_desc
 
 
-class DndOpcode (object):
-    _GENSYM = 1
-    def __init__ (self, name, val=None):
-        self.name = name
-        if val is None:
-            val = self.__class__._GENSYM
-            self.__class__._GENSYM += 1
-        self.val = val
-    def get_name (self): return self.name
-    def get_val (self): return self.val
-    s = property(get_name)
-    i = property(get_val)
-    d = property(get_val)
-    def __int__ (self): return self.val
-    def __str__ (self): return self.name
-    def __eq__ (self, other):
-        if type(other) == int:
-            return other == self.val
-        try:
-            return other.name == self.name
-        except:
-            pass
-        return other is self
-    def __repr__ (self):
-        return "DndOpcode({!r},{!r})".format(self.name, self.val)
+class DndOpcodes:  # old-style class.
+    class DndOpcodeEnum (object):  # new-style class.
+        _GENSYM = 1
+        def __init__ (self, name, val=None):
+            self.name = name
+            if val is None:
+                val = self.__class__._GENSYM
+                self.__class__._GENSYM += 1
+            self.val = val
+        def get_name (self): return self.name
+        def get_val (self): return self.val
+        s = property(get_name)
+        i = property(get_val)
+        d = property(get_val)
+        def __int__ (self): return self.val
+        def __str__ (self): return self.name
+        def __eq__ (self, other):
+            if type(other) == int:
+                return other == self.val
+            try:
+                return other.name == self.name
+            except:
+                pass
+            return (other is self)
+        def __repr__ (self):
+            return "DndOpcode({!r},{!r})".format(self.name, self.val)
+    enum = DndOpcodeEnum
 
-class DndOpcodes:
-    BIND = DndOpcode("bind", 1)
-    UNBIND = DndOpcode("unbind", 2)
-    SWAP = DndOpcode("swap", 3)
-    REORDER = DndOpcode("reorder", 11)
+    BIND = enum("bind", 1)         # Copy bind into destination.
+    UNBIND = enum("unbind", 2)     # Remove bind from destination.
+    SWAP = enum("swap", 3)         # Trigger InpDescrModel.swap_bind.
+    # BIND transfers binding value, SWAP transfers the symcode (key) .
+    REORDER = enum("reorder", 11)  # Internal reordering of TreeView.
 
 
 # Logging.
@@ -610,8 +612,8 @@ class KbTop (gtk.Button):
         # Set up drag-and-drop for KbTop.
         # DnD source.
         dnd_targets = [
-          ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
-          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
         ]
         dnd_actions = gtk.gdk.ACTION_COPY
         self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
@@ -620,8 +622,8 @@ class KbTop (gtk.Button):
 
         # DnD destination.
         dnd_targets = [
-          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
-          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
         ]
         dnd_actions = gtk.gdk.ACTION_COPY
         self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
@@ -640,7 +642,7 @@ class KbTop (gtk.Button):
         if info == DndOpcodes.SWAP:
             logger.debug("kbtop.drag-data-get for swap")
             val = self.inpsym
-            seldata.set(seldata.target, 8, str(val))
+            seldata.set(seldata.target, 8, str(self.inpsym))
             return True
         return False
 
@@ -658,21 +660,6 @@ class KbTop (gtk.Button):
             # Commands dropping.
             seltext = seldata.data
             logger.debug("kbtop Command install: %s <= %s" % (w.inpsym, seltext))
-#            if ctx.action == gtk.gdk.ACTION_MOVE:
-#                # swap with kbtop.
-#                other = ctx.get_source_widget()
-#                self.swap_bind(other.inpsym)
-#                ctx.finish(True, False, 0)
-#            elif ctx.action == gtk.gdk.ACTION_ASK:
-#                # swap with list.
-#                othersym = seldata.data
-#                self.swap_bind(othersym)
-#                ctx.finish(True, False, 0)
-#            elif ctx.action == gtk.gdk.ACTION_COPY:
-#                # copy.
-#                logger.debug(" copying")
-#                self.inpdescr.set_bind(self.inpsym, seltext)
-#                ctx.finish(True, False, 0)
             self.inpdescr.set_bind(self.inpsym, seltext)
             ctx.finish(True, False, 0)
             return True
@@ -684,6 +671,7 @@ class KbTop (gtk.Button):
             return True
 
 gobject.type_register(KbTop)
+# TODO: elide dnd-link?
 gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
 #gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 #gobject.signal_new("bindid-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
@@ -740,13 +728,9 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
         #self.parent.show_all()
 
     def rearrange (self):
-        #self.parent.vadj.set_lower(0)
-        #self.parent.vadj.set_upper(0)
-        #if self.parent.listmenu:
-        #    self.parent.listmenu.hide()
-        #self.parent.grid.show()
-        self.parent.stack1.hide()
-        self.parent.stack0.show()
+#        self.parent.stack1.hide()
+#        self.parent.stack0.show()
+        self.parent.cluster.open_page(0)
         self.full_rearrange(self.placements)
 
     def __repr__ (self):
@@ -979,10 +963,10 @@ class ArrangerRadialmenu (ArrangerEmpty):
     def __repr__ (self):
         return "{!s}({:d})".format(self.__class__.__name__, self.cap)
 
-# TODO: just use a TreeView?
-class ArrangerListmenu0 (ArrangerEmpty):
+class ArrangerListmenu_alternate (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
+Presents each menu item as an individual KbTop.
 """
     NAME = "menu list"
     def __init__ (self, parent):
@@ -1003,15 +987,17 @@ Applicable to: touch menu, radial menu, scrollwheel items.
     def rearrange (self):
         #self.parent.vadj.set_lower(0)
         #self.parent.vadj.set_upper(12)
-        if self.parent.listmenu:
-            self.parent.listmenu.show_all()
+        if self.parent.menulist:
+            self.parent.menulist.show_all()
         else:
-            self.parent.listmenu = gtk.TreeView()
-            self.parent.cluster.pack_start(self.parent.listmenu, True, True, 0)
+            self.parent.menulist = gtk.TreeView()
+            self.parent.cluster.pack_start(self.parent.menulist, True, True, 0)
         self.full_rearrange(self.placements)
+
 class ArrangerListmenu (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
+Presents all menuitems in a TreeView.
 """
     NAME = "MenuList"
     def __init__ (self, parent):
@@ -1030,16 +1016,52 @@ Applicable to: touch menu, radial menu, scrollwheel items.
         self.build_widget_pool()
 
     def rearrange (self):
-        if not self.parent.listmenu:
-            self.parent.listmenu = KbMenuList(self.parent.inpsymprefix, self.parent.inpdescr)
-            #self.parent.liststore = gtk.ListStore(str, str)
-            #self.parent.liststore = KbMenuList.sample_data0()
-            #self.parent.listmenu.set_model(self.parent.liststore)
-            self.parent.stack1.pack_start(self.parent.listmenu, True, True, 0)
-        self.parent.listmenu.pull_data()
-        self.parent.stack1.show_all()
-        self.parent.stack0.hide()
+        if not self.parent.menulist:
+            self.parent.menulist = KbMenuList(self.parent.inpsymprefix, self.parent.inpdescr)
+            self.parent.stack1.pack_start(self.parent.menulist, True, True, 0)
+        self.parent.menulist.pull_data()
+        self.parent.cluster.open_page(1)
+#        self.parent.stack1.show_all()
+#        self.parent.stack0.hide()
 
+
+
+class PseudoStack (gtk.VBox):
+    """Mimick GTK3 style Stack widget behavior by using a VBox of VBoxes, juggling visibility attributes and events."""
+    def __init__ (self):
+        gtk.VBox.__init__(self)
+        self.pages = list()
+        self.active = 0
+        self.connect("map", self.on_map)
+
+    def make_page (self):
+        page = gtk.VBox()
+        self.pages.append(page)
+        self.pack_start(page, True, True, 0)
+        return page
+
+    def add_page (self, onewidget):
+        page = self.make_page()
+        page.pack_start(onewidget, True, True, 0)
+
+    def readjust_visibility (self):
+        for pagenum in range(len(self.pages)):
+            pg = self.pages[pagenum]
+            if pagenum == self.active:
+                pg.show_all()
+            else:
+                pg.hide_all()
+        return
+
+    def open_page (self, openpage):
+        self.active = openpage
+        self.readjust_visibility()
+        return
+
+    def on_map (self, w, *args):
+        logger.debug("opening page %d" % self.active)
+        self.readjust_visibility()
+        return
 
 
 class KbMenuList (gtk.ScrolledWindow):
@@ -1079,9 +1101,9 @@ class KbMenuList (gtk.ScrolledWindow):
         """Set up drag-and-drop."""
         # DnD Source
         dnd_targets = [
-          ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
-          ("unbind", gtk.TARGET_SAME_WIDGET, DndOpcodes.UNBIND),
-          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+          (str(DndOpcodes.REORDER), gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_WIDGET, DndOpcodes.UNBIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
         ]
         dnd_actions = gtk.gdk.ACTION_COPY
         self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
@@ -1090,9 +1112,9 @@ class KbMenuList (gtk.ScrolledWindow):
 
         # DnD Destination
         dnd_targets = [
-          ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
-          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
-          ("swap", gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+          (str(DndOpcodes.REORDER), gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
         ]
         dnd_actions = gtk.gdk.ACTION_COPY
         self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
@@ -1299,14 +1321,19 @@ As arrangments can change during run-time, use strategies for rearranging:
 #        self.viewport.add_with_viewport(self.cluster)
 #        self.frame.add(self.viewport)
 
-        self.cluster = gtk.VBox()
-        self.stack0 = gtk.VBox()
-        self.stack1 = gtk.VBox()
-        self.listmenu = None
-        self.stack0.pack_start(self.grid, True, True, 0)
-        #self.stack1.pack_start(self.listmenu, True, True, 0)
-        self.cluster.pack_start(self.stack0, True, True, 0)
-        self.cluster.pack_start(self.stack1, True, True, 0)
+#        self.cluster = gtk.VBox()
+#        self.stack0 = gtk.VBox()
+#        self.stack1 = gtk.VBox()
+#        self.listmenu = None
+#        self.stack0.pack_start(self.grid, True, True, 0)
+#        #self.stack1.pack_start(self.listmenu, True, True, 0)
+#        self.cluster.pack_start(self.stack0, True, True, 0)
+#        self.cluster.pack_start(self.stack1, True, True, 0)
+        self.cluster = PseudoStack()
+        self.menulist = KbMenuList(self.inpsymprefix, self.inpdescr)
+        self.cluster.add_page(self.grid)
+        self.cluster.add_page(self.menulist)
+
         self.frame.add(self.cluster)
         self.add(self.frame)
 

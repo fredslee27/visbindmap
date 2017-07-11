@@ -499,7 +499,7 @@ class VisCmds (gtk.VBox):
         """Set up drag-and-drop."""
         # DnD Source.
         dnd_targets = [
-          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
         ]
         dnd_actions = gtk.gdk.ACTION_COPY
         self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
@@ -507,7 +507,7 @@ class VisCmds (gtk.VBox):
 
         # DnD Destination.
         dnd_targets = [
-          ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
         ]
         dnd_actions = gtk.gdk.ACTION_COPY
         self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
