@@ -728,9 +728,7 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
         #self.parent.show_all()
 
     def rearrange (self):
-#        self.parent.stack1.hide()
-#        self.parent.stack0.show()
-        self.parent.cluster.open_page(0)
+        self.parent.stacked.set_visible_child_name("0")
         self.full_rearrange(self.placements)
 
     def __repr__ (self):
@@ -991,7 +989,7 @@ Presents each menu item as an individual KbTop.
             self.parent.menulist.show_all()
         else:
             self.parent.menulist = gtk.TreeView()
-            self.parent.cluster.pack_start(self.parent.menulist, True, True, 0)
+            self.parent.stacked.pack_start(self.parent.menulist, True, True, 0)
         self.full_rearrange(self.placements)
 
 class ArrangerListmenu (ArrangerEmpty):
@@ -1020,9 +1018,7 @@ Presents all menuitems in a TreeView.
             self.parent.menulist = KbMenuList(self.parent.inpsymprefix, self.parent.inpdescr)
             self.parent.stack1.pack_start(self.parent.menulist, True, True, 0)
         self.parent.menulist.pull_data()
-        self.parent.cluster.open_page(1)
-#        self.parent.stack1.show_all()
-#        self.parent.stack0.hide()
+        self.parent.stacked.set_visible_child_name("1")
 
 
 
@@ -1030,38 +1026,40 @@ class PseudoStack (gtk.VBox):
     """Mimick GTK3 style Stack widget behavior by using a VBox of VBoxes, juggling visibility attributes and events."""
     def __init__ (self):
         gtk.VBox.__init__(self)
-        self.pages = list()
-        self.active = 0
+        self.pages = dict()
+        self.active = None
         self.connect("map", self.on_map)
 
-    def make_page (self):
+    def add_named (self, child, name):
         page = gtk.VBox()
-        self.pages.append(page)
+        page.pack_start(child, True, True, 0)
+        self.pages[name] = page
         self.pack_start(page, True, True, 0)
-        return page
-
-    def add_page (self, onewidget):
-        page = self.make_page()
-        page.pack_start(onewidget, True, True, 0)
+        if not self.active:
+            self.active = page
 
     def readjust_visibility (self):
-        for pagenum in range(len(self.pages)):
-            pg = self.pages[pagenum]
-            if pagenum == self.active:
-                pg.show_all()
+        for page in self.pages.itervalues():
+#            (page.show_all if self.active == page else page.hide_all)()
+            if self.active == page:
+                page.show_all()
             else:
-                pg.hide_all()
-        return
+                page.hide_all()
 
-    def open_page (self, openpage):
-        self.active = openpage
+    def set_visible_child (self, child):
+        for page in self.pages.itervalues():
+            if child in page.get_children():
+                self.active = page
+                break
         self.readjust_visibility()
-        return
+
+    def set_visible_child_name (self, name):
+        self.active = self.pages[name]
+        self.readjust_visibility()
 
     def on_map (self, w, *args):
-        logger.debug("opening page %d" % self.active)
+        logger.debug("opening page %r" % self.active)
         self.readjust_visibility()
-        return
 
 
 class KbMenuList (gtk.ScrolledWindow):
@@ -1310,31 +1308,12 @@ As arrangments can change during run-time, use strategies for rearranging:
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
         self.grid = gtk.Table(12,12,True)
 
-#        self.hadj = gtk.Adjustment()
-#        self.vadj = gtk.Adjustment()
-#        self.viewport = gtk.ScrolledWindow(self.hadj, self.vadj)
-#
-#        self.cluster = gtk.VBox()
-#        self.cluster.pack_start(self.grid, True, True, 0)
-#        self.cluster.pack_start(self.listmenu, True, True, 0)
-#
-#        self.viewport.add_with_viewport(self.cluster)
-#        self.frame.add(self.viewport)
-
-#        self.cluster = gtk.VBox()
-#        self.stack0 = gtk.VBox()
-#        self.stack1 = gtk.VBox()
-#        self.listmenu = None
-#        self.stack0.pack_start(self.grid, True, True, 0)
-#        #self.stack1.pack_start(self.listmenu, True, True, 0)
-#        self.cluster.pack_start(self.stack0, True, True, 0)
-#        self.cluster.pack_start(self.stack1, True, True, 0)
-        self.cluster = PseudoStack()
+        self.stacked = PseudoStack()
         self.menulist = KbMenuList(self.inpsymprefix, self.inpdescr)
-        self.cluster.add_page(self.grid)
-        self.cluster.add_page(self.menulist)
+        self.stacked.add_named(self.grid, "0")
+        self.stacked.add_named(self.menulist, "1")
 
-        self.frame.add(self.cluster)
+        self.frame.add(self.stacked)
         self.add(self.frame)
 
         self.inivislayers = vislayers
