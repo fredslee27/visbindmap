@@ -997,7 +997,6 @@ class VisMapperApp (object):
         """Setup and connect UI elements."""
         kbl = self.ui.bindpad.kbl
         cmdview = self.ui.cmdcol
-        kbl.connect("dnd-link", self.on_kbl_dndlink)
         visbind = self.ui.bindpad
         visbind.connect('mode-changed', self.on_kbmode_changed)
         visbind.connect('level-changed', self.on_kblevel_changed)
@@ -1025,30 +1024,6 @@ class VisMapperApp (object):
         mdl.set_layer(levelnum)
         logger.debug("changing to shift level %d" % levelnum)
         return
-
-    def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
-        logger.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
-        inpsym = dstw.inpsym
-        modenum = self.modenum
-        levelnum = self.levelnum
-        bindval = dnddata
-        mdl = self.models.bindstore.inpdescr
-        mdl.set_bind(inpsym, bindval,  group=modenum, layer=levelnum)
-        return
-
-#    def on_kbl_drop (self, w, ctx, x, y, t, *args):
-#        w.drag_get_data(ctx, "STRING", time)
-#        # Initiates drag-data transfer.
-#        return True
-#
-#    def on_kbl_drag_data_received (self, w, ctx, x, y, sel, info, t, *args):
-#        srcw = ctx.get_source_widget()
-#        bindid = int(self.get_text())
-#        ctx.finish(True, False, time)
-#        bindval = "UNKNOWN"
-#        layernum = 0  # from store?
-#        #self.mdl.set_bind(layernum, w.inpsym, bindval)
-#        print("Handled KbLayout drag data received")
 
     # Operations re: File
     def get_saveuri (self):

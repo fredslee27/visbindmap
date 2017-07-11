@@ -670,12 +670,6 @@ class KbTop (gtk.Button):
             ctx.finish(True, False, 0)
             return True
 
-gobject.type_register(KbTop)
-# TODO: elide dnd-link?
-gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
-#gobject.signal_new("bind-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
-#gobject.signal_new("bindid-changed", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
-
 
 
 
@@ -1587,7 +1581,6 @@ class KblayoutWidget (gtk.VBox):
                             planar = KbPlanar(inpsym, self.mdl, self.vislayers)
                             for inpsym,kbtop in planar.kbtops.iteritems():
                                 kbtop.connect("clicked", self.on_keytop_clicked)
-                                kbtop.connect("dnd-link", self.on_keytop_bound)
                                 keytops[inpsym] = kbtop
                                 self.active = kbtop
                             #print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
@@ -1599,7 +1592,6 @@ class KblayoutWidget (gtk.VBox):
                         else:
                             keytop = KbTop(inpsym, self.mdl, self.vislayers)
                             keytop.connect("clicked", self.on_keytop_clicked)
-                            keytop.connect("dnd-link", self.on_keytop_bound)
                             keytops[inpsym] = keytop
                             self.active = keytop
                             grid.attach(keytop, l, r, t, b)
@@ -1636,10 +1628,6 @@ class KblayoutWidget (gtk.VBox):
         logger.debug("target: %s" % inpsym)
         self.emit("key-selected", inpsym)
 
-    def on_keytop_bound (self, dstw, srcw, dnddata, *args):
-        logger.debug("keytop_bound dstw=%r srcw=%r data=%r" % (dstw, srcw, dnddata))
-        self.emit("dnd-link", dstw, srcw, dnddata)
-
     def on_bind_changed (self, w, *args):
         #self.bindmap[w.inpsym] = w.bind
         self.emit("bind-changed", w)
@@ -1664,7 +1652,6 @@ gobject.signal_new("key-selected", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gob
 gobject.signal_new("bind-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("bindid-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 gobject.signal_new("layout-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
-gobject.signal_new("dnd-link", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, object, str))
 
 
 
