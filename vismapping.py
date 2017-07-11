@@ -558,7 +558,7 @@ Consists of:
 
         self.uibuild()
 
-        self.set_layout("SteamController")
+        self.set_layout("PS3")
 
         self.reset()
 
@@ -571,14 +571,16 @@ Consists of:
 
         # grid/tablular layout of inpbind+bindcmd
         inpdescr = self.models.bindstore.inpdescr
-        self.kbl = kblayout.KblayoutWidget(inpdescr)
+        self.dispstate = kblayout.InpDisplayState(inpdescr)
+        self.kbl = kblayout.KblayoutWidget(self.dispstate)
         self.kbl.connect('key-selected', self.on_key_selected)
         self.kbl.connect('layout-changed', self.on_layout_changed)
 
         self.pack_start(self.kbl, expand=False, fill=False)
 
     def on_key_selected (self, w, ksym, *args):
-        binding = self.models.bindstore.inpdescr.get_bind(ksym)
+        #binding = self.models.bindstore.inpdescr.get_bind(ksym)
+        binding = self.dispstate.get_bind(ksym)
         logger.debug("key-selected: %s => %r" % (ksym, binding))
 
     def get_layout (self):

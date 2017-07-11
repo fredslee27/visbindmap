@@ -217,19 +217,19 @@ class InpDescrModel (gobject.GObject):
         self._maxgroups = 1
         self.set_numgroups(ngroups)
         self.set_numlayers(nlayers)
-        # TODO: these states should not be in data model.
-        # active group
-        self._group = 0
-        # active layer
-        self._layer = 0
-        self.cluster_defaults()
+#        # TODO: these states should not be in data model.
+#        # active group
+#        self._group = 0
+#        # active layer
+#        self._layer = 0
+#        self.cluster_defaults()
 
     def clear (self):
         for grp in self.groups:
             grp.clear()
-        self.set_group(0)
-        self.set_layer(0)
-        self.cluster_defaults()
+#        self.set_group(0)
+#        self.set_layer(0)
+#        self.cluster_defaults()
         return
 
     def restore (self, other):
@@ -237,20 +237,20 @@ class InpDescrModel (gobject.GObject):
             return
         self._maxgroups = other.get_numgroups()
         self._maxlayers = other.get_numlayers()
-        self._group = 0
-        self._layer = 0
+#        self._group = 0
+#        self._layer = 0
         for i in range(other.get_numgroups()):
             self.set_grouplist(i, other.get_grouplist(i))
 
-    def cluster_defaults (self):
-        # Handful of default binds.
-        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
-        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
-        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
-        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
-        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
-        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
-        return
+#    def cluster_defaults (self):
+#        # Handful of default binds.
+#        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
+#        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
+#        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
+#        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
+#        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
+#        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
+#        return
 
     def get_label (self, inpsym):
         """If no model data, return inpsym as the label."""
@@ -260,19 +260,19 @@ class InpDescrModel (gobject.GObject):
         self.labels[inpsym] = lbl
         self.emit("label-changed", inpsym)
 
-    def get_group (self):
-        """Get active group number."""
-        return self._group
-    def set_group (self, val):
-        self._group = val
-        self.emit('group-changed', val)
-
-    def get_layer (self):
-        """Get active layer number."""
-        return self._layer
-    def set_layer (self, val):
-        self._layer = val
-        self.emit("layer-changed", val)
+#    def get_group (self):
+#        """Get active group number."""
+#        return self._group
+#    def set_group (self, val):
+#        self._group = val
+#        self.emit('group-changed', self, val)
+#
+#    def get_layer (self):
+#        """Get active layer number."""
+#        return self._layer
+#    def set_layer (self, val):
+#        self._layer = val
+#        self.emit("layer-changed", self, val)
 
     def get_grouplist (self, n):
         """Get group (list of InpLayer)"""
@@ -290,19 +290,19 @@ class InpDescrModel (gobject.GObject):
             else:
                 self.groups[n] = l
 
-    def get_layermap (self, layernum, group=None):
-        """Get layer (dict of keysym:binding) in specified group."""
-        groupnum = group if group is not None else  self.get_group()
-        if (0 <= layernum) and (layernum < self._maxlayers):
-            return self.groups[groupnum].get_layermap(layernum)
-        return None
-    def set_layermap (self, layernum, value, group=None):
-        groupnum = group if group is not None else self.get_group()
-        if (0 <= layernum) and (layernum < self._maxlayers):
-            if value is None:
-                self.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
-            else:
-                self.groups[groupnum].set_layermap(layernum, value)
+#    def get_layermap (self, layernum, group=None):
+#        """Get layer (dict of keysym:binding) in specified group."""
+#        groupnum = group if group is not None else  self.get_group()
+#        if (0 <= layernum) and (layernum < self._maxlayers):
+#            return self.groups[groupnum].get_layermap(layernum)
+#        return None
+#    def set_layermap (self, layernum, value, group=None):
+#        groupnum = group if group is not None else self.get_group()
+#        if (0 <= layernum) and (layernum < self._maxlayers):
+#            if value is None:
+#                self.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
+#            else:
+#                self.groups[groupnum].set_layermap(layernum, value)
 
     def get_numgroups (self):
         return self._maxgroups or 0
@@ -329,16 +329,198 @@ class InpDescrModel (gobject.GObject):
         for grp in self.groups:
             grp.set_numlayers(n)
 
-    def get_bind (self, inpsym,  group=None, layer=None):
-        groupnum = group if group is not None else self.get_group()
-        layernum = layer if layer is not None else self.get_layer()
+    def get_bind (self, inpsym,  group, layer):
+        groupnum = group
+        layernum = layer
         return self.get_grouplist(groupnum).get_layermap(layernum).get_bind(inpsym)
-    def set_bind (self, inpsym, v,  group=None, layer=None):
-        groupnum = group if group is not None else self.get_group()
-        layernum = layer if layer is not None else self.get_layer()
+    def set_bind (self, inpsym, v,  group, layer):
+        groupnum = group
+        layernum = layer
         self.get_grouplist(groupnum).get_layermap(layernum).set_bind(inpsym, v)
         self.emit('bind-changed', groupnum, layernum, inpsym)
 
+
+#    def resolve_bind (self, inpsym,  group=None, layer=None):
+#        """Determine effective binding of a inpsym based on passthrough rules.
+#"""
+#        passthrough = False
+#        groupnum = group if group is not None else self.get_group()
+#        layernum = layer if layer is not None else self.get_layer()
+#        groupfollow = groupnum
+#        retval = None
+#        while (retval is None) and (groupfollow is not None):
+#            grp = self.get_grouplist(groupfollow)
+#            layerfollow = layernum
+#            while (retval is None) and (layerfollow is not None):
+#                layermap = grp.get_layermap(layerfollow)
+#                if layermap:
+#                    retval = layermap.get_bind(inpsym)
+#                if retval is None:
+#                    passthrough = True
+#                    if layerfollow != layermap._fallback:
+#                        layerfollow = layermap._fallback
+#                    else:
+#                        layerfollow = None
+#                    passthrough = True
+#                layerfollow = None  ## don't follow layer for now.
+#            if retval is None:
+#                passthrough = True
+#                if grp.fallback != groupfollow:
+#                    groupfollow = grp.fallback
+#                else:
+#                    groupfollow = None
+#        return passthrough, retval
+#
+#    def resolve_bind_markup (self, inpsym, group=None, layer=None):
+#        passthrough, plaintext = self.resolve_bind(inpsym, group, layer)
+#        if plaintext:
+#            if passthrough:
+#                # Fell back to group 0; italicize.
+#                escbindlit = glib.markup_escape_text(plaintext)
+#                retval = "<i><small>{}</small></i>".format(escbindlit)
+#                return retval
+#            else:
+#                # Direct hit; return unadorned.
+#                escbindlit = glib.markup_escape_text(plaintext)
+#                return escbindlit
+#        return ""
+#
+#    def swap_bind (self, firstsym, secondsym, group=None, layer=None):
+#        firstbind = self.get_bind(firstsym, group, layer)
+#        secondbind = self.get_bind(secondsym, group, layer)
+#        self.set_bind(firstsym, secondbind)
+#        self.set_bind(secondsym, firstbind)
+#        return
+
+#    def refresh (self):
+#        """Induce update of viewers of this model."""
+#        self.emit("layer-changed", self._layer)
+
+    def __repr__ (self):
+        return "%s.%s(ngroups=%d, nlayers=%d, labels=%r, groups=%r)" % (
+          self.__class__.__module__,
+          self.__class__.__name__,
+          self._maxgroups,
+          self._maxlayers,
+          self.labels,
+          self.groups
+          )
+#        return str(self.__json__())
+
+    def __json__ (self):
+        """JSON-friendly representation of this object."""
+        return {
+            '__module__': self.__class__.__module__,
+            '__class__': self.__class__.__name__,
+            'maxgroups': self._maxgroups,
+            'maxlayers': self._maxlayers,
+            'labels': self.labels,
+            'groups': self.groups,
+            }
+
+    # Signals:
+    # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
+    # * label-changed() - labels for keytops has changed; update display
+    # * layer-changed() - active layer changed
+
+gobject.type_register(InpDescrModel)
+gobject.signal_new("bind-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT, gobject.TYPE_INT, gobject.TYPE_STRING))
+gobject.signal_new("label-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,))
+#gobject.signal_new("layer-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+#gobject.signal_new("group-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+
+
+
+class InpDisplayState (gobject.GObject):
+    """Run-time state affecting display of input-bindables.
+Emits 'display-adjusted' in any change of display settings or InpDescrModel contents.
+"""
+    def __init__ (self, inpdescr):
+        gobject.GObject.__init__(self)
+        self.inpdescr = inpdescr
+        self.layer = 0
+        self.group = 0
+        self.vislayers = 1
+#        self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
+#        self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
+        self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+        self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+        self.cluster_defaults()
+
+    def get_layer (self):
+        return self.layer
+    def set_layer (self, val):
+        self.layer = val
+        #self.emit("layer-changed", val)
+        self.emit("display-adjusted")
+    def get_group (self):
+        return self.group
+    def set_group (self, val):
+        self.group = val
+        #self.emit("group-changed", val)
+        self.emit("display-adjusted")
+    def get_vislayers (self):
+        return self.vislayers
+    def set_vislayers (self, val):
+        self.vislayers = val
+        self.emit("display-adjusted")
+
+    def refresh (self):
+        """Induce update of viewers of this model."""
+        self.emit("display-adjusted", self)
+
+    def on_inpdescr_bind_changed (self, inpdescr, group, layer, inpsym):
+        pass
+
+    def on_inpdescr_label_changed (self, inpdescr, inplbl):
+        pass
+
+    def clear (self):
+        self.inpdescr.clear()
+        self.set_group(0)
+        self.set_layer(0)
+
+    def restore (self, other):
+        if not other:
+            return
+        self.inpdescr.restore(other.inpdescr)
+        self.set_group(0)
+        self.set_layer(0)
+
+    def cluster_defaults (self):
+        # Handful of default binds.
+        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
+        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
+        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
+        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
+        return
+
+    def get_layermap (self, layernum, group=None):
+        """Get layer (dict of keysym:binding) in specified group."""
+        groupnum = group if group is not None else  self.get_group()
+        if (0 <= layernum) and (layernum < self.inpdescr._maxlayers):
+            return self.inpdescr.groups[groupnum].get_layermap(layernum)
+        return None
+    def set_layermap (self, layernum, value, group=None):
+        groupnum = group if group is not None else self.get_group()
+        if (0 <= layernum) and (layernum < self.inpdescr._maxlayers):
+            if value is None:
+                self.inpdescr.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
+            else:
+                self.inpdescr.groups[groupnum].set_layermap(layernum, value)
+
+    def get_bind (self, inpsym,  group=None, layer=None):
+        groupnum = group if group is not None else self.get_group()
+        layernum = layer if layer is not None else self.get_layer()
+        return self.inpdescr.get_bind(inpsym, groupnum, layernum)
+    def set_bind (self, inpsym, v,  group=None, layer=None):
+        groupnum = group if group is not None else self.get_group()
+        layernum = layer if layer is not None else self.get_layer()
+        #self.inpdescr.get_grouplist(groupnum).get_layermap(layernum).set_bind(inpsym, v)
+        self.inpdescr.set_bind(inpsym, v, groupnum, layernum)
+        #self.emit('display-adjusted')
 
     def resolve_bind (self, inpsym,  group=None, layer=None):
         """Determine effective binding of a inpsym based on passthrough rules.
@@ -349,7 +531,7 @@ class InpDescrModel (gobject.GObject):
         groupfollow = groupnum
         retval = None
         while (retval is None) and (groupfollow is not None):
-            grp = self.get_grouplist(groupfollow)
+            grp = self.inpdescr.get_grouplist(groupfollow)
             layerfollow = layernum
             while (retval is None) and (layerfollow is not None):
                 layermap = grp.get_layermap(layerfollow)
@@ -392,68 +574,60 @@ class InpDescrModel (gobject.GObject):
         self.set_bind(secondsym, firstbind)
         return
 
-    def refresh (self):
-        """Induce update of viewers of this model."""
-        self.emit("layer-changed", self._layer)
-
-    def __repr__ (self):
-        return "%s.%s(ngroups=%d, nlayers=%d, labels=%r, groups=%r)" % (
-          self.__class__.__module__,
-          self.__class__.__name__,
-          self._maxgroups,
-          self._maxlayers,
-          self.labels,
-          self.groups
-          )
-#        return str(self.__json__())
-
-    def __json__ (self):
-        """JSON-friendly representation of this object."""
-        return {
-            '__module__': self.__class__.__module__,
-            '__class__': self.__class__.__name__,
-            'maxgroups': self._maxgroups,
-            'maxlayers': self._maxlayers,
-            'labels': self.labels,
-            'groups': self.groups,
-            }
-
-    # Signals:
-    # * bind-changed(layer:int, inpsym:str) - a binding changed; update display
-    # * label-changed() - labels for keytops has changed; update display
-    # * layer-changed() - active layer changed
-
-gobject.type_register(InpDescrModel)
-gobject.signal_new("bind-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT, gobject.TYPE_INT, gobject.TYPE_STRING))
-gobject.signal_new("label-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,))
-gobject.signal_new("layer-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
-gobject.signal_new("group-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+gobject.type_register(InpDisplayState)
+gobject.signal_new("display-adjusted", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
+#gobject.signal_new("layer-changed", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (InpDisplayState, gobject.TYPE_INT,))
+#gobject.signal_new("group-changed", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (InpDisplayState, gobject.TYPE_INT,))
 
 
+class KbBindable (object):
+    """Base class for elements that can take binds (from command set)."""
+    def __init__ (self, inpsym, dispstate):
+        self.inpsym = inpsym
+        self.dispstate = dispstate
+        self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+        self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+        self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
 
-class KbTop (gtk.Button):
+    def on_display_adjusted (self, dispstate, *args):
+        self.update_display()
+
+    def on_inpdescr_bind_changed (self, inpdescr, group, layer, inpsym):
+        if self.inpsym == inpsym:
+            self.update_display()
+
+    def on_inpdescr_label_changed (self, inpdescr, inpsym):
+        if self.inpsym == inpsym:
+            self.update_display()
+
+    def update_display (self):
+        raise NotImplementedError("update_display() is abstract")
+
+
+class KbTop (gtk.Button, KbBindable):
     """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
     Contents to display are packaged in a data model (InpDescrModel)
     """
-    def __init__ (self, inpsym, inpdescr=None, vislayers=1):
+    def __init__ (self, inpsym, dispstate):
         """Initialize with given data model, and the input symbol tied to this kbtop"""
         # UI elements
         gtk.Button.__init__(self)
+        KbBindable.__init__(self, inpsym, dispstate)
         self.plane = gtk.VBox()
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
-        self.vislayers = vislayers  # Visible layers.
+#        self.vislayers = vislayers  # Visible layers.
 
         # data model
-        self.set_model(inpdescr)
-        self.inpdescr = inpdescr
-        self.inpsym = inpsym
-        self._baselayer = 0  # partial layers view; what the lowest layer number is.
-        self._layer = 0  # Currently active layer shown.
-        self._group = 0  # Currently active group shown.
+#        self.set_model(inpdescr)
+#        self.inpdescr = inpdescr
+#        self.inpsym = inpsym
+#        self._baselayer = 0  # partial layers view; what the lowest layer number is.
+#        self._layer = 0  # Currently active layer shown.
+#        self._group = 0  # Currently active group shown.
 
         # Fill label (first row)
-        self.label = self.inpdescr.get_label(self.inpsym)
+        self.label = self.dispstate.inpdescr.get_label(self.inpsym)
         #self.set_keytop(self.label)
 
 #        # Adjust bind display (second row)
@@ -497,7 +671,7 @@ class KbTop (gtk.Button):
 
         self.inp_box = gtk.VBox()
 
-        m = max(1, self.inpdescr.get_numlayers())
+        m = max(1, self.dispstate.inpdescr.get_numlayers())
         # Input binding displays.
         self.inp_binds = [ gtk.Label() for n in range(m) ]
         # Background for binding displays.
@@ -509,7 +683,7 @@ class KbTop (gtk.Button):
         temp = gtk.Entry()  # copy style from Entry.
         self.refstyle = refstyle = temp.get_style().copy()
         # Prepare multi-layer view.
-        for i in range(0, self.vislayers):
+        for i in range(0, self.dispstate.vislayers):
             ib = self.inp_binds[i]
             ib.set_alignment(0, 0.5)
             ib.set_width_chars(4)
@@ -536,24 +710,24 @@ class KbTop (gtk.Button):
     def set_inpsym (self, val):
         self.inpsym = val
 
-    def get_vislayers (self):
-        return self.vislayers
-    def set_vislayers (self, v):
-        self.vislayers = v
-        self.uibuild_binddisplays()
+#    def get_vislayers (self):
+#        return self.vislayers
+#    def set_vislayers (self, v):
+#        self.vislayers = v
+#        self.uibuild_binddisplays()
 
-    def get_model (self):
-        return self.inpdescr
-    def set_model (self, mdl):
-        if mdl is None:
-            mdl = InpDescrModel()
-        self.inpdescr = mdl
-        if self.inpdescr:
-            self.inpdescr.connect("bind-changed", self.on_data_change)
-            self.inpdescr.connect("label-changed", self.on_data_change)
-            self.inpdescr.connect("layer-changed", self.on_layer_change)
-            self.inpdescr.connect("group-changed", self.on_group_change)
-        # self.emit("data-model-changed")
+#    def get_model (self):
+#        return self.inpdescr
+#    def set_model (self, mdl):
+#        if mdl is None:
+#            mdl = InpDescrModel()
+#        self.inpdescr = mdl
+#        if self.inpdescr:
+#            self.inpdescr.connect("bind-changed", self.on_data_change)
+#            self.inpdescr.connect("label-changed", self.on_data_change)
+#            self.inpdescr.connect("layer-changed", self.on_layer_change)
+#            self.inpdescr.connect("group-changed", self.on_group_change)
+#        # self.emit("data-model-changed")
 
     def set_keytop (self, disp):
         if len(disp) > 2:
@@ -564,19 +738,20 @@ class KbTop (gtk.Button):
 
     def update_display (self):
         # Update keytop
-        lbl = self.inpdescr.get_label(self.inpsym)
+        logger.debug("kbtop update_display %r" % self.inpsym)
+        lbl = self.dispstate.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
         # Update binding display
-        groupnum = self.inpdescr.get_group()
-        layernum = self.inpdescr.get_layer()
-        layermap = self.inpdescr.get_layermap(layernum)
+        groupnum = self.dispstate.group
+        layernum = self.dispstate.layer
+        layermap = self.dispstate.get_layermap(layernum)
 
-        self._baselayer = self.vislayers * (self._layer / self.vislayers)
-        bindidx = self.vislayers - (self._layer - self._baselayer) - 1
+        self._baselayer = self.dispstate.vislayers * (self.dispstate.layer / self.dispstate.vislayers)
+        bindidx = self.dispstate.vislayers - (self.dispstate.layer - self._baselayer) - 1
 
-        for i in range(self.vislayers):
+        for i in range(self.dispstate.vislayers):
             bg = self.bg_binds[i]
-            layernum = self._baselayer + (self.vislayers - i) - 1
+            layernum = self._baselayer + (self.dispstate.vislayers - i) - 1
             if i == bindidx:
                 # highlighted layer.
                 refstyle = self.refstyle.base
@@ -591,22 +766,22 @@ class KbTop (gtk.Button):
                 bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
                 bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
                 bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
-            val = self.inpdescr.resolve_bind_markup(self.inpsym, layer=layernum)
+            val = self.dispstate.resolve_bind_markup(self.inpsym, layer=layernum)
             self.inp_binds[i].set_markup(val)
             # install layer prefix for multi-layer view.
-            if self.vislayers > 1:
+            if self.dispstate.vislayers > 1:
                 self.lyr_lbls[i].set_markup("<small>%s:</small>" % layernum)
             else:
                 self.lyr_lbls[i].set_text("")
 
-    def on_data_change (self, *args):
-        self.update_display()
-    def on_layer_change (self, inpdescr, layernum, *args):
-        self._layer = layernum
-        self.update_display()
-    def on_group_change (self, inpdescr, groupnum, *args):
-        self._group = groupnum
-        self.update_display()
+#    def on_data_change (self, *args):
+#        self.update_display()
+#    def on_layer_change (self, inpdescr, layernum, *args):
+#        self._layer = layernum
+#        self.update_display()
+#    def on_group_change (self, inpdescr, groupnum, *args):
+#        self._group = groupnum
+#        self.update_display()
 
     def setup_dnd (self):
         # Set up drag-and-drop for KbTop.
@@ -649,7 +824,7 @@ class KbTop (gtk.Button):
     def on_drag_end (self, w, ctx, *args):
         if self.pending_drag_unbinding:
             logger.debug("kbtop unbind %s" % self.inpsym)
-            self.inpdescr.set_bind(self.inpsym, "")
+            self.dispstate.set_bind(self.inpsym, "")
             self.pending_drag_unbinding = False
         return
 
@@ -660,13 +835,13 @@ class KbTop (gtk.Button):
             # Commands dropping.
             seltext = seldata.data
             logger.debug("kbtop Command install: %s <= %s" % (w.inpsym, seltext))
-            self.inpdescr.set_bind(self.inpsym, seltext)
+            self.dispstate.set_bind(self.inpsym, seltext)
             ctx.finish(True, False, 0)
             return True
         elif info == DndOpcodes.SWAP:
             othersym = seldata.data
             logger.debug("kbtop Command swap: %s <=> %s" % (w.inpsym, othersym))
-            self.inpdescr.swap_bind(w.inpsym, othersym)
+            self.dispstate.swap_bind(w.inpsym, othersym)
             ctx.finish(True, False, 0)
             return True
 
@@ -693,7 +868,7 @@ class ArrangerEmpty (object):
         for suffix in suffices:
             inpsym = self.inpsymof(suffix)
             if not inpsym in self.parent.kbtops:
-                kbtop = KbTop(inpsym, self.parent.inpdescr, self.parent.inivislayers)
+                kbtop = KbTop(inpsym, self.parent.dispstate)
                 self.parent.kbtops[inpsym] = kbtop
                 kbtop.connect("button-press-event", self.parent.on_button_press)
 
@@ -1009,6 +1184,7 @@ Presents all menuitems in a TreeView.
 
     def rearrange (self):
         self.parent.menulist.pull_data()
+        #self.parent.menulist.set_vislayers(self.parent.vislayers)
         self.parent.stacked.set_visible_child_name("1")
 
 
@@ -1055,18 +1231,34 @@ class PseudoStack (gtk.VBox):
 
 class KbMenuList (gtk.ScrolledWindow):
     """TreeView of list-based cluster types."""
-    def __init__ (self, inpsymprefix=None, inpdescr=None):
+    def __init__ (self, inpsymprefix, dispstate):
         # Based on ScrollWindowed, containing a TreeView
         gtk.ScrolledWindow.__init__(self)
-        self.inpdescr = inpdescr
         self.inpsymprefix = inpsymprefix or ""
+        self.dispstate = dispstate
         # The TreeView
         self.treeview = gtk.TreeView()
         self.rendertext = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
-        self.col1 = gtk.TreeViewColumn("bind", self.rendertext, markup=1)
+        self.col1 = gtk.TreeViewColumn("bind0", self.rendertext, markup=1)
+        self.col2 = gtk.TreeViewColumn("bind1", self.rendertext, markup=1)
+        self.col3 = gtk.TreeViewColumn("bind2", self.rendertext, markup=1)
+        self.col4 = gtk.TreeViewColumn("bind3", self.rendertext, markup=1)
+        self.col5 = gtk.TreeViewColumn("bind4", self.rendertext, markup=1)
+        self.col6 = gtk.TreeViewColumn("bind5", self.rendertext, markup=1)
+        self.col7 = gtk.TreeViewColumn("bind6", self.rendertext, markup=1)
+        self.col8 = gtk.TreeViewColumn("bind7", self.rendertext, markup=1)
         self.treeview.append_column(self.col0)
         self.treeview.append_column(self.col1)
+
+        self.treeview.append_column(self.col2)
+        self.treeview.append_column(self.col3)
+        self.treeview.append_column(self.col4)
+        self.treeview.append_column(self.col5)
+        self.treeview.append_column(self.col6)
+        self.treeview.append_column(self.col7)
+        self.treeview.append_column(self.col8)
+
         self.add(self.treeview)  # and not with viewport.
         # private model updated from InpDescrModel, prefill with 20 inpsyms.
         self.scratch = gtk.ListStore(str,str)
@@ -1076,11 +1268,11 @@ class KbMenuList (gtk.ScrolledWindow):
         self.pull_data()  # Populate .scratch from InpDescrModel
         self.treeview.set_model(self.scratch)
         # Listen for changes to/in InpDescrModel (update .scratch)
-        if self.inpdescr:
-            self.conn_bind_changed = self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
-            self.conn_label_changed = self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
-            self.conn_layer_changed = self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
-            self.conn_group_changed = self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
+#        if self.inpdescr:
+#            self.conn_bind_changed = self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+##            self.conn_label_changed = self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+#            self.conn_layer_changed = self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
+#            self.conn_group_changed = self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
         # Set up drag-and-drop.
         self.setup_dnd()
 
@@ -1239,9 +1431,46 @@ class KbMenuList (gtk.ScrolledWindow):
         """Synchronize .scratch based on InpDescrModel"""
         for row in self.scratch:
             inpsym = row[0]
-            if self.inpdescr:
-                bind_markedup = self.inpdescr.resolve_bind_markup(inpsym)
+            if self.dispstate:
+                bind_markedup = self.dispstate.resolve_bind_markup(inpsym)
                 row[1] = bind_markedup
+
+    def set_vislayers (self, val):
+        self.vislayers = val
+        self.update_display()
+
+    def update_display (self):
+        _baselayer = self.vislayers * (self.dispstate.layer / self.dispstate.vislayers)
+        colviews = [ self.col1, self.col2, self.col3, self.col4, self.col5, self.col6, self.col7, self.col8 ]
+        bindidx = self.dispstate.vislayers - (self.dispstate.layer - _baselayer) - 1
+
+        for colview in colviews:
+            colview.set_visible(False)
+        for i in range(self.vislayers):
+#            bg = self.bg_binds[i]
+            layernum = _baselayer + (self.dispstate.vislayers - i) - 1
+            colviews[layernum].set_visible(True)
+#            if i == bindidx:
+#                # highlighted layer.
+#                refstyle = self.refstyle.base
+#                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
+#                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
+#                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
+#                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
+#            else:
+#                # unhighlighted layer.
+#                refstyle = self.refstyle.bg
+#                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
+#                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
+#                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
+#                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
+#            val = self.inpdescr.resolve_bind_markup(self.inpsym, layer=layernum)
+#            self.inp_binds[i].set_markup(val)
+            # install layer prefix for multi-layer view.
+#            if self.vislayers > 1:
+#                self.lyr_lbls[i].set_markup("<small>%s:</small>" % layernum)
+#            else:
+#                self.lyr_lbls[i].set_text("")
 
     def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
 #        if (grp == self.inpdescr._group) and (lyr == self.inpdescr._layer):
@@ -1252,10 +1481,14 @@ class KbMenuList (gtk.ScrolledWindow):
         self.pull_data()
     def on_inpdescr_label_changed (self, *args):
         self.pull_data()
-    def on_inpdescr_layer_changed (self, *args):
+    def on_inpdescr_layer_changed (self, inpdescr, layernum, *args):
+        self._layer = layernum
         self.pull_data()
-    def on_inpdescr_group_changed (self, *args):
+        self.update_display()
+    def on_inpdescr_group_changed (self, inpdescr, groupnum, *args):
+        self._group = groupnum
         self.pull_data()
+        self.update_display()
 
 
 class KbPlanar (gtk.EventBox):
@@ -1276,13 +1509,14 @@ As arrangments can change during run-time, use strategies for rearranging:
 * (o) OneButton : o
     """
 
-    def __init__ (self, inpsymprefix, inpdescr=None, vislayers=1):
+    def __init__ (self, inpsymprefix, dispstate):
         """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
         # UI elements
         gtk.EventBox.__init__(self)
 
         self.inpsymprefix = inpsymprefix
-        self.inpdescr = inpdescr
+#        self.inpdescr = inpdescr
+        self.dispstate = dispstate
         self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
 
         self.frame = gtk.Frame(inpsymprefix)
@@ -1300,14 +1534,14 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.grid = gtk.Table(12,12,True)
 
         self.stacked = PseudoStack()
-        self.menulist = KbMenuList(self.inpsymprefix, self.inpdescr)
+        self.menulist = KbMenuList(self.inpsymprefix, self.dispstate)
         self.stacked.add_named(self.grid, "0")
         self.stacked.add_named(self.menulist, "1")
 
         self.frame.add(self.stacked)
         self.add(self.frame)
 
-        self.inivislayers = vislayers
+#        self.vislayers = vislayers
 
         self.arrangerEmpty = ArrangerEmpty(self)
         self.arrangerOneButton = ArrangerOneButton(self)
@@ -1328,6 +1562,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.ctxmenu = self.make_context_menu(self.inpsymprefix)
         self.connect_menuitems(self.ctxmenu)
         self.connect_ctxmenu()
+        self.show_all()
         self.update_display()
 
     def arrangerTouchmenu (self, cap=2):
@@ -1338,6 +1573,11 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.detach_all()
         self.arrangerRadialmenu0.set_capacity(cap)
         return self.arrangerRadialmenu0
+
+    def update_label (self):
+        #self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
+        self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
+        #self.frame_lbl_sym.set_markup("<a href='#a'>{} &lt;{!s}&gt;</a>".format(self.inpsymprefix, self.arranger.NAME))
 
     def find_arranger (self, name):
         match = [ a for a in self.__dict__.itervalues() if isinstance(a, ArrangerEmpty) and a.NAME == name ]
@@ -1354,13 +1594,11 @@ As arrangments can change during run-time, use strategies for rearranging:
         else:
             self.arranger = arranger
         self.arranger.rearrange()
-        #self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
-        self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
-        #self.frame_lbl_sym.set_markup("<a href='#a'>{} &lt;{!s}&gt;</a>".format(self.inpsymprefix, self.arranger.NAME))
+        self.update_label()
         #self.show_all()
         self.grid.show_all()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
-        self.inpdescr.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
+        self.dispstate.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
 
     def get_cluster_type (self):
         return self.arrange.NAME
@@ -1368,6 +1606,12 @@ As arrangments can change during run-time, use strategies for rearranging:
         arranger = self.find_arranger(cltype)
         self.set_arranger(arranger)
         return
+
+#    def get_vislayers (self):
+#        return self.vislayers
+#    def set_vislayers (self, val):
+#        self.vislayers = val
+#        self.update_display()
 
     def make_menu (self, menudesc):
         menu = gtk.Menu()
@@ -1487,7 +1731,7 @@ As arrangments can change during run-time, use strategies for rearranging:
     def update_display (self):
         self.detach_all()
         # Retrieve intended cluster type by name from InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
-        cluster_type = self.inpdescr.get_bind(self.inpsymprefix, 0, 0)
+        cluster_type = self.dispstate.get_bind(self.inpsymprefix, 0, 0)
         self.set_cluster_type(cluster_type)
         if self.arranger:
             self.arranger.rearrange()
@@ -1506,11 +1750,14 @@ As arrangments can change during run-time, use strategies for rearranging:
         return self.kbtops.values()
 
 
+
+
 class KblayoutWidget (gtk.VBox):
-    def __init__ (self, mdl=None):
+    def __init__ (self, dispstate=None):
         gtk.VBox.__init__(self)
         self.vislayers = 1
-        self.mdl = mdl
+        #self.mdl = mdl
+        self.dispstate = dispstate
         self.keytops = {}
         self.active = False
         self.grid = gtk.Table(homogeneous=True)
@@ -1541,12 +1788,18 @@ class KblayoutWidget (gtk.VBox):
         self.pack_start(self.row_layout, expand=False, fill=False)
         self.pack_start(self.grid, expand=False, fill=False)
 
-    def get_model (self):
-        return self.mdl
-    def set_model (self, mdl):
-        self.mdl = mdl
+#    def get_model (self):
+#        return self.mdl
+#    def set_model (self, mdl):
+#        self.mdl = mdl
+#        for k in self.keytops.valueiter():
+#            k.set_model(mdl)
+    def get_dispstate (self):
+        return self.dispstate
+    def set_dispstate (self, dispstate):
+        self.dispstate = dispstate
         for k in self.keytops.valueiter():
-            k.set_model(mdl)
+            k.set_dispstate(dispstate)
 
     def get_vislayers (self):
         return self.vislayers
@@ -1555,6 +1808,9 @@ class KblayoutWidget (gtk.VBox):
         for kt in self.keytops.itervalues():
             kt.set_vislayers(v)
             kt.update_display()
+#        for ch in self.grid.get_children():
+#            ch.set_vislayers(v)
+#            ch.update_display()
 
     @property
     def kbdesc (self):
@@ -1573,13 +1829,15 @@ class KblayoutWidget (gtk.VBox):
                         inpsym, disp = label, label
                         if '\f' in label:
                             (disp, inpsym) = label.split('\f', 1)
-                            if self.mdl:
-                                self.mdl.set_label(inpsym, disp)
+#                            if self.mdl:
+#                                self.mdl.set_label(inpsym, disp)
+                            if self.dispstate:
+                                self.dispstate.inpdescr.set_label(inpsym, disp)
                         l, r = colnum, colnum+width
                         t, b = rownum, rownum+2*height
                         #print("attach %r %r %r %r %r" % (keytop, l, r, t, b))
                         if inpsym.endswith("#"):
-                            planar = KbPlanar(inpsym, self.mdl, self.vislayers)
+                            planar = KbPlanar(inpsym, self.dispstate)
                             for inpsym,kbtop in planar.kbtops.iteritems():
                                 kbtop.connect("clicked", self.on_keytop_clicked)
                                 keytops[inpsym] = kbtop
@@ -1591,7 +1849,7 @@ class KblayoutWidget (gtk.VBox):
                             planar.update_display()
                             #grid.attach(planar, l, r, t, b)
                         else:
-                            keytop = KbTop(inpsym, self.mdl, self.vislayers)
+                            keytop = KbTop(inpsym, self.dispstate)
                             keytop.connect("clicked", self.on_keytop_clicked)
                             keytops[inpsym] = keytop
                             self.active = keytop

@@ -37,8 +37,9 @@ class TestInpDescrModel(unittest.TestCase):
 
         x = kblayout.InpDescrModel(8,8)
         x.connect("bind-changed", on_bindchange)
+        y = kblayout.InpDisplayState(x)
 
-        playback=[ lambda: x.set_bind("K_ESCAPE", None),
+        playback=[ lambda: y.set_bind("K_ESCAPE", None),
                    ]
 
         self.runloop(playback)
@@ -49,12 +50,13 @@ class TestInpDescrModel(unittest.TestCase):
         def on_layerchange (w, *args):
             layerchanged.append(True)
         x = kblayout.InpDescrModel(8,8)
-        x.connect("layer-changed", on_layerchange)
-        playback = [ lambda: x.set_layer(2),
+        y = kblayout.InpDisplayState(x)
+        y.connect("display-adjusted", on_layerchange)
+        playback = [ lambda: y.set_layer(2),
                      ]
         self.runloop(playback)
         self.assertTrue(True in layerchanged)
-        self.assertEqual(x.get_layer(), 2)
+        self.assertEqual(y.get_layer(), 2)
 
 
     def test_group_change (self):
@@ -62,12 +64,13 @@ class TestInpDescrModel(unittest.TestCase):
         def on_groupchange (w, *args):
             groupchanged.append(True)
         x = kblayout.InpDescrModel(8,8)
-        x.connect("group-changed", on_groupchange)
-        playback = [ lambda: x.set_group(1),
+        y = kblayout.InpDisplayState(x)
+        y.connect("display-adjusted", on_groupchange)
+        playback = [ lambda: y.set_group(1),
                      ]
         self.runloop(playback)
         self.assertTrue(True in groupchanged)
-        self.assertEqual(x.get_group(), 1)
+        self.assertEqual(y.get_group(), 1)
 
 
     def test_get_bind_via_implicit (self):
@@ -78,34 +81,36 @@ class TestInpDescrModel(unittest.TestCase):
         def on_layerchange (w, *args): layerchanged.append(True)
         def on_groupchange (w, *args): groupchanged.append(True)
         x = kblayout.InpDescrModel(8,8)
+        y = kblayout.InpDisplayState(x)
         x.connect("bind-changed", on_bindchange)
-        x.connect("layer-changed", on_layerchange)
-        x.connect("group-changed", on_groupchange)
-        playback = [ lambda: x.set_group(1),
-                     lambda: x.set_layer(3),
-                     lambda: x.set_bind('K_ESCAPE', 'Quit'),
-                     lambda: x.set_group(2),
-                     lambda: x.set_bind('K_ESCAPE', 'NotQuit'),
+        y.connect("display-adjusted", on_layerchange)
+        y.connect("display-adjusted", on_groupchange)
+        playback = [ lambda: y.set_group(1),
+                     lambda: y.set_layer(3),
+                     lambda: y.set_bind('K_ESCAPE', 'Quit'),
+                     lambda: y.set_group(2),
+                     lambda: y.set_bind('K_ESCAPE', 'NotQuit'),
                      ]
         self.runloop(playback)
         self.assertTrue(True in bindchanged)
         self.assertTrue(True in layerchanged)
         self.assertTrue(True in groupchanged)
-        self.assertEqual(x.get_group(), 2)
-        self.assertEqual(x.get_layer(), 3)
-        self.assertEqual(x.get_bind("K_ESCAPE"), 'NotQuit')
-        self.assertEqual(x.get_bind("K_ESCAPE", group=1, layer=3), 'Quit')
+        self.assertEqual(y.get_group(), 2)
+        self.assertEqual(y.get_layer(), 3)
+        self.assertEqual(y.get_bind("K_ESCAPE"), 'NotQuit')
+        self.assertEqual(y.get_bind("K_ESCAPE", group=1, layer=3), 'Quit')
 
     def test_get_binds1 (self):
         x = kblayout.InpDescrModel(8,8)
-        playback = [ lambda: x.set_bind('K_ESCAPE', 'Quit'),
-                     lambda: x.set_bind('K_ESCAPE', 'NotQuit', layer=1),
+        y = kblayout.InpDisplayState(x)
+        playback = [ lambda: y.set_bind('K_ESCAPE', 'Quit'),
+                     lambda: y.set_bind('K_ESCAPE', 'NotQuit', layer=1),
                      ]
         self.runloop(playback)
-        self.assertEqual(x.get_bind("K_ESCAPE", layer=0), 'Quit')
-        self.assertEqual(x.get_bind("K_ESCAPE", layer=1), 'NotQuit')
-        self.assertEqual(x.resolve_bind("K_ESCAPE", layer=0), (False, "Quit"))
-        self.assertEqual(x.resolve_bind("K_ESCAPE", layer=1), (False, "NotQuit"))
+        self.assertEqual(y.get_bind("K_ESCAPE", layer=0), 'Quit')
+        self.assertEqual(y.get_bind("K_ESCAPE", layer=1), 'NotQuit')
+        self.assertEqual(y.resolve_bind("K_ESCAPE", layer=0), (False, "Quit"))
+        self.assertEqual(y.resolve_bind("K_ESCAPE", layer=1), (False, "NotQuit"))
 
 # TODO: test model failing:
 # * change group to OOB
