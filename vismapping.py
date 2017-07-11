@@ -502,7 +502,6 @@ class VisCmds (gtk.VBox):
           ("bind", gtk.TARGET_SAME_APP, 1),
         ]
         dnd_actions = gtk.gdk.ACTION_LINK | 0
-        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
 
@@ -510,27 +509,15 @@ class VisCmds (gtk.VBox):
         dnd_targets = [
           ("unbind", gtk.TARGET_SAME_APP, 2),
         ]
-        #dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
         dnd_actions = gtk.gdk.ACTION_ASK
         dropw = self
         dropw.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
         #dropw.enable_model_drag_dest(dnd_targets, dnd_actions)
         dropw.connect("drag-data-received", self.on_drag_data_received)
-        #dropw.connect("drag-motion", self.on_drag_motion)
-
-    def on_drag_motion (self, w, ctx, x, y, time, *args):
-        logger.debug("viscmds drag-motion")
-        #ctx.drag_status(gtk.gdk.ACTION_DEFAULT, time)
-        #ctx.drag_status(gtk.gdk.ACTION_MOVE, time)
-        ctx.drag_status(gtk.gdk.ACTION_PRIVATE, time)
-        return True
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         logger.debug("cmdset drag-data-received %r" % info)
         if info == DndOpcodes.UNBIND:
-#            if ctx.actions == gtk.gdk.ACTION_DEFAULT:
-#                ctx.finish(True, True, time)
-#                return True
             ctx.finish(True, False, time)
             return True
         return False
@@ -549,7 +536,6 @@ class VisCmds (gtk.VBox):
                 return False
             # Get the command to bind.
             val = treemdl.get_value(treeiter, 1)
-            #seldata.set_text(val)
             seldata.set(seldata.target, 8, str(val))
             chk = seldata.data
             logger.debug("set seldata.data to %r, %r" % (val, chk))

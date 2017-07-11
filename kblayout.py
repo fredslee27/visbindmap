@@ -614,7 +614,6 @@ class KbTop (gtk.Button):
           ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
           ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
         ]
-        #dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
         dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_ASK
         self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.connect("drag-data-get", self.on_drag_data_get)
@@ -633,6 +632,7 @@ class KbTop (gtk.Button):
         if info == DndOpcodes.BIND:
             logger.debug("kbtop.drag-data-get for dragging from")
             val = self.inpdescr.get_bind(self.inpsym)
+            val = "" if val is None else val
             seldata.set(seldata.target, 8, str(val))
             return True
         return False
