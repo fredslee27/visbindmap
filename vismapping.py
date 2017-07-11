@@ -475,16 +475,19 @@ class VisCmds (gtk.VBox):
         self.cmdstore = cmdstore
 
         self.entry = gtk.TreeView(self.cmdstore)
-        self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bind", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
+        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 1),
+        ]
+        dnd_actions = gtk.gdk.ACTION_LINK | 0
+        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
         self.entry.append_column(self.col0)
 #        self.add(gtk.Label("VisCmds"))
 
-        #self.add(self.entry)
         self.entrywin = gtk.ScrolledWindow()
-        self.entrywin.add_with_viewport(self.entry)
+        self.entrywin.add(self.entry)
         self.add(self.entrywin)
         self.set_size_request(160, 100)
 
@@ -495,48 +498,23 @@ class VisCmds (gtk.VBox):
         self.entry.set_model(self.cmdstore)
         # TODO: update TreeView?
 
-    def on_drag_data_get (self, w, ctx, sel, info, time, *args):
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         srcw = ctx.get_source_widget()
         treesel = srcw.get_selection()
         (treemdl, treeiter) = treesel.get_selected()
-        if sel.target == "bind":
-            logger.debug("target is bind")
-
+        if info == 1:
+            # Commands dragging.
+            logger.debug("info is 1 => Commands dragging")
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
                 sel.set_text("", 0)
-                return
+                return False
             # Get the command to bind.
             val = treemdl.get_value(treeiter, 1)
-
-            sel.set("STRING", 8, val)  # 8 bits per unit.
-        elif sel.target == "bindid":
-            logger.debug("target is bindid")
-
-            if treemdl.iter_has_child(treeiter):
-                # non-terminal item; fail.
-                sel.set_text("", 0)
-                return
-            # Get the command to bind.
-            val = treemdl.get_value(treeiter, 0)
-
-            sel.set("STRING", 8, str(val))  # 8 bits per unit.
-        elif sel.target == "binduri":
-            logger.debug("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
-            # Find out target, get its inpsym, assign binding.
-            # Send displayed text to target.
-            logger.debug("+++ target is bindref")
-
-            if treemdl.iter_has_child(treeiter):
-                # non-terminal item; fail.
-                sel.set_text("", 0)
-                return
-            # Get the command to bind.
-            num = treemdl.get_value(treeiter, 0)
-            name = treemdl.get_value(treeiter, 1)
-            val = "cmdbind://%s/%s" % (num, name)
-            logger.debug("val = %r" % val)
-            sel.set("STRING", 8, str(val))  # 8 bits per unit.
+            #seldata.set_text(val)
+            seldata.set(seldata.target, 8, str(val))
+            chk = seldata.data
+            logger.debug("set seldata.data to %r, %r" % (val, chk))
 
 
 # Graphically lay out bindings meanings.

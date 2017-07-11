@@ -420,10 +420,10 @@ class KbTop (gtk.Button):
 #        self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
 
         # Set up drag-and-drop
-        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bind", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
-        #self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("bindid", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
-        #self.drag_dest_set(gtk.DEST_DEFAULT_ALL, [ ("binduri", gtk.TARGET_SAME_APP, 1) ], gtk.gdk.ACTION_LINK)
-        self.connect("drag-drop", self.on_drop)
+        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 1),
+        ]
+        dnd_actions = gtk.gdk.ACTION_LINK | 0
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
         self.connect("drag-data-received", self.on_drag_data_received)
 
         # Alignment widget.
@@ -572,23 +572,16 @@ class KbTop (gtk.Button):
         self._group = groupnum
         self.update_display()
 
-    def on_drop (self, w, ctx, x, y, time, *args):
-        dragdata = self.drag_get_data(ctx, "STRING", time)
-        return True
-
-    def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         #print("%s drag-data-received %r" % (self.__class__.__name__, w))
         logger.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
-        srcw = ctx.get_source_widget()
-        #print(" srcw = %r" % srcw)
-        logger.debug(" srcw = %r" % srcw)
-        seltext = sel.get_text()
-        #self.bindid = int(sel.get_text())
-        #self.binduri = sel.get_text()
-        logger.debug("  sel = %r" % seltext)
-        #bindid = int(seltext)
-        ctx.finish(True, False, time)
-        self.emit("dnd-link", srcw, seltext)
+        if info == 1:
+            # Commands dropping.
+            logger.debug("info is 1 => Command dropping")
+            seltext = seldata.data
+            logger.debug(" seldata.text = %r" % seltext)
+            self.inpdescr.set_bind(self.inpsym, seltext)
+            return True
 
 gobject.type_register(KbTop)
 gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
@@ -1001,10 +994,6 @@ class KbMenuList (gtk.ScrolledWindow):
 
         self.droppath = None
 
-    def on_rows_reordered (self, mdl, path, treeiter, new_order, *args):
-        print("reordered")
-        pass
-
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         if info == 11:
             # Reordering.  Encoding source path into string.
@@ -1031,6 +1020,7 @@ class KbMenuList (gtk.ScrolledWindow):
                     gtk.TREE_VIEW_DROP_BEFORE: (self.drag_bind, -1),
                     gtk.TREE_VIEW_DROP_AFTER: (self.drag_bind, +1),
                 }.get(destpos, (None,None))
+                logger.debug("reordering internally: %r vs %r" % (srcpath, destpath))
                 if callable(func):
                     func(*(bias, srcpath, destpath))
                 if ctx.action == gtk.gdk.ACTION_MOVE:
@@ -1038,10 +1028,11 @@ class KbMenuList (gtk.ScrolledWindow):
                 return True
         elif info == 10:
             # bind-drop from commands set.
+            logger.debug("command-dropping")
             dropinfo = w.get_dest_row_at_pos(x,y)
             if dropinfo:
                 destpath, destpos = dropinfo
-                seltext = sel.get_text()
+                seltext = sel.data
                 self.drop_in_bind(destpath, seltext)
                 ctx.finish(True, False, time)
                 return True
