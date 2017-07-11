@@ -475,12 +475,6 @@ class VisCmds (gtk.VBox):
         self.cmdstore = cmdstore
 
         self.entry = gtk.TreeView(self.cmdstore)
-        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 1),
-        ]
-        dnd_actions = gtk.gdk.ACTION_LINK | 0
-        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
-        self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
-        self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
         self.entry.append_column(self.col0)
@@ -491,6 +485,8 @@ class VisCmds (gtk.VBox):
         self.add(self.entrywin)
         self.set_size_request(160, 100)
 
+        self.setup_dnd()
+
     def get_cmdstore (self):
         return self.cmdstore
     def set_cmdstore (self, cmdstore):
@@ -498,7 +494,37 @@ class VisCmds (gtk.VBox):
         self.entry.set_model(self.cmdstore)
         # TODO: update TreeView?
 
+    def setup_dnd (self):
+        """Set up drag-and-drop."""
+        # DnD Source.
+        dnd_targets = [
+          ("bind", gtk.TARGET_SAME_APP, 1),
+        ]
+        dnd_actions = gtk.gdk.ACTION_LINK | 0
+        #self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.entry.connect("drag-data-get", self.on_drag_data_get)
+
+        # DnD Destination.
+        dnd_targets = [
+          ("unbind", gtk.TARGET_SAME_APP, 2),
+        ]
+        dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
+        dropw = self
+        dropw.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        #dropw.enable_model_drag_dest(dnd_targets, dnd_actions)
+        dropw.connect("drag-data-received", self.on_drag_data_received)
+
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        logger.debug("cmdset drag-data-received %r" % info)
+        if info == 2:
+            if ctx.actions == gtk.gdk.ACTION_MOVE:
+                ctx.finish(True, True, time)
+                return True
+        return False
+
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        logger.debug("cmdset drag-data-get: %d" % info)
         srcw = ctx.get_source_widget()
         treesel = srcw.get_selection()
         (treemdl, treeiter) = treesel.get_selected()
@@ -515,6 +541,7 @@ class VisCmds (gtk.VBox):
             seldata.set(seldata.target, 8, str(val))
             chk = seldata.data
             logger.debug("set seldata.data to %r, %r" % (val, chk))
+            return True
 
 
 # Graphically lay out bindings meanings.

@@ -10,6 +10,31 @@ import ast
 import kbd_desc
 
 
+class DndOpcode (object):
+    def __init__ (self, name, val):
+        self.name = name
+        self.val = val
+    def __int__ (self):
+        return self.val
+    def __str__ (self):
+        return self.name
+    def __eq__ (self, other):
+        if type(other) == int:
+            return other == self.val
+        try:
+            return other.name == self.name
+        except:
+            pass
+        return other is self
+    def __repr__ (self):
+        return "DndOpcode({!r},{!r})".format(self.name, self.val)
+
+class DndOpcodes:
+    BIND = DndOpcode("bind", 1)
+    UNBIND = DndOpcode("unbind", 2)
+    REORDER = DndOpcode("reorder", 11)
+
+
 # Logging.
 class Logger (object):
     def __init__ (self, loglevel=None, sink=sys.stderr):
@@ -419,12 +444,7 @@ class KbTop (gtk.Button):
 #        self.inp_bind.set_width_chars(4)
 #        self.inp_bind.set_justify(gtk.JUSTIFY_LEFT)
 
-        # Set up drag-and-drop
-        dnd_targets = [ ("bind", gtk.TARGET_SAME_APP, 1),
-        ]
-        dnd_actions = gtk.gdk.ACTION_LINK | 0
-        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
-        self.connect("drag-data-received", self.on_drag_data_received)
+        self.setup_dnd()
 
         # Alignment widget.
         self.align0 = gtk.Alignment(0, 0, 0, 0)
@@ -572,6 +592,50 @@ class KbTop (gtk.Button):
         self._group = groupnum
         self.update_display()
 
+    def setup_dnd (self):
+        # Set up drag-and-drop
+        dnd_targets = [
+          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+        ]
+        # Accept LINK from CommandSet, accept MOVE from other KbTop.
+        dnd_actions = gtk.gdk.ACTION_LINK | gtk.gdk.ACTION_MOVE
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
+
+        # As DnD source, only generate MOVE.
+        dnd_targets = [
+          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          ("unbind", gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+        ]
+        dnd_actions = gtk.gdk.ACTION_MOVE | gtk.gdk.ACTION_DEFAULT
+        self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.connect("drag-data-get", self.on_drag_data_get)
+        self.connect("drag-end", self.on_drag_end)
+
+        self.pending_drag_unbinding = False
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        """Being dragged to elsewhere."""
+        logger.debug("kbtop.drag-data-get: %d" % info)
+        if info == 2:
+            logger.debug("kbtop: try unbind  %s" % self.inpsym)
+            seldata.set(seldata.target, 8, str(self.inpsym))
+            self.pending_drag_unbinding = True
+            return True
+        if info == 1:
+            logger.debug("kbtop.drag-data-get for dragging from")
+            val = self.inpdescr.get_bind(self.inpsym)
+            seldata.set(seldata.target, 8, str(val))
+            return True
+        return False
+
+    def on_drag_end (self, w, ctx, *args):
+        if self.pending_drag_unbinding:
+            logger.debug("kbtop unbind %s" % self.inpsym)
+            self.inpdescr.set_bind(self.inpsym, "")
+            self.pending_drag_unbinding = False
+        return
+
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         #print("%s drag-data-received %r" % (self.__class__.__name__, w))
         logger.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
@@ -580,8 +644,26 @@ class KbTop (gtk.Button):
             logger.debug("info is 1 => Command dropping")
             seltext = seldata.data
             logger.debug(" seldata.text = %r" % seltext)
-            self.inpdescr.set_bind(self.inpsym, seltext)
+            if ctx.action == gtk.gdk.ACTION_MOVE:
+                # swap.
+                other = ctx.get_source_widget()
+                self.swap_bind(other)
+                ctx.finish(True, False, 0)
+            elif ctx.action == gtk.gdk.ACTION_LINK:
+                # copy.
+                logger.debug(" copying")
+                self.inpdescr.set_bind(self.inpsym, seltext)
+                ctx.finish(True, False, 0)
             return True
+
+    def swap_bind (self, other_kbtop):
+        othersym = other_kbtop.inpsym
+        logger.debug("swapping %s <=> %s" % (self.inpsym, othersym))
+        otherbind = self.inpdescr.get_bind(othersym)
+        thisbind = self.inpdescr.get_bind(self.inpsym)
+        self.inpdescr.set_bind(othersym, thisbind)
+        self.inpdescr.set_bind(self.inpsym, otherbind)
+        return
 
 gobject.type_register(KbTop)
 gobject.signal_new("dnd-link", KbTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object, str))   # src, dnd-data
@@ -977,37 +1059,57 @@ class KbMenuList (gtk.ScrolledWindow):
 
     def setup_dnd (self):
         """Set up drag-and-drop."""
+        # DnD Destination
         dnd_targets = [
-          ("treepath", gtk.TARGET_SAME_WIDGET, 11),
-          ("bind", gtk.TARGET_SAME_APP, 10),
+          ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          ("bind", gtk.TARGET_SAME_APP, DndOpcodes.BIND),
         ]
         dnd_actions = gtk.gdk.ACTION_LINK
         self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
         self.treeview.connect("drag-data-received", self.on_drag_data_received)
 
+        # DnD Source
         dnd_targets = [
-          ("treepath", gtk.TARGET_SAME_WIDGET, 11),
+          ("treepath", gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          ("unbind", gtk.TARGET_SAME_WIDGET, DndOpcodes.UNBIND),
         ]
         dnd_actions = gtk.gdk.ACTION_MOVE
         self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.treeview.connect("drag-data-get", self.on_drag_data_get)
+        self.treeview.connect("drag-end", self.on_drag_end)
 
         self.droppath = None
+        self.dropunbind = None
+
+    def on_drag_end (self, w, ctx, *args):
+        logger.debug("kbmenulist drag-end")
+        if self.dropunbind:
+            logger.debug("drop-unbind inpsym %s" % self.dropunbind)
+            self.inpdescr.set_bind(self.dropunbind, "Nope")
+            self.dropunbind = None
+        return True
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
-        if info == 11:
+        if info == DndOpcodes.REORDER:
             # Reordering.  Encoding source path into string.
             treesel = w.get_selection()
             mdl, pathsels = treesel.get_selected_rows()
             data = repr(pathsels[0])
             seldata.set(seldata.target, 8, data)
+        elif info == DndOpcodes.UNBIND:
+            treesel = w.get_selection()
+            mdl, pathsels = treesel.get_selected_rows()
+            inpsym = mdl[pathsels[0]][0]
+            val = str(self.inpdescr.get_bind(inpsym))
+            seldata.set(seldata.target, 8, val)
+            self.dropunbind = inpsym
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
         """Data that was asked for is now received."""
         srcw = ctx.get_source_widget()
         droppath = self.droppath
-        if info == 11:
+        if info == DndOpcodes.REORDER:
             # Reordering internally.
             dropinfo = w.get_dest_row_at_pos(x,y)
             if dropinfo:
@@ -1026,13 +1128,13 @@ class KbMenuList (gtk.ScrolledWindow):
                 if ctx.action == gtk.gdk.ACTION_MOVE:
                     ctx.finish(True, True, time)
                 return True
-        elif info == 10:
+        elif info == DndOpcodes.BIND:
             # bind-drop from commands set.
-            logger.debug("command-dropping")
             dropinfo = w.get_dest_row_at_pos(x,y)
             if dropinfo:
                 destpath, destpos = dropinfo
                 seltext = sel.data
+                logger.debug("command-dropping: %r" % seltext)
                 self.drop_in_bind(destpath, seltext)
                 ctx.finish(True, False, time)
                 return True
