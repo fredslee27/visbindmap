@@ -1459,7 +1459,8 @@ As arrangments can change during run-time, use strategies for rearranging:
                 self.connect_menuitems(submenu)
 
     def connect_ctxmenu (self):
-        self.connect("button-press-event", self.on_button_press)
+        if 0:  # TODO: conditional guard, based on Preferences?
+            self.connect("button-press-event", self.on_button_press)
         self.frame_btn.connect("clicked", self.on_cluster_menu)
 
     def on_button_press (self, w, ev):
