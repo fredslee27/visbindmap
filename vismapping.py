@@ -11,6 +11,7 @@ import ast, parser
 
 import kblayout
 from kblayout import Logger
+from kblayout import DndOpcodes
 
 
 BASENAME="generic_game"
@@ -336,7 +337,6 @@ class Commands (object):
     groups = property(get_groups)
 
     def get_by_id (self, val):
-        # TODO: look through tree model instead?
         if val is None:
             logger.debug("[None]=>None...")
             return [ None, 0x1f, "", "", "", "" ]
@@ -437,7 +437,6 @@ class CommandsFallback (Commands):
     def get_groups (self): return [ x[0] for x in self.COMMANDS ]
     groups = property(get_groups)
     def get_by_id (self, val):
-        # TODO: look through tree model instead?
         if val is None: return ( None, 0x1f, "", "", "", "" )
 
         result = [ x for x in self.commands if x[0] == val ][0]
@@ -475,68 +474,67 @@ class VisCmds (gtk.VBox):
         self.cmdstore = cmdstore
 
         self.entry = gtk.TreeView(self.cmdstore)
-        self.entry.drag_source_set(gtk.gdk.BUTTON1_MASK, [ ("bind", gtk.TARGET_SAME_APP, 1), ], gtk.gdk.ACTION_LINK)
-        self.entry.connect("drag-data-get", self.on_drag_data_get)
         self.cell0 = gtk.CellRendererText()
         self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
         self.entry.append_column(self.col0)
 #        self.add(gtk.Label("VisCmds"))
 
-        #self.add(self.entry)
         self.entrywin = gtk.ScrolledWindow()
-        self.entrywin.add_with_viewport(self.entry)
+        self.entrywin.add(self.entry)
         self.add(self.entrywin)
         self.set_size_request(160, 100)
+
+        self.setup_dnd()
 
     def get_cmdstore (self):
         return self.cmdstore
     def set_cmdstore (self, cmdstore):
         self.cmdstore = cmdstore
         self.entry.set_model(self.cmdstore)
-        # TODO: update TreeView?
 
-    def on_drag_data_get (self, w, ctx, sel, info, time, *args):
+    def setup_dnd (self):
+        """Set up drag-and-drop."""
+        # DnD Source.
+        dnd_targets = [
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.entry.connect("drag-data-get", self.on_drag_data_get)
+
+        # DnD Destination.
+        dnd_targets = [
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
+
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        logger.debug("cmdset drag-data-received %r" % info)
+        if info == DndOpcodes.UNBIND:
+            ctx.finish(True, False, time)
+            return True
+        return False
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        logger.debug("cmdset drag-data-get: %d" % info)
         srcw = ctx.get_source_widget()
         treesel = srcw.get_selection()
         (treemdl, treeiter) = treesel.get_selected()
-        if sel.target == "bind":
-            logger.debug("target is bind")
-
+        if info == DndOpcodes.BIND:
+            # Commands dragging.
+            logger.debug("info is 1 => Commands dragging")
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
                 sel.set_text("", 0)
-                return
+                return False
             # Get the command to bind.
             val = treemdl.get_value(treeiter, 1)
-
-            sel.set("STRING", 8, val)  # 8 bits per unit.
-        elif sel.target == "bindid":
-            logger.debug("target is bindid")
-
-            if treemdl.iter_has_child(treeiter):
-                # non-terminal item; fail.
-                sel.set_text("", 0)
-                return
-            # Get the command to bind.
-            val = treemdl.get_value(treeiter, 0)
-
-            sel.set("STRING", 8, str(val))  # 8 bits per unit.
-        elif sel.target == "binduri":
-            logger.debug("%s drag-data-get: w = %r" % (self.__class__.__name__, w))
-            # Find out target, get its inpsym, assign binding.
-            # Send displayed text to target.
-            logger.debug("+++ target is bindref")
-
-            if treemdl.iter_has_child(treeiter):
-                # non-terminal item; fail.
-                sel.set_text("", 0)
-                return
-            # Get the command to bind.
-            num = treemdl.get_value(treeiter, 0)
-            name = treemdl.get_value(treeiter, 1)
-            val = "cmdbind://%s/%s" % (num, name)
-            logger.debug("val = %r" % val)
-            sel.set("STRING", 8, str(val))  # 8 bits per unit.
+            seldata.set(seldata.target, 8, str(val))
+            chk = seldata.data
+            logger.debug("set seldata.data to %r, %r" % (val, chk))
+            return True
 
 
 # Graphically lay out bindings meanings.
@@ -999,7 +997,6 @@ class VisMapperApp (object):
         """Setup and connect UI elements."""
         kbl = self.ui.bindpad.kbl
         cmdview = self.ui.cmdcol
-        kbl.connect("dnd-link", self.on_kbl_dndlink)
         visbind = self.ui.bindpad
         visbind.connect('mode-changed', self.on_kbmode_changed)
         visbind.connect('level-changed', self.on_kblevel_changed)
@@ -1027,30 +1024,6 @@ class VisMapperApp (object):
         mdl.set_layer(levelnum)
         logger.debug("changing to shift level %d" % levelnum)
         return
-
-    def on_kbl_dndlink (self, w, dstw, srcw, dnddata, *args):
-        logger.debug("on_kbl_dndlink: dstw=%r, srcw=%r, dnddata=%r" % (dstw, srcw, dnddata))
-        inpsym = dstw.inpsym
-        modenum = self.modenum
-        levelnum = self.levelnum
-        bindval = dnddata
-        mdl = self.models.bindstore.inpdescr
-        mdl.set_bind(inpsym, bindval,  group=modenum, layer=levelnum)
-        return
-
-#    def on_kbl_drop (self, w, ctx, x, y, t, *args):
-#        w.drag_get_data(ctx, "STRING", time)
-#        # Initiates drag-data transfer.
-#        return True
-#
-#    def on_kbl_drag_data_received (self, w, ctx, x, y, sel, info, t, *args):
-#        srcw = ctx.get_source_widget()
-#        bindid = int(self.get_text())
-#        ctx.finish(True, False, time)
-#        bindval = "UNKNOWN"
-#        layernum = 0  # from store?
-#        #self.mdl.set_bind(layernum, w.inpsym, bindval)
-#        print("Handled KbLayout drag data received")
 
     # Operations re: File
     def get_saveuri (self):
