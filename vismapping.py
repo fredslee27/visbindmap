@@ -11,6 +11,7 @@ import ast, parser
 
 import kblayout
 from kblayout import Logger
+from kblayout import DndOpcodes
 
 
 BASENAME="generic_game"
@@ -526,7 +527,7 @@ class VisCmds (gtk.VBox):
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         logger.debug("cmdset drag-data-received %r" % info)
-        if info == 2:
+        if info == DndOpcodes.UNBIND:
 #            if ctx.actions == gtk.gdk.ACTION_DEFAULT:
 #                ctx.finish(True, True, time)
 #                return True
@@ -539,7 +540,7 @@ class VisCmds (gtk.VBox):
         srcw = ctx.get_source_widget()
         treesel = srcw.get_selection()
         (treemdl, treeiter) = treesel.get_selected()
-        if info == 1:
+        if info == DndOpcodes.BIND:
             # Commands dragging.
             logger.debug("info is 1 => Commands dragging")
             if treemdl.iter_has_child(treeiter):

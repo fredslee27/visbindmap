@@ -18,10 +18,13 @@ class DndOpcode (object):
             val = self.__class__._GENSYM
             self.__class__._GENSYM += 1
         self.val = val
-    def __int__ (self):
-        return self.val
-    def __str__ (self):
-        return self.name
+    def get_name (self): return self.name
+    def get_val (self): return self.val
+    s = property(get_name)
+    i = property(get_val)
+    d = property(get_val)
+    def __int__ (self): return self.val
+    def __str__ (self): return self.name
     def __eq__ (self, other):
         if type(other) == int:
             return other == self.val
@@ -622,12 +625,12 @@ class KbTop (gtk.Button):
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         """Being dragged to elsewhere."""
         logger.debug("kbtop.drag-data-get: %d" % info)
-        if info == 2:
+        if info == DndOpcodes.UNBIND:
             logger.debug("kbtop: try unbind  %s" % self.inpsym)
             seldata.set(seldata.target, 8, str(self.inpsym))
             self.pending_drag_unbinding = True
             return True
-        if info == 1:
+        if info == DndOpcodes.BIND:
             logger.debug("kbtop.drag-data-get for dragging from")
             val = self.inpdescr.get_bind(self.inpsym)
             seldata.set(seldata.target, 8, str(val))
@@ -644,7 +647,7 @@ class KbTop (gtk.Button):
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         #print("%s drag-data-received %r" % (self.__class__.__name__, w))
         logger.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
-        if info == 1:
+        if info == DndOpcodes.BIND:
             # Commands dropping.
             logger.debug("info is 1 => Command dropping")
             seltext = seldata.data
