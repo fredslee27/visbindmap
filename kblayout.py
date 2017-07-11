@@ -973,10 +973,10 @@ class KbMenuList (gtk.ScrolledWindow):
         self.treeview.set_model(self.scratch)
         # Listen for changes to/in InpDescrModel (update .scratch)
         if self.inpdescr:
-            self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
-            self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
-            self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
-            self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
+            self.conn_bind_changed = self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+            self.conn_label_changed = self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+            self.conn_layer_changed = self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
+            self.conn_group_changed = self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
         # Set up drag-and-drop.
         self.setup_dnd()
 
@@ -990,19 +990,14 @@ class KbMenuList (gtk.ScrolledWindow):
         ]
         dnd_actions = gtk.gdk.ACTION_LINK
         self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
-        #self.treeview.connect("drag-drop", self.on_drop)
         self.treeview.connect("drag-data-received", self.on_drag_data_received)
 
         dnd_targets = [
           ("treepath", gtk.TARGET_SAME_WIDGET, 11),
         ]
-        dnd_actions = gtk.gdk.ACTION_MOVE|gtk.gdk.ACTION_DEFAULT
-        #dnd_actions = gtk.gdk.ACTION_MOVE
-        #self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
-        self.treeview.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        dnd_actions = gtk.gdk.ACTION_MOVE
+        self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.treeview.connect("drag-data-get", self.on_drag_data_get)
-        self.treeview.connect("drag-failed", self.on_drag_failed)
-#        self.treeview.set_reorderable(True)
 
         self.droppath = None
 
@@ -1010,69 +1005,39 @@ class KbMenuList (gtk.ScrolledWindow):
         print("reordered")
         pass
 
-    def on_drag_failed (self, *args):
-        print("drag-failed")
-
-    def on_drop (self, w, ctx, x, y, time, *args):
-        """Drop started; ask for data."""
-#        print("on_drop, %r" % (ctx.targets,))
-#        if "treepath" in ctx.targets:
-#            w.drag_get_data(ctx, "treepath", time)
-#        elif "bind" in ctx.targets:
-#            w.drag_get_data(ctx, "STRING", time)
-#
-##        tx, ty = x, y
-###        if ctx.get_source_widget() != w:
-###            tx, ty = w.convert_widget_to_bin_window_coords(x,y)
-#        tx, ty = w.convert_widget_to_bin_window_coords(x,y)
-#        self.droppath = w.get_path_at_pos(tx, ty)
-##        print(" dropped at %r" % self.droppath)
-#
-#        return  False
-
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         if info == 11:
+            # Reordering.  Encoding source path into string.
             treesel = w.get_selection()
             mdl, pathsels = treesel.get_selected_rows()
             data = repr(pathsels[0])
             seldata.set(seldata.target, 8, data)
-            chk = seldata.data
-            print("< chk = %r" % (chk,))
         return True
 
     def on_drag_data_received (self, w, ctx, x, y, sel, info, time, *args):
         """Data that was asked for is now received."""
-#        print(">drag-data-received: %r" % ( ctx.targets,))
         srcw = ctx.get_source_widget()
-#        tx, ty = x, y
-#        if srcw != w:
-#            tx, ty = w.convert_widget_to_bin_window_coords(x,y)
-#        droppath = w.get_path_at_pos(tx,ty)
         droppath = self.droppath
-#        print("droppath ?= %r" % (droppath,))
-        print("info == %r" % info)
         if info == 11:
-            # Reordering.
+            # Reordering internally.
             dropinfo = w.get_dest_row_at_pos(x,y)
             if dropinfo:
                 destpath, destpos = dropinfo
                 encoded = sel.data
                 srcpath = ast.literal_eval(encoded)
-                if destpos in [ gtk.TREE_VIEW_DROP_INTO_OR_BEFORE, gtk.TREE_VIEW_DROP_INTO_OR_AFTER ]:
-                    print("> swap %r with %r" % (srcpath, destpath))
-                    self.swap_bind(srcpath, destpath)
-                elif destpos == gtk.TREE_VIEW_DROP_BEFORE:
-                    print("> move %r to %r" % (srcpath, destpath))
-                    self.move_bind(srcpath, destpath, -1)
-                elif destpos == gtk.TREE_VIEW_DROP_AFTER:
-                    print("> move %r to after %r" % (srcpath, destpath))
-                    self.move_bind(srcpath, destpath, +1)
-                print(" | %r" % ctx.action)
+                func, bias = {
+                    gtk.TREE_VIEW_DROP_INTO_OR_BEFORE: (self.drag_bind, 0),
+                    gtk.TREE_VIEW_DROP_INTO_OR_AFTER: (self.drag_bind, 0),
+                    gtk.TREE_VIEW_DROP_BEFORE: (self.drag_bind, -1),
+                    gtk.TREE_VIEW_DROP_AFTER: (self.drag_bind, +1),
+                }.get(destpos, (None,None))
+                if callable(func):
+                    func(*(bias, srcpath, destpath))
                 if ctx.action == gtk.gdk.ACTION_MOVE:
                     ctx.finish(True, True, time)
                 return True
         elif info == 10:
-            # bind-drop.
+            # bind-drop from commands set.
             dropinfo = w.get_dest_row_at_pos(x,y)
             if dropinfo:
                 destpath, destpos = dropinfo
@@ -1089,44 +1054,39 @@ class KbMenuList (gtk.ScrolledWindow):
         # Update inpdescr model, then rely on signals to auto-update scratch.
         return
 
-    def swap_bind (self, srcpath, destpath):
-        srcbind = self.scratch[srcpath][1]
-        dstbind = self.scratch[destpath][1]
-        self.scratch[srcpath][1] = dstbind
-        self.scratch[destpath][1] = srcbind
-        return True
-    def move_bind (self, srcpath, destpath, edge=+1):
-        srcbind = self.scratch[srcpath][1]
-        srcrow = gtk.TreeRowReference(self.scratch, srcpath)
-        dstrow = gtk.TreeRowReference(self.scratch, destpath)
-        self.scratch.remove(self.scratch.get_iter(srcrow.get_path()))
-        row = ("-", srcbind)
-        dstiter = self.scratch.get_iter(dstrow.get_path())
-        if edge < 0:
-            self.scratch.insert_before(dstiter, row)
+    def drag_bind (self, bias, srcpath, dstpath):
+        # mass pull.
+        listbinds = [ b for s,b in self.scratch ]
+        srcrow = srcpath[0]
+        dstrow = dstpath[0]
+        srcbind = listbinds[srcrow]
+        if bias == 0:
+            listbinds[srcrow] = listbinds[dstrow]
+            listbinds[dstrow] = srcbind
         else:
-            self.scratch.insert_after(dstiter, row)
-        self.reenumerate_items()
-        return True
-
-    def reenumerate_items (self):
-        for i in range(0, len(self.scratch)):
+            listbinds[srcrow] = None  # Flag for removal.
+            if bias < 0:
+                listbinds.insert(dstrow, srcbind)
+            elif dstrow < len(listbinds):
+                listbinds.insert(dstrow+1, srcbind)
+            else:
+                listbinds.append(srcbind)
+#            if srcrow > dstrow:
+#                srcrow += 1
+#            del listbinds[srcrow]
+            listbinds = [ x for x in listbinds if x is not None ]
+        # Rebuild scratch from listbinds.
+        self.scratch.clear()
+        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
+            self.inpdescr.handler_block(h)
+        for i in range(0, len(listbinds)):
+            bind = listbinds[i]
             n = i+1
             inpsym = "{}{}".format(self.inpsymprefix, n)
-            self.scratch[i][0] = inpsym
-        return
-
-    def drop_reorder (self, oldpath, newpath):
-#        deliter = self.scratch.get_iter(oldpath)
-        for i in range(0, len(self.scratch)):
-            inpsym = "{}{}".format(self.inpsymprefix, i+1)
-            self.scratch[i][0] = inpsym
-#        ordering = range(len(self.scratch))
-#        self.scratch.reorder(ordering)
-#        self.scratch.remove(deliter)
-        print("dump:")
-        for row in self.scratch:
-            print(row[0])
+            self.inpdescr.set_bind(inpsym, bind)
+            self.scratch.append((inpsym, bind))
+        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
+            self.inpdescr.handler_unblock(h)
         return
 
     def pull_data (self):
@@ -1144,7 +1104,6 @@ class KbMenuList (gtk.ScrolledWindow):
 #                    if row[0] == inpsym:
 #                        pass
         self.pull_data()
-
     def on_inpdescr_label_changed (self, *args):
         self.pull_data()
     def on_inpdescr_layer_changed (self, *args):
