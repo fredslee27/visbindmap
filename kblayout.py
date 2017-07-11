@@ -585,9 +585,9 @@ class KbBindable (object):
     def __init__ (self, inpsym, dispstate):
         self.inpsym = inpsym
         self.dispstate = dispstate
-        self.dispstate.connect("display-adjusted", self.on_display_adjusted)
-        self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
-        self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+        self.conn_display_adjusted = self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+        self.conn_bind_changed = self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+        self.conn_label_changed = self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
 
     @property
     def layer (self): return self.dispstate.get_layer()
@@ -624,6 +624,14 @@ class KbBindable (object):
     def on_inpdescr_label_changed (self, inpdescr, inpsym):
         if self.inpsym == inpsym:
             self.update_display()
+
+    def block_signals (self):
+        for (obj, sigh) in [ (self.dispstate, self.conn_display_adjusted), (self.dispstate.inpdescr, self.conn_bind_changed), (self.dispstate.inpdescr, self.conn_label_changed) ]:
+            obj.handler_block(sigh)
+
+    def unblock_signals (self):
+        for (obj, sigh) in [ (self.dispstate, self.conn_display_adjusted), (self.dispstate.inpdescr, self.conn_bind_changed), (self.dispstate.inpdescr, self.conn_label_changed) ]:
+            obj.handler_unblock(sigh)
 
     def update_display (self):
         raise NotImplementedError("update_display() is abstract")
@@ -1165,9 +1173,9 @@ Presents all menuitems in a TreeView.
         self.build_widget_pool()
 
     def rearrange (self):
+        self.parent.stacked.set_visible_child_name("1")
         self.parent.menulist.pull_data()
         #self.parent.menulist.set_vislayers(self.parent.vislayers)
-        self.parent.stacked.set_visible_child_name("1")
 
 
 
@@ -1190,7 +1198,7 @@ class PseudoStack (gtk.VBox):
     def readjust_visibility (self):
         for page in self.pages.itervalues():
 #            (page.show_all if self.active == page else page.hide_all)()
-            if self.active == page:
+            if page == self.active:
                 page.show_all()
             else:
                 page.hide_all()
@@ -1211,12 +1219,15 @@ class PseudoStack (gtk.VBox):
         self.readjust_visibility()
 
 
-class KbMenuList (gtk.ScrolledWindow):
+class KbMenuList (gtk.ScrolledWindow, KbBindable):
     """TreeView of list-based cluster types."""
     def __init__ (self, inpsymprefix, dispstate):
         # Based on ScrollWindowed, containing a TreeView
         gtk.ScrolledWindow.__init__(self)
-        self.inpsymprefix = inpsymprefix or ""
+        if inpsymprefix is None:
+            inpsymprefix = ""
+        KbBindable.__init__(self, inpsymprefix, dispstate)
+        self.inpsymprefix = inpsymprefix
         self.dispstate = dispstate
         # The TreeView
         self.treeview = gtk.TreeView()
@@ -1370,7 +1381,7 @@ class KbMenuList (gtk.ScrolledWindow):
     def drop_in_bind (self, treepath, newval):
         """Carry out action of (completing) a drop of a command on tree at path."""
         inpsym = self.scratch[treepath][0]
-        self.inpdescr.set_bind(inpsym, newval)
+        self.set_bind(inpsym, newval)
         # Update inpdescr model, then rely on signals to auto-update scratch.
         return
 
@@ -1397,16 +1408,16 @@ class KbMenuList (gtk.ScrolledWindow):
             listbinds = [ x for x in listbinds if x is not None ]
         # Rebuild scratch from listbinds.
         self.scratch.clear()
-        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
-            self.inpdescr.handler_block(h)
+#        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
+#            self.inpdescr.handler_block(h)
         for i in range(0, len(listbinds)):
             bind = listbinds[i]
             n = i+1
             inpsym = "{}{}".format(self.inpsymprefix, n)
-            self.inpdescr.set_bind(inpsym, bind)
+            self.set_bind(inpsym, bind)
             self.scratch.append((inpsym, bind))
-        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
-            self.inpdescr.handler_unblock(h)
+#        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
+#            self.inpdescr.handler_unblock(h)
         return
 
     def pull_data (self):
@@ -1422,6 +1433,7 @@ class KbMenuList (gtk.ScrolledWindow):
         self.update_display()
 
     def update_display (self):
+        logger.debug("menulist update_display")
         _baselayer = self.vislayers * (self.dispstate.layer / self.dispstate.vislayers)
         colviews = [ self.col1, self.col2, self.col3, self.col4, self.col5, self.col6, self.col7, self.col8 ]
         bindidx = self.dispstate.vislayers - (self.dispstate.layer - _baselayer) - 1
@@ -1473,7 +1485,7 @@ class KbMenuList (gtk.ScrolledWindow):
         self.update_display()
 
 
-class KbPlanar (gtk.EventBox):
+class KbPlanar (gtk.EventBox, KbBindable):
     """Planar control cluster (stick, touchpad, etc.)
 Contents to display are packaged in a data model (InpDescrModel)
 Children are KbTop, but selectively shown and placed to reflect cluster type.
@@ -1487,7 +1499,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 * (g) GyroTilt : x-, x+, y-, y+, w-, w+
 * (t) Menu.Touch {2,4,7,9,12,13,16) : #1..#16
 * (r) RadialMenu {1..20} : #1..#20
-* (l) ListMenu {1..20} : #1..#20
+* (l) MenuList {1..20} : #1..#20
 * (o) OneButton : o
     """
 
@@ -1495,26 +1507,27 @@ As arrangments can change during run-time, use strategies for rearranging:
         """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
         # UI elements
         gtk.EventBox.__init__(self)
+        KbBindable.__init__(self, inpsymprefix, dispstate)
 
         self.inpsymprefix = inpsymprefix
-#        self.inpdescr = inpdescr
         self.dispstate = dispstate
         self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
 
         self.frame = gtk.Frame(inpsymprefix)
         self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
+        # Frame title: [ HBox: [Button>Menu] [Label] ]
         self.frame_title = gtk.HBox()
         self.frame_lbl_sym = gtk.Label()
-        #self.frame_lbl_sym.set_markup("<a href='#a'>{}</a>".format(self.inpsymprefix))
         self.frame_btn = gtk.Button(unichr(0x2026))
         self.frame_btn.set_tooltip_text("Change variant for this planar cluster")
         self.frame_title.pack_start(self.frame_btn, False, False, 0)
         self.frame_title.pack_start(self.frame_lbl_sym, False, False, 0)
         self.frame.set_label_widget(self.frame_title)
 
-        # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells.
+        # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells per widget.
         self.grid = gtk.Table(12,12,True)
 
+        # Stacked view: first layer = the grid; second layer = menulist view
         self.stacked = PseudoStack()
         self.menulist = KbMenuList(self.inpsymprefix, self.dispstate)
         self.stacked.add_named(self.grid, "0")
@@ -1523,8 +1536,21 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.frame.add(self.stacked)
         self.add(self.frame)
 
-#        self.vislayers = vislayers
+        self.setup_arrangers()
+        self.setup_ctxmenu()
 
+        self.show_all()
+        self.update_display()
+
+    def arrangerTouchmenu (self, cap=2):
+        self.detach_all()
+        self.arrangerTouchmenu0.set_capacity(cap)
+        return self.arrangerTouchmenu0
+    def arrangerRadialmenu (self, cap=2):
+        self.detach_all()
+        self.arrangerRadialmenu0.set_capacity(cap)
+        return self.arrangerRadialmenu0
+    def setup_arrangers (self):
         self.arrangerEmpty = ArrangerEmpty(self)
         self.arrangerOneButton = ArrangerOneButton(self)
         self.arrangerScrollwheel = ArrangerScrollwheel(self)
@@ -1540,21 +1566,6 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arrangerListmenu = ArrangerListmenu(self)
 
         self.arranger = self.arrangerEmpty
-
-        self.ctxmenu = self.make_context_menu(self.inpsymprefix)
-        self.connect_menuitems(self.ctxmenu)
-        self.connect_ctxmenu()
-        self.show_all()
-        self.update_display()
-
-    def arrangerTouchmenu (self, cap=2):
-        self.detach_all()
-        self.arrangerTouchmenu0.set_capacity(cap)
-        return self.arrangerTouchmenu0
-    def arrangerRadialmenu (self, cap=2):
-        self.detach_all()
-        self.arrangerRadialmenu0.set_capacity(cap)
-        return self.arrangerRadialmenu0
 
     def update_label (self):
         #self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
@@ -1580,7 +1591,11 @@ As arrangments can change during run-time, use strategies for rearranging:
         #self.show_all()
         self.grid.show_all()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
-        self.dispstate.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
+        self.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
+
+    def on_inpdescr_bind_changed (self, inpdescr, group, layer, inpsym):
+        # Ignore bind changes for the inpsym prefix (saving cluster type).
+        pass
 
     def get_cluster_type (self):
         return self.arrange.NAME
@@ -1588,12 +1603,6 @@ As arrangments can change during run-time, use strategies for rearranging:
         arranger = self.find_arranger(cltype)
         self.set_arranger(arranger)
         return
-
-#    def get_vislayers (self):
-#        return self.vislayers
-#    def set_vislayers (self, val):
-#        self.vislayers = val
-#        self.update_display()
 
     def make_menu (self, menudesc):
         menu = gtk.Menu()
@@ -1669,6 +1678,11 @@ As arrangments can change during run-time, use strategies for rearranging:
         menu.show_all()
         return menu
 
+    def setup_ctxmenu (self):
+        self.ctxmenu = self.make_context_menu(self.inpsymprefix)
+        self.connect_menuitems(self.ctxmenu)
+        self.connect_ctxmenu()
+
     def connect_menuitems (self, submenu=None):
         if not submenu:
             return
@@ -1713,7 +1727,7 @@ As arrangments can change during run-time, use strategies for rearranging:
     def update_display (self):
         self.detach_all()
         # Retrieve intended cluster type by name from InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
-        cluster_type = self.dispstate.get_bind(self.inpsymprefix, 0, 0)
+        cluster_type = self.get_bind(self.inpsymprefix, 0, 0)
         self.set_cluster_type(cluster_type)
         if self.arranger:
             self.arranger.rearrange()
