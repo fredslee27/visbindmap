@@ -1454,10 +1454,6 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
         nlayers = self.dispstate.inpdescr.get_numlayers()
         for row in self.scratch:
             inpsym = row[0]
-#            for layernum in range(nlayers):
-#                bind_markedup = self.resolve_bind_markup(inpsym, layer=layernum)
-#                #row[1] = bind_markedup
-#                row[1+layernum] = bind_markedup
             def visit_bindcol (i, v):
                 bind_markup = self.resolve_bind_markup(inpsym, layer=i)
                 row[1+i] = bind_markup
@@ -1465,31 +1461,22 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
 
     def update_display (self):
         logger.debug("menulist update_display")
-        baselayer = self.vislayers * (self.layer / self.dispstate.vislayers)
-        bindidx = self.vislayers - (self.layer - baselayer) - 1
-#        totalwidth = self.allocation.width
-#        inpsymwidth = self.col0.get_width()
-#        bindwidth = (totalwidth - inpsymwidth) / self.vislayers
 
-        # TODO: optimize later; some columns have visibility flipped back and forth.
-        for colview in self.bindcols:
-            colview.set_visible(False)
-
-        # Set styling for KbMenuList columns (multi-vislayers).
-        for i in range(self.vislayers):
-            layernum = baselayer + (self.dispstate.vislayers - i) - 1
-            self.bindcols[layernum].set_visible(True)
-            #self.bindcols[layernum].set_min_width(bindwidth)
-            self.bindcols[layernum].set_expand(True)
-            usestyle = None
-            if i == bindidx:
-                # highlighted layer.
-                usestyle = self.refstyle.base
+        def visit_bindcol (i, v):
+            if v:
+                self.bindcols[i].set_visible(True)
+                self.bindcols[i].set_expand(True)
+                if i == self.layer:
+                    # highlighted layer.
+                    usestyle = self.refstyle.base
+                else:
+                    # unhighlighted layer.
+                    usestyle = self.refstyle.bg
+                styleval = usestyle[gtk.STATE_NORMAL]
+                self.renderers[i].props.background = styleval
             else:
-                # unhighlighted layer.
-                usestyle = self.refstyle.bg
-            styleval = usestyle[gtk.STATE_NORMAL]
-            self.renderers[layernum].props.background = styleval
+                self.bindcols[i].set_visible(False)
+        self.foreach_layervis(visit_bindcol)
         return
 
     def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
