@@ -609,6 +609,7 @@ width, height - in terms of cells (gtk.Table, GtkGrid)
     # TODO: overload mutators and check for size maximums there.
     def append (self, parentiter, rowdata):
         x, y, w, h = rowdata[3:7]
+        print("appending use %r" % (rowdata,))
         xlim = x + w
         ylim = y + h
         if xlim > self.ncols:
@@ -649,6 +650,30 @@ width, height - in terms of cells (gtk.Table, GtkGrid)
             rownum += 1
             colnum = 0
         return
+
+class HidLayouts (gtk.ListStore):
+    """List of HidLayoutStore."""
+    def __init__ (self):
+        gtk.ListStore.__init__(self, gobject.TYPE_STRING, gobject.TYPE_OBJECT)
+
+    def build_from_all_rowrun (self, all_rowrun):
+        for hidname in all_rowrun.keys():
+            hiditem = all_rowrun[hidname]
+            onelayout = HidLayoutStore(hidname)
+            onelayout.build_from_rowrun(hiditem)
+            row = self.append((hidname, onelayout))
+
+    def build_from_legacy_store (self):
+        alldata = kbd_desc.KBD
+        self.build_from_all_rowrun(alldata)
+
+    def __getitem__ (self, key):
+        match = [ v for k,v in self if k == key]
+        if match:
+            return match[0]
+        raise KeyError("Key not found: {}".format(key))
+    def keys (self):
+        return [ k for k,v in self ]
 
 
 
@@ -1883,6 +1908,9 @@ class HidLayoutView (gtk.Table):
         return
 
 
+implicit_layouts = HidLayouts()
+implicit_layouts.build_from_legacy_store()
+
 class HidLayoutWidget (gtk.VBox):
     """Controls wrapper to HidLayoutView.
 """
@@ -1894,7 +1922,7 @@ class HidLayoutWidget (gtk.VBox):
 
         # Selector for specific layout.
         self.mdl_layout = gtk.ListStore(str)
-        hidnames = sorted(self.hiddesc.keys())
+        hidnames = sorted(self.all_layouts.keys())
         for k in hidnames:
             self.mdl_layout.append((k,))
         self.inp_layout = gtk.ComboBox(self.mdl_layout)
@@ -1913,12 +1941,17 @@ class HidLayoutWidget (gtk.VBox):
         idx = self.inp_layout.get_active()
         val = self.mdl_layout[idx][0]
 
-        self.activehid = HidLayoutStore(val)
-        self.activehid.build_from_rowrun(self.hiddesc[val])
+        #self.activehid = HidLayoutStore(val)
+        #self.activehid.build_from_rowrun(self.hiddesc[val])
+        self.activehid = self.all_layouts[val]
         self.fill_board(self.activehid)
 
         self.pack_start(self.row_layout, expand=False, fill=False)
         self.pack_start(self.hidview, expand=False, fill=False)
+
+    @property
+    def all_layouts (self):
+        return implicit_layouts
 
     def get_dispstate (self):
         return self.dispstate
@@ -1931,12 +1964,8 @@ class HidLayoutWidget (gtk.VBox):
     def set_vislayers (self, v):
         self.dispstate.set_vislayers(v)
 
-    @property
-    def hiddesc (self):
-        return kbd_desc.KBD
-
-    def fill_board (self, hiddesc):
-        self.hidview.set_layout(hiddesc)
+    def fill_board (self, hiddata):
+        self.hidview.set_layout(hiddata)
         self.hidview.clear_board()
         self.hidview.populate_board()
         for hidtop in self.hidview.hidtops.itervalues():
@@ -1949,9 +1978,7 @@ class HidLayoutWidget (gtk.VBox):
         idx = w.get_active()
         data = self.mdl_layout[idx]
         val = data[0]
-        hiddata = self.hiddesc[val]
-        self.activehid = HidLayoutStore(val)
-        self.activehid.build_from_rowrun(hiddata)
+        self.activehid = self.all_layouts[val]
         self.clear_board()
         self.fill_board(self.activehid)
         #self.show_all()
