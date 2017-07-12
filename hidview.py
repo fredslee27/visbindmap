@@ -650,12 +650,12 @@ class HidBindable (object):
         raise NotImplementedError("update_display() is abstract")
 
 
-class KbTop (gtk.Button, HidBindable):
+class HidTop (gtk.Button, HidBindable):
     """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
     Contents to display are packaged in a data model (InpDescrModel)
     """
     def __init__ (self, inpsym, dispstate):
-        """Initialize with given data model, and the input symbol tied to this kbtop"""
+        """Initialize with given data model, and the input symbol tied to this hidtop"""
         # UI elements
         gtk.Button.__init__(self)
         HidBindable.__init__(self, inpsym, dispstate)
@@ -716,7 +716,7 @@ class KbTop (gtk.Button, HidBindable):
         self.hrules = [ gtk.HSeparator() for n in range(m) ]
 
         # set up droppable binding display (dressed up as a text entry).
-        # Prepare multi-layer view for KbTop.
+        # Prepare multi-layer view for HidTop.
         nlayers = self.dispstate.inpdescr.get_numlayers()
         for i in range(0, nlayers):
             ib = self.inp_binds[i]
@@ -762,7 +762,7 @@ class KbTop (gtk.Button, HidBindable):
 
     def update_display (self):
         # Update keytop
-        logger.debug("kbtop update_display %r" % self.inpsym)
+        logger.debug("hidtop update_display %r" % self.inpsym)
         lbl = self.dispstate.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
 
@@ -795,7 +795,7 @@ class KbTop (gtk.Button, HidBindable):
         self.foreach_layervis(visit_bindrow)
 
     def setup_dnd (self):
-        # Set up drag-and-drop for KbTop.
+        # Set up drag-and-drop for HidTop.
         # DnD source.
         dnd_targets = [
           (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
@@ -819,14 +819,14 @@ class KbTop (gtk.Button, HidBindable):
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         """Being dragged to elsewhere."""
-        logger.debug("kbtop.drag-data-get: %d" % info)
+        logger.debug("hidtop.drag-data-get: %d" % info)
         if info == DndOpcodes.UNBIND:
-            logger.debug("kbtop: try unbind  %s" % self.inpsym)
+            logger.debug("hidtop: try unbind  %s" % self.inpsym)
             seldata.set(seldata.target, 8, str(self.inpsym))
             self.pending_drag_unbinding = True
             return True
         if info == DndOpcodes.SWAP:
-            logger.debug("kbtop.drag-data-get for swap")
+            logger.debug("hidtop.drag-data-get for swap")
             val = self.inpsym
             seldata.set(seldata.target, 8, str(self.inpsym))
             return True
@@ -834,7 +834,7 @@ class KbTop (gtk.Button, HidBindable):
 
     def on_drag_end (self, w, ctx, *args):
         if self.pending_drag_unbinding:
-            logger.debug("kbtop unbind %s" % self.inpsym)
+            logger.debug("hidtop unbind %s" % self.inpsym)
             self.set_bind(self.inpsym, "")
             self.pending_drag_unbinding = False
         return
@@ -845,13 +845,13 @@ class KbTop (gtk.Button, HidBindable):
         if info == DndOpcodes.BIND:
             # Commands dropping.
             seltext = seldata.data
-            logger.debug("kbtop Command install: %s <= %s" % (w.inpsym, seltext))
+            logger.debug("hidtop Command install: %s <= %s" % (w.inpsym, seltext))
             self.set_bind(self.inpsym, seltext)
             ctx.finish(True, False, 0)
             return True
         elif info == DndOpcodes.SWAP:
             othersym = seldata.data
-            logger.debug("kbtop Command swap: %s <=> %s" % (w.inpsym, othersym))
+            logger.debug("hidtop Command swap: %s <=> %s" % (w.inpsym, othersym))
             self.swap_bind(w.inpsym, othersym)
             ctx.finish(True, False, 0)
             return True
@@ -874,12 +874,12 @@ class ArrangerEmpty (object):
         self.build_widget_pool()
 
     def _populate_widget_pool (self, suffices):
-        """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+        """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         suffices = self.placements.keys()
         for suffix in suffices:
             inpsym = self.inpsymof(suffix)
             if not inpsym in self.parent.kbtops:
-                kbtop = KbTop(inpsym, self.parent.dispstate)
+                kbtop = HidTop(inpsym, self.parent.dispstate)
                 self.parent.kbtops[inpsym] = kbtop
                 kbtop.show_all()
                 # right-click menu
@@ -1060,7 +1060,7 @@ class ArrangerTouchmenu (ArrangerEmpty):
         self.build_widget_pool()
 
     def build_widget_pool (self):
-        """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+        """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         # Generate '1'..'16' inclusive.
         suffices = [ str(ofs) for ofs in range(1, 17) ]
         self._populate_widget_pool(suffices)
@@ -1114,7 +1114,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
         self.build_widget_pool()
 
     def build_widget_pool (self):
-        """Create KbTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+        """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         # Generate '1'..'20' inclusive.
         suffices = [ str(ofs) for ofs in range(1, 21) ]
         self._populate_widget_pool(suffices)
@@ -1146,7 +1146,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
 class ArrangerListmenu_alternate (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
-Presents each menu item as an individual KbTop.
+Presents each menu item as an individual HidTop.
 """
     NAME = "menu list"
     def __init__ (self, parent):
@@ -1483,7 +1483,7 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
 class KbPlanar (gtk.EventBox, HidBindable):
     """Planar control cluster (stick, touchpad, etc.)
 Contents to display are packaged in a data model (InpDescrModel)
-Children are KbTop, but selectively shown and placed to reflect cluster type.
+Children are HidTop, but selectively shown and placed to reflect cluster type.
 
 As arrangments can change during run-time, use strategies for rearranging:
 * (d) Dpad : u,d,l,r,c
@@ -1506,7 +1506,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 
         self.inpsymprefix = inpsymprefix
         self.dispstate = dispstate
-        self.kbtops = dict()  # Mapping of inpsym to KbTop instance.
+        self.kbtops = dict()  # Mapping of inpsym to HidTop instance.
 
         self.frame = gtk.Frame(inpsymprefix)
         self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
@@ -1798,7 +1798,7 @@ class HidLayoutView (gtk.Table):
                 planar.show_all()
                 planar.update_display()
             elif prototyp == "key":
-                hidtop = KbTop(inpsym, self.dispstate)
+                hidtop = HidTop(inpsym, self.dispstate)
 #                hidtop.connect("clicked", self.on_hidtop_clicked)
                 self.hidtops[inpsym] = hidtop
                 self.active = hidtop
