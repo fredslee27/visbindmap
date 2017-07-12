@@ -1454,10 +1454,14 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
         nlayers = self.dispstate.inpdescr.get_numlayers()
         for row in self.scratch:
             inpsym = row[0]
-            for layernum in range(nlayers):
-                bind_markedup = self.resolve_bind_markup(inpsym, layer=layernum)
-                #row[1] = bind_markedup
-                row[1+layernum] = bind_markedup
+#            for layernum in range(nlayers):
+#                bind_markedup = self.resolve_bind_markup(inpsym, layer=layernum)
+#                #row[1] = bind_markedup
+#                row[1+layernum] = bind_markedup
+            def visit_bindcol (i, v):
+                bind_markup = self.resolve_bind_markup(inpsym, layer=i)
+                row[1+i] = bind_markup
+            self.foreach_layervis(visit_bindcol)
 
     def update_display (self):
         logger.debug("menulist update_display")
