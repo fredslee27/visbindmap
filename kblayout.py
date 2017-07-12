@@ -694,7 +694,7 @@ class KbTop (gtk.Button, KbBindable):
 
         self.connect("map", self.on_map)
         self.setup_dnd()
-        self.update_display()
+#        self.update_display()
 
     def uibuild_binddisplays (self):
         if self.inp_box:
@@ -744,11 +744,6 @@ class KbTop (gtk.Button, KbBindable):
         self.align1.add(self.inp_box)
 
     def on_map (self, w):
-        logger.info("on_map %r" % self.inpsym)
-        dump = [None]*8
-        def visit (i,v): dump[i] = v
-        self.foreach_layervis(visit)
-        logger.info(" %r" % dump)
         self.update_display()
         return True
 
@@ -1538,7 +1533,11 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.setup_arrangers()
         self.setup_ctxmenu()
 
-        self.show_all()
+        #self.show_all()
+        #self.update_display()
+        self.connect("map", self.on_map)
+
+    def on_map (self, *args):
         self.update_display()
 
     def arrangerTouchmenu (self, cap=2):
