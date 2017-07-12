@@ -560,7 +560,7 @@ Consists of:
 
         self.uibuild()
 
-        self.set_layout("SteamController")
+        self.set_layout("PS3")
 
         self.reset()
 

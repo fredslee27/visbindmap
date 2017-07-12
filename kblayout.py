@@ -589,6 +589,9 @@ class KbBindable (object):
         self.conn_bind_changed = self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
         self.conn_label_changed = self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
 
+        temp = gtk.Entry()
+        self.refstyle = temp.get_style().copy()
+
     @property
     def layer (self): return self.dispstate.get_layer()
     @layer.setter
@@ -613,6 +616,15 @@ class KbBindable (object):
         return self.dispstate.resolve_bind_markup(inpsym, group, layer)
     def swap_bind (self, firstsym, secondsym, group=None, layer=None):
         return self.dispstate.swap_bind(firstsym, secondsym, group, layer)
+
+    def foreach_layervis (self, cb):
+        """To avoid lots of for-loop with nested predicates, this walker function calls cb with two arguments: (layer_number, is_visible)."""
+        baselayer = self.vislayers * (self.layer / self.vislayers)
+        visspan = self.vislayers
+        nlayers = self.dispstate.inpdescr.get_numlayers()
+        for i in range(nlayers):
+            cb(i, (i >= baselayer) and (i < baselayer+visspan))
+        return
 
     def on_display_adjusted (self, dispstate, *args):
         self.update_display()
@@ -665,9 +677,11 @@ class KbTop (gtk.Button, KbBindable):
         self.align1 = gtk.Alignment(0,0,1,1)
         self.bg_bind = gtk.EventBox()
 
-        self.inp_binds = []
-        self.lyr_lbls = []
-        self.bg_binds = []
+        self.inp_binds = []     # Show binding.
+        self.lyr_lbls = []      # Layers labeling prefix to binding.
+        self.bg_binds = []      # Background for binding display.
+        self.hrules = []        # HSeparators.
+        self.bindrows = []      # Box for each line of hrule+lyr+bind
         self.inp_box = None
 
         self.uibuild_binddisplays()
@@ -678,12 +692,16 @@ class KbTop (gtk.Button, KbBindable):
 
         self.add(self.plane)
 
+        self.connect("map", self.on_map)
         self.setup_dnd()
-        self.update_display()
+#        self.update_display()
 
     def uibuild_binddisplays (self):
         if self.inp_box:
-            self.align1.remove(self.inp_box)
+            if self.inp_box.get_parent():
+                self.align1.remove(self.inp_box)
+            else:
+                logger.info("no parent %r %r" % (self.inp_box, self.inpsym))
 
         self.inp_box = gtk.VBox()
 
@@ -694,32 +712,56 @@ class KbTop (gtk.Button, KbBindable):
         self.bg_binds = [ gtk.EventBox() for n in range(m) ]
         # label for binding display layers.
         self.lyr_lbls = [ gtk.Label() for n in range(m) ]
+        self.hrules = [ gtk.HSeparator() for n in range(m) ]
 
         # set up droppable binding display (dressed up as a text entry).
-        temp = gtk.Entry()  # copy style from Entry.
-        self.refstyle = refstyle = temp.get_style().copy()
-        # Prepare multi-layer view.
-        for i in range(0, self.vislayers):
+        # Prepare multi-layer view for KbTop.
+        nlayers = self.dispstate.inpdescr.get_numlayers()
+        for i in range(0, nlayers):
             ib = self.inp_binds[i]
             ib.set_alignment(0, 0.5)
             ib.set_width_chars(4)
             ib.set_justify(gtk.JUSTIFY_LEFT)
             bg = self.bg_binds[i]
-            bg.modify_bg(gtk.STATE_NORMAL, refstyle.base[gtk.STATE_NORMAL])
-            bg.modify_bg(gtk.STATE_ACTIVE, refstyle.base[gtk.STATE_ACTIVE])
-            bg.modify_bg(gtk.STATE_PRELIGHT, refstyle.base[gtk.STATE_PRELIGHT])
-            bg.modify_bg(gtk.STATE_SELECTED, refstyle.base[gtk.STATE_SELECTED])
+#            usestyle = self.refstyle.base
+#            bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
+#            bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
+#            bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
+#            bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
             bg.add(ib)
-            if i != 0:
-                self.inp_box.pack_start(gtk.HSeparator(), expand=False, fill=False)
 
             #self.inp_box.pack_start(bg, expand=False, fill=False)
             bindline = gtk.HBox()
             bindline.pack_start(self.lyr_lbls[i], expand=False, fill=False)
+            self.lyr_lbls[i].set_markup("<small>%s:</small>" % i)
             bindline.pack_start(bg, expand=True, fill=True)
+            if i != 0:
+                self.inp_box.pack_start(self.hrules[i], False, False, 0)
+
+#            bindrow = gtk.VBox()
+#            if i != 0:
+#                bindrow.pack_start(self.hrules[i], False, False, 0)
             self.inp_box.pack_start(bindline, expand=False, fill=False)
+
+            self.bindrows.append(bindline)
+            if i > self.vislayers:
+                bindline.hide()
+                self.hrules[i].hide()
+            else:
+                bindline.show()
+                self.hrules[i].show()
         self.align1.add(self.inp_box)
-        self.inp_box.show_all()
+#        self.inp_box.show_all()
+
+    def on_map (self, w):
+#        self.foreach_layervis(lambda i, v: self.bindrows[i].set_visible(v))
+#        self.foreach_layervis(lambda i, v: self.lyr_lbls[i].set_visible(self.vislayers > 1 and v))
+#        dump = [None]*8
+#        def cb (i,v): dump[i] = v
+#        self.foreach_layervis(cb)
+#        logger.info("dump %r" % dump)
+        self.update_display()
+        return True
 
     def get_inpsym (self):
         return self.inpsym
@@ -738,40 +780,34 @@ class KbTop (gtk.Button, KbBindable):
         logger.debug("kbtop update_display %r" % self.inpsym)
         lbl = self.dispstate.inpdescr.get_label(self.inpsym)
         self.set_keytop(lbl)
+
         # Update binding display
-        self.uibuild_binddisplays()
-        groupnum = self.group
-        layernum = self.layer
-        layermap = self.dispstate.get_layermap(layernum)
+        self.mid_vis = False
+        def visit_bindrow (i, v):
+            if v:
+                self.bindrows[i].show()
+                if self.mid_vis:
+                    self.hrules[i].show()
+                else:
+                    self.hrules[i].hide()
+                    self.mid_vis = True
+                bg = self.bg_binds[i]
+                if i == self.layer:
+                    usestyle = self.refstyle.base
+                else:
+                    usestyle = self.refstyle.bg
+                bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
+                bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
+                bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
+                bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
 
-        self._baselayer = self.vislayers * (self.layer / self.vislayers)
-        bindidx = self.vislayers - (self.layer - self._baselayer) - 1
-
-        for i in range(self.vislayers):
-            bg = self.bg_binds[i]
-            layernum = self._baselayer + (self.vislayers - i) - 1
-            if i == bindidx:
-                # highlighted layer.
-                refstyle = self.refstyle.base
-                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
-                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
-                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
-                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
+                val = self.resolve_bind_markup(self.inpsym, layer=i)
+                self.inp_binds[i].set_markup(val)
+                self.lyr_lbls[i].set_visible(self.vislayers > 1)
             else:
-                # unhighlighted layer.
-                refstyle = self.refstyle.bg
-                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
-                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
-                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
-                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
-            val = self.resolve_bind_markup(self.inpsym, layer=layernum)
-            self.inp_binds[i].set_markup(val)
-            # install layer prefix for multi-layer view.
-            if self.vislayers > 1:
-                logger.debug("multi-vislayers")
-                self.lyr_lbls[i].set_markup("<small>%s:</small>" % layernum)
-            else:
-                self.lyr_lbls[i].set_text("")
+                self.bindrows[i].hide()
+                self.hrules[i].hide()
+        self.foreach_layervis(visit_bindrow)
 
     def setup_dnd (self):
         # Set up drag-and-drop for KbTop.
@@ -1435,8 +1471,7 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
         for colview in self.bindcols:
             colview.set_visible(False)
 
-        temp = gtk.Entry()  # copy style from Entry.
-        refstyle = temp.get_style().copy()
+        # Set styling for KbMenuList columns (multi-vislayers).
         for i in range(self.vislayers):
             layernum = baselayer + (self.dispstate.vislayers - i) - 1
             self.bindcols[layernum].set_visible(True)
@@ -1445,12 +1480,12 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
             usestyle = None
             if i == bindidx:
                 # highlighted layer.
-                usestyle = refstyle.base
+                usestyle = self.refstyle.base
             else:
                 # unhighlighted layer.
-                usestyle = refstyle.bg
-            bg = usestyle[gtk.STATE_NORMAL]
-            self.renderers[layernum].props.background = bg
+                usestyle = self.refstyle.bg
+            styleval = usestyle[gtk.STATE_NORMAL]
+            self.renderers[layernum].props.background = styleval
         return
 
     def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
@@ -1733,7 +1768,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 class KblayoutWidget (gtk.VBox):
     def __init__ (self, dispstate=None):
         gtk.VBox.__init__(self)
-        self.vislayers = 1
+        #self.vislayers = 1
         #self.mdl = mdl
         self.dispstate = dispstate
         self.keytops = {}
@@ -1780,9 +1815,10 @@ class KblayoutWidget (gtk.VBox):
             k.set_dispstate(dispstate)
 
     def get_vislayers (self):
-        return self.vislayers
+        #return self.vislayers
+        return self.dispstate.vislayers
     def set_vislayers (self, v):
-        self.vislayers = v
+        #self.vislayers = v
         self.dispstate.set_vislayers(v)
 #        for kt in self.keytops.itervalues():
 #            kt.set_vislayers(v)
