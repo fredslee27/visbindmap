@@ -581,6 +581,79 @@ gobject.signal_new("display-adjusted", InpDisplayState, gobject.SIGNAL_RUN_FIRST
 #gobject.signal_new("group-changed", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (InpDisplayState, gobject.TYPE_INT,))
 
 
+class HidLayoutStore (gtk.TreeStore):
+    """Description of HID element layout.
+Items are (inpsym, lbl, prototype, x, y, w, h)
+
+inpsym is an identifier expected to conform to C identifier constraints, used as the key in a mapping type for bindings.
+lbl is an arbitrary string to show the user for the input element.
+
+prototype: key, cluster
+
+
+rowrun format is list rowdesc
+ rowdesc is list of tuples
+  tuple = ( width, height, inpsym, lbl, prototype ) |
+          ( width, height, inpsym, lbl ) |
+          ( width, height, inpsym ) |
+          ( width, height )
+
+width, height - in terms of cells (gtk.Table, GtkGrid)
+"""
+
+    def __init__ (self, layout_name):
+        gtk.TreeStore.__init__(self, str, str, str, int, int, int, int)
+        self.name = layout_name
+        self.nrows = 0
+        self.ncols = 0
+
+    # TODO: overload mutators and check for size maximums there.
+    def append (self, parentiter, rowdata):
+        x, y, w, h = rowdata[3:7]
+        xlim = x + w
+        ylim = y + h
+        if xlim > self.ncols:
+            self.ncols = xlim
+        if ylim > self.nrows:
+            self.nrows = ylim
+        gtk.TreeStore.append(self, parentiter, rowdata)
+
+    def build_from_rowrun (self, desc):
+        rownum = 0
+        colnum = 0
+        maxrow = 0
+        maxcol = 0
+        for rowdesc in desc:
+            if rowdesc:
+                for eltdesc in rowdesc:
+                    inpsym, lbl, prototyp = None, None, None
+                    rowspan, colspan = eltdesc[0], eltdesc[1]
+                    if len(eltdesc) > 2:
+                        inpsym = eltdesc[2]
+                    if len(eltdesc) > 3:
+                        lbl = eltdesc[3]
+                    if len(eltdesc) > 4:
+                        prototyp = eltdesc[4]
+                    y, x = rownum, colnum
+                    h, w = rowspan, colspan
+                    if prototyp is None:
+                        if inpsym is None:
+                            prototyp = 'blank'
+                        else:
+                            prototyp = 'key'
+                    if lbl is None:
+                        lbl = inpsym
+                    if inpsym is not None:
+                        data = (inpsym, lbl, prototyp, x, y, w, h)
+                        self.append(None, data)
+                    colnum += colspan
+            rownum += 1
+            colnum = 0
+        return
+
+
+
+
 class HidBindable (object):
     """Base class for elements that can take binds (from command set)."""
     def __init__ (self, inpsym, dispstate):
