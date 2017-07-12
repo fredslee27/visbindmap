@@ -723,11 +723,6 @@ class KbTop (gtk.Button, KbBindable):
             ib.set_width_chars(4)
             ib.set_justify(gtk.JUSTIFY_LEFT)
             bg = self.bg_binds[i]
-#            usestyle = self.refstyle.base
-#            bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
-#            bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
-#            bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
-#            bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
             bg.add(ib)
 
             #self.inp_box.pack_start(bg, expand=False, fill=False)
@@ -735,31 +730,20 @@ class KbTop (gtk.Button, KbBindable):
             bindline.pack_start(self.lyr_lbls[i], expand=False, fill=False)
             self.lyr_lbls[i].set_markup("<small>%s:</small>" % i)
             bindline.pack_start(bg, expand=True, fill=True)
+
             if i != 0:
                 self.inp_box.pack_start(self.hrules[i], False, False, 0)
-
-#            bindrow = gtk.VBox()
-#            if i != 0:
-#                bindrow.pack_start(self.hrules[i], False, False, 0)
             self.inp_box.pack_start(bindline, expand=False, fill=False)
-
-            self.bindrows.append(bindline)
             if i > self.vislayers:
                 bindline.hide()
                 self.hrules[i].hide()
             else:
                 bindline.show()
                 self.hrules[i].show()
+            self.bindrows.append(bindline)
         self.align1.add(self.inp_box)
-#        self.inp_box.show_all()
 
     def on_map (self, w):
-#        self.foreach_layervis(lambda i, v: self.bindrows[i].set_visible(v))
-#        self.foreach_layervis(lambda i, v: self.lyr_lbls[i].set_visible(self.vislayers > 1 and v))
-#        dump = [None]*8
-#        def cb (i,v): dump[i] = v
-#        self.foreach_layervis(cb)
-#        logger.info("dump %r" % dump)
         self.update_display()
         return True
 
@@ -1759,8 +1743,6 @@ As arrangments can change during run-time, use strategies for rearranging:
 class KblayoutWidget (gtk.VBox):
     def __init__ (self, dispstate=None):
         gtk.VBox.__init__(self)
-        #self.vislayers = 1
-        #self.mdl = mdl
         self.dispstate = dispstate
         self.keytops = {}
         self.active = False
@@ -1792,12 +1774,6 @@ class KblayoutWidget (gtk.VBox):
         self.pack_start(self.row_layout, expand=False, fill=False)
         self.pack_start(self.grid, expand=False, fill=False)
 
-#    def get_model (self):
-#        return self.mdl
-#    def set_model (self, mdl):
-#        self.mdl = mdl
-#        for k in self.keytops.valueiter():
-#            k.set_model(mdl)
     def get_dispstate (self):
         return self.dispstate
     def set_dispstate (self, dispstate):
@@ -1806,17 +1782,9 @@ class KblayoutWidget (gtk.VBox):
             k.set_dispstate(dispstate)
 
     def get_vislayers (self):
-        #return self.vislayers
         return self.dispstate.vislayers
     def set_vislayers (self, v):
-        #self.vislayers = v
         self.dispstate.set_vislayers(v)
-#        for kt in self.keytops.itervalues():
-#            kt.set_vislayers(v)
-#            kt.update_display()
-#        for ch in self.grid.get_children():
-#            ch.set_vislayers(v)
-#            ch.update_display()
 
     @property
     def kbdesc (self):
@@ -1835,8 +1803,6 @@ class KblayoutWidget (gtk.VBox):
                         inpsym, disp = label, label
                         if '\f' in label:
                             (disp, inpsym) = label.split('\f', 1)
-#                            if self.mdl:
-#                                self.mdl.set_label(inpsym, disp)
                             if self.dispstate:
                                 self.dispstate.inpdescr.set_label(inpsym, disp)
                         l, r = colnum, colnum+width
