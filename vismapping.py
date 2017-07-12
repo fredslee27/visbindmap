@@ -9,9 +9,9 @@ import pprint
 import pickle
 import ast, parser
 
-import kblayout
-from kblayout import Logger
-from kblayout import DndOpcodes
+import hidview
+from hidview import Logger
+from hidview import DndOpcodes
 
 
 BASENAME="generic_game"
@@ -46,7 +46,7 @@ class TeeLog (object):
     def closed (self):
         return (self.outstream is not None)
 
-logger = kblayout.logger
+logger = hidview.logger
 logger.level = logger.info
 
 
@@ -115,9 +115,9 @@ class ObjectReinstantiater(ast.NodeTransformer):
     """Traverse Abstract Syntax Tree to filter allowed object instantiation."""
     # Classes allowed to be instantiated.  Otherwise becomes None.
     REINSTANCERS = {
-        "kblayout.InpDescrModel": kblayout.InpDescrModel,
-        "kblayout.InpLayer": kblayout.InpLayer,
-        "kblayout.InpGroup": kblayout.InpGroup,
+        "hidview.InpDescrModel": hidview.InpDescrModel,
+        "hidview.InpLayer": hidview.InpLayer,
+        "hidview.InpGroup": hidview.InpGroup,
         }
     def nop (self, node):
         return ast.parse("None", mode='eval')
@@ -143,7 +143,7 @@ class Store (object):
         try:
             self.inpdescr
         except AttributeError:
-            self.inpdescr = kblayout.InpDescrModel(self._nummodes, self._numlevels)
+            self.inpdescr = hidview.InpDescrModel(self._nummodes, self._numlevels)
         self.inpdescr.clear()
         self.fname = None
         self.cmdsuri = None
@@ -573,7 +573,7 @@ Consists of:
 
         # grid/tablular layout of inpbind+bindcmd
         #inpdescr = self.models.bindstore.inpdescr
-        self.kbl = kblayout.KblayoutWidget(self.models.dispstate)
+        self.kbl = hidview.KblayoutWidget(self.models.dispstate)
         self.kbl.connect('key-selected', self.on_key_selected)
         self.kbl.connect('layout-changed', self.on_layout_changed)
 
@@ -986,7 +986,7 @@ class VisMapperApp (object):
         self.models.cmdstore = CmdStore(self.cmdsrc)
         self.models.bindstore = Store(8)
         self.models.modestore = ModeStore(self.cmdsrc)
-        self.models.dispstate = kblayout.InpDisplayState(self.models.bindstore.inpdescr)
+        self.models.dispstate = hidview.InpDisplayState(self.models.bindstore.inpdescr)
         self.models.accelgroup = gtk.AccelGroup()
 
         menubar = MainMenubar(self, self.models.accelgroup)
