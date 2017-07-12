@@ -8,7 +8,6 @@ import math
 import ast
 
 import kbd_desc
-import hidlayout
 
 
 class DndOpcodes:  # old-style class.
@@ -1914,7 +1913,7 @@ class HidLayoutWidget (gtk.VBox):
         idx = self.inp_layout.get_active()
         val = self.mdl_layout[idx][0]
 
-        self.activehid = hidlayout.HidLayoutStore(val)
+        self.activehid = HidLayoutStore(val)
         self.activehid.build_from_rowrun(self.hiddesc[val])
         self.fill_board(self.activehid)
 
@@ -1951,7 +1950,7 @@ class HidLayoutWidget (gtk.VBox):
         data = self.mdl_layout[idx]
         val = data[0]
         hiddata = self.hiddesc[val]
-        self.activehid = hidlayout.HidLayoutStore(val)
+        self.activehid = HidLayoutStore(val)
         self.activehid.build_from_rowrun(hiddata)
         self.clear_board()
         self.fill_board(self.activehid)
