@@ -65,7 +65,7 @@ class Logger (object):
     def info (self, *msgparts):  self.__gate(3, "===", *msgparts)
     def debug (self, *msgparts): self.__gate(4, "+++", *msgparts)
     _levels = [ fatal, error, warn, info, debug ]
-logger = Logger(Logger.debug)
+logger = Logger(Logger.info)
 # set log level with: logger.level = logger.warn
 # log with: logger.info("...", "...", ...)
 
@@ -1215,7 +1215,7 @@ class PseudoStack (gtk.VBox):
         self.readjust_visibility()
 
     def on_map (self, w, *args):
-        logger.debug("opening page %r" % self.active)
+        logger.debug("opening page %r" % self.active.get_children()[0])
         self.readjust_visibility()
 
 
@@ -1232,44 +1232,37 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
         # The TreeView
         self.treeview = gtk.TreeView()
         self.rendertext = gtk.CellRendererText()
+        nlayers = self.dispstate.inpdescr.get_numlayers()
         self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
-        self.col1 = gtk.TreeViewColumn("bind0", self.rendertext, markup=1)
-        self.col2 = gtk.TreeViewColumn("bind1", self.rendertext, markup=1)
-        self.col3 = gtk.TreeViewColumn("bind2", self.rendertext, markup=1)
-        self.col4 = gtk.TreeViewColumn("bind3", self.rendertext, markup=1)
-        self.col5 = gtk.TreeViewColumn("bind4", self.rendertext, markup=1)
-        self.col6 = gtk.TreeViewColumn("bind5", self.rendertext, markup=1)
-        self.col7 = gtk.TreeViewColumn("bind6", self.rendertext, markup=1)
-        self.col8 = gtk.TreeViewColumn("bind7", self.rendertext, markup=1)
         self.treeview.append_column(self.col0)
-        self.treeview.append_column(self.col1)
-
-        self.treeview.append_column(self.col2)
-        self.treeview.append_column(self.col3)
-        self.treeview.append_column(self.col4)
-        self.treeview.append_column(self.col5)
-        self.treeview.append_column(self.col6)
-        self.treeview.append_column(self.col7)
-        self.treeview.append_column(self.col8)
+        self.bindcols = []
+        self.renderers = []
+        for i in range(nlayers):
+            title = "bind%d" % i
+            renderer = gtk.CellRendererText()
+            renderer.props.background = "gray"
+            datacol = i+1
+            bind_col = gtk.TreeViewColumn(title, renderer, markup=datacol)
+            self.bindcols.append(bind_col)
+            self.renderers.append(renderer)
+            self.treeview.append_column(bind_col)
 
         self.add(self.treeview)  # and not with viewport.
         # private model updated from InpDescrModel, prefill with 20 inpsyms.
-        self.scratch = gtk.ListStore(str,str)
+        # first column = inpsym, following columns follow layers.
+        #self.scratch = gtk.ListStore(str,str)
+        coldesc = (str,) + (str,)*nlayers
+        self.scratch = gtk.ListStore( *coldesc )
         for i in range(0, 20):
             inpsym = "{}{}".format(self.inpsymprefix, i+1)
-            self.scratch.append((inpsym, None))
+            self.scratch.append((inpsym,) + (None,)*nlayers)
         self.pull_data()  # Populate .scratch from InpDescrModel
         self.treeview.set_model(self.scratch)
-        # Listen for changes to/in InpDescrModel (update .scratch)
-#        if self.inpdescr:
-#            self.conn_bind_changed = self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
-##            self.conn_label_changed = self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
-#            self.conn_layer_changed = self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
-#            self.conn_group_changed = self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
         # Set up drag-and-drop.
         self.setup_dnd()
 
         self.show_all()
+        self.update_display()
 
     def setup_dnd (self):
         """Set up drag-and-drop."""
@@ -1372,7 +1365,7 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
             othersym = seldata.data
             destsym = self.scratch[destpath][0]
             logger.debug("command-swapping: %r,%r" % (destsym, othersym))
-            self.inpdescr.swap_bind(destsym, othersym)
+            self.swap_bind(destsym, othersym)
             ctx.finish(True, False, time)
             return True
         return False
@@ -1422,56 +1415,45 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
 
     def pull_data (self):
         """Synchronize .scratch based on InpDescrModel"""
+        nlayers = self.dispstate.inpdescr.get_numlayers()
         for row in self.scratch:
             inpsym = row[0]
-            if self.dispstate:
-                bind_markedup = self.dispstate.resolve_bind_markup(inpsym)
-                row[1] = bind_markedup
-
-    def set_vislayers (self, val):
-        self.vislayers = val
-        self.update_display()
+            for layernum in range(nlayers):
+                bind_markedup = self.resolve_bind_markup(inpsym, layer=layernum)
+                #row[1] = bind_markedup
+                row[1+layernum] = bind_markedup
 
     def update_display (self):
         logger.debug("menulist update_display")
-        _baselayer = self.vislayers * (self.dispstate.layer / self.dispstate.vislayers)
-        colviews = [ self.col1, self.col2, self.col3, self.col4, self.col5, self.col6, self.col7, self.col8 ]
-        bindidx = self.dispstate.vislayers - (self.dispstate.layer - _baselayer) - 1
+        baselayer = self.vislayers * (self.layer / self.dispstate.vislayers)
+        bindidx = self.vislayers - (self.layer - baselayer) - 1
+#        totalwidth = self.allocation.width
+#        inpsymwidth = self.col0.get_width()
+#        bindwidth = (totalwidth - inpsymwidth) / self.vislayers
 
-        for colview in colviews:
+        # TODO: optimize later; some columns have visibility flipped back and forth.
+        for colview in self.bindcols:
             colview.set_visible(False)
+
+        temp = gtk.Entry()  # copy style from Entry.
+        refstyle = temp.get_style().copy()
         for i in range(self.vislayers):
-#            bg = self.bg_binds[i]
-            layernum = _baselayer + (self.dispstate.vislayers - i) - 1
-            colviews[layernum].set_visible(True)
-#            if i == bindidx:
-#                # highlighted layer.
-#                refstyle = self.refstyle.base
-#                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
-#                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
-#                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
-#                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
-#            else:
-#                # unhighlighted layer.
-#                refstyle = self.refstyle.bg
-#                bg.modify_bg(gtk.STATE_NORMAL, refstyle[gtk.STATE_NORMAL])
-#                bg.modify_bg(gtk.STATE_ACTIVE, refstyle[gtk.STATE_ACTIVE])
-#                bg.modify_bg(gtk.STATE_PRELIGHT, refstyle[gtk.STATE_PRELIGHT])
-#                bg.modify_bg(gtk.STATE_SELECTED, refstyle[gtk.STATE_SELECTED])
-#            val = self.inpdescr.resolve_bind_markup(self.inpsym, layer=layernum)
-#            self.inp_binds[i].set_markup(val)
-            # install layer prefix for multi-layer view.
-#            if self.vislayers > 1:
-#                self.lyr_lbls[i].set_markup("<small>%s:</small>" % layernum)
-#            else:
-#                self.lyr_lbls[i].set_text("")
+            layernum = baselayer + (self.dispstate.vislayers - i) - 1
+            self.bindcols[layernum].set_visible(True)
+            #self.bindcols[layernum].set_min_width(bindwidth)
+            self.bindcols[layernum].set_expand(True)
+            usestyle = None
+            if i == bindidx:
+                # highlighted layer.
+                usestyle = refstyle.base
+            else:
+                # unhighlighted layer.
+                usestyle = refstyle.bg
+            bg = usestyle[gtk.STATE_NORMAL]
+            self.renderers[layernum].props.background = bg
+        return
 
     def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
-#        if (grp == self.inpdescr._group) and (lyr == self.inpdescr._layer):
-#            if inpsym.startswith(self.inpsymprefix):
-#                for row in self.scratch:
-#                    if row[0] == inpsym:
-#                        pass
         self.pull_data()
     def on_inpdescr_label_changed (self, *args):
         self.pull_data()

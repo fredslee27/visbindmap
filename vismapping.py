@@ -45,7 +45,9 @@ class TeeLog (object):
         # let gc close the file, in case it's stderr.
     def closed (self):
         return (self.outstream is not None)
-logger = Logger(Logger.debug)
+
+logger = kblayout.logger
+logger.level = logger.info
 
 
 
