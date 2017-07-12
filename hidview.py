@@ -1748,14 +1748,75 @@ As arrangments can change during run-time, use strategies for rearranging:
 
 
 
+class HidLayoutView (gtk.Table):
+    def __init__ (self, dispstate):
+        gtk.Table.__init__(self, homogeneous=True)
+        # mapping of inpsym to Widget (look up widget by inpsym).
+        self.hidtops = dict()
+        self.hiddesc = None
+        self.dispstate = dispstate
+
+    def get_layout (self):
+        return self.hiddesc
+    def set_layout (self, hiddesc):
+        self.hiddesc = hiddesc
+
+    def get_dispstate (self):
+        return self.dispstate
+    def set_dispstate (self, val):
+        self.dispstate = val
+        for elt in self.hidtops.valueiter():
+            elt.set_dispstate(val)
+
+    def clear_board (self):
+        for ch in self.get_children():
+            self.remove(ch)
+            ch.destroy()
+        self.resize(1,1)
+        self.hidtops.clear()
+
+    def populate_board (self):
+        """Fill grid with HID element tops."""
+        self.hidtops.clear()
+
+        for eltdesc in self.hiddesc:
+            inpsym, lbl, prototyp, x, y, w, h = eltdesc
+            hidtop = None
+            if prototyp == "cluster":
+                planar = KbPlanar(inpsym, self.dispstate)
+                for inpsym,subelt in planar.kbtops.iteritems():
+#                    subelt.connect("clicked", self.on_hidtop_clicked)
+                    self.hidtops[inpsym] = subelt
+                    self.active = subelt
+                attach_tweaks = {
+                    'xoptions': gtk.FILL,
+                    'yoptions': gtk.FILL,
+                    'xpadding': 4,
+                    'ypadding': 4,
+                }
+                self.attach(planar, x, x+w, y, y+h, **attach_tweaks)
+                planar.show_all()
+                planar.update_display()
+            elif prototyp == "key":
+                hidtop = KbTop(inpsym, self.dispstate)
+#                hidtop.connect("clicked", self.on_hidtop_clicked)
+                self.hidtops[inpsym] = hidtop
+                self.active = hidtop
+                self.attach(hidtop, x, x+w, y, y+h)
+                hidtop.show_all()
+            else:
+                pass
+            if self.hidtops.has_key(inpsym):
+                logger.warn("potential duplicate: %s" % inpsym)
+        return
+
+
 class KblayoutWidget (gtk.VBox):
     def __init__ (self, dispstate=None):
         gtk.VBox.__init__(self)
         self.dispstate = dispstate
-        self.hidtops = {}
         self.active = False
-        self.grid = gtk.Table(homogeneous=True)
-        #self.grid = gtk.Table(homogeneous=False)
+        self.hidview = HidLayoutView(self.dispstate)
 
         # Selector for specific layout.
         self.mdl_layout = gtk.ListStore(str)
@@ -1783,14 +1844,15 @@ class KblayoutWidget (gtk.VBox):
         self.fill_board(self.activehid)
 
         self.pack_start(self.row_layout, expand=False, fill=False)
-        self.pack_start(self.grid, expand=False, fill=False)
+        self.pack_start(self.hidview, expand=False, fill=False)
 
     def get_dispstate (self):
         return self.dispstate
     def set_dispstate (self, dispstate):
         self.dispstate = dispstate
-        for k in self.hidtops.valueiter():
-            k.set_dispstate(dispstate)
+        self.hidview.set_dispstate(dispstate)
+#        for k in self.hidtops.valueiter():
+#            k.set_dispstate(dispstate)
 
     def get_vislayers (self):
         return self.dispstate.vislayers
@@ -1802,51 +1864,14 @@ class KblayoutWidget (gtk.VBox):
         return kbd_desc.KBD
 
     def fill_board (self, hiddesc):
-        grid = self.grid
-        # HID Element Tops
-        hidtops = {}
-        rownum = 0
-        colnum = 0
-
-        for eltdesc in hiddesc:
-            inpsym, lbl, prototyp, x, y, w, h = eltdesc
-            hidtop = None
-            if prototyp == "cluster":
-                planar = KbPlanar(inpsym, self.dispstate)
-                for inpsym,subelt in planar.kbtops.iteritems():
-                    subelt.connect("clicked", self.on_hidtop_clicked)
-                    hidtops[inpsym] = subelt
-                    self.active = subelt
-                attach_tweaks = {
-                    'xoptions': gtk.FILL,
-                    'yoptions': gtk.FILL,
-                    'xpadding': 4,
-                    'ypadding': 4,
-                }
-                grid.attach(planar, x, x+w, y, y+h, **attach_tweaks)
-                planar.show_all()
-                planar.update_display()
-            elif prototyp == "key":
-                hidtop = KbTop(inpsym, self.dispstate)
-                hidtop.connect("clicked", self.on_hidtop_clicked)
-                hidtops[inpsym] = hidtop
-                self.active = hidtop
-                grid.attach(hidtop, x, x+w, y, y+h)
-                hidtop.show_all()
-            else:
-                pass
-            if hidtops.has_key(inpsym):
-                logger.warn("potential duplicate: %s" % inpsym)
-
-        self.hidtops = hidtops
+        self.hidview.set_layout(hiddesc)
+        self.hidview.clear_board()
+        self.hidview.populate_board()
+        for hidtop in self.hidview.hidtops.itervalues():
+            hidtop.connect('clicked', self.on_hidtop_clicked)
 
     def clear_board (self):
-        grid = self.grid
-        for ch in grid.get_children():
-            grid.remove(ch)
-            ch.destroy()
-        grid.resize(1,1)
-        self.hidtops = {}
+        self.hidview.clear_board()
 
     def on_changed (self, w, *args):
         idx = w.get_active()
