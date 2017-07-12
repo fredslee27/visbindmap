@@ -573,11 +573,11 @@ Consists of:
 
         # grid/tablular layout of inpbind+bindcmd
         #inpdescr = self.models.bindstore.inpdescr
-        self.kbl = hidlayout.KblayoutWidget(self.models.dispstate)
-        self.kbl.connect('key-selected', self.on_key_selected)
-        self.kbl.connect('layout-changed', self.on_layout_changed)
+        self.hidl = hidlayout.HidLayoutWidget(self.models.dispstate)
+        self.hidl.connect('key-selected', self.on_key_selected)
+        self.hidl.connect('layout-changed', self.on_layout_changed)
 
-        self.pack_start(self.kbl, expand=False, fill=False)
+        self.pack_start(self.hidl, expand=False, fill=False)
 
     def on_key_selected (self, w, ksym, *args):
         #binding = self.models.bindstore.inpdescr.get_bind(ksym)
@@ -585,12 +585,12 @@ Consists of:
         logger.debug("key-selected: %s => %r" % (ksym, binding))
 
     def get_layout (self):
-        idx = self.kbl.inp_layout.get_active()
-        retval = self.kbl.mdl_layout[idx][0]
+        idx = self.hidl.inp_layout.get_active()
+        retval = self.hidl.mdl_layout[idx][0]
         return retval
     def set_layout (self, layoutname):
-        sel = self.kbl.inp_layout
-        mdl = self.kbl.mdl_layout
+        sel = self.hidl.inp_layout
+        mdl = self.hidl.mdl_layout
         idx = -1
         for rownum in range(len(mdl)):
             if mdl[rownum][0] == layoutname:
@@ -1000,7 +1000,7 @@ class VisMapperApp (object):
 
     def uibuild (self):
         """Setup and connect UI elements."""
-        kbl = self.ui.bindpad.kbl
+        hidl = self.ui.bindpad.hidl
         cmdview = self.ui.cmdcol
         visbind = self.ui.bindpad
         visbind.connect('mode-changed', self.on_kbmode_changed)
@@ -1086,11 +1086,11 @@ class VisMapperApp (object):
         return
 
     def get_vislayers (self):
-        kbl = self.ui.bindpad.kbl
-        return kbl.get_vislayers()
+        hidl = self.ui.bindpad.hidl
+        return hidl.get_vislayers()
     def set_vislayers (self, v):
-        kbl = self.ui.bindpad.kbl
-        kbl.set_vislayers(v)
+        hidl = self.ui.bindpad.hidl
+        hidl.set_vislayers(v)
     def display_about (self):
         self.ui.display_about()
 

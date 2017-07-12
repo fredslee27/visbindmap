@@ -1989,8 +1989,6 @@ gobject.signal_new("bindid-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, 
 gobject.signal_new("layout-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 
 
-KblayoutWidget = HidLayoutWidget
-
 
 
 
@@ -2027,8 +2025,6 @@ class HidLayoutWindow (gtk.Window):
     def run (self):
         self.show_all()
         gtk.mainloop()
-
-KblayoutWindow = HidLayoutWindow
 
 
 if __name__ == "__main__":
