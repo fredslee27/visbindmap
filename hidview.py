@@ -581,7 +581,7 @@ gobject.signal_new("display-adjusted", InpDisplayState, gobject.SIGNAL_RUN_FIRST
 #gobject.signal_new("group-changed", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (InpDisplayState, gobject.TYPE_INT,))
 
 
-class KbBindable (object):
+class HidBindable (object):
     """Base class for elements that can take binds (from command set)."""
     def __init__ (self, inpsym, dispstate):
         self.inpsym = inpsym
@@ -650,7 +650,7 @@ class KbBindable (object):
         raise NotImplementedError("update_display() is abstract")
 
 
-class KbTop (gtk.Button, KbBindable):
+class KbTop (gtk.Button, HidBindable):
     """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
     Contents to display are packaged in a data model (InpDescrModel)
     """
@@ -658,7 +658,7 @@ class KbTop (gtk.Button, KbBindable):
         """Initialize with given data model, and the input symbol tied to this kbtop"""
         # UI elements
         gtk.Button.__init__(self)
-        KbBindable.__init__(self, inpsym, dispstate)
+        HidBindable.__init__(self, inpsym, dispstate)
         self.plane = gtk.VBox()
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
@@ -1242,14 +1242,14 @@ class PseudoStack (gtk.VBox):
         self.readjust_visibility()
 
 
-class KbMenuList (gtk.ScrolledWindow, KbBindable):
+class KbMenuList (gtk.ScrolledWindow, HidBindable):
     """TreeView of list-based cluster types."""
     def __init__ (self, inpsymprefix, dispstate):
         # Based on ScrollWindowed, containing a TreeView
         gtk.ScrolledWindow.__init__(self)
         if inpsymprefix is None:
             inpsymprefix = ""
-        KbBindable.__init__(self, inpsymprefix, dispstate)
+        HidBindable.__init__(self, inpsymprefix, dispstate)
         self.inpsymprefix = inpsymprefix
         self.dispstate = dispstate
         # The TreeView
@@ -1480,7 +1480,7 @@ class KbMenuList (gtk.ScrolledWindow, KbBindable):
         self.update_display()
 
 
-class KbPlanar (gtk.EventBox, KbBindable):
+class KbPlanar (gtk.EventBox, HidBindable):
     """Planar control cluster (stick, touchpad, etc.)
 Contents to display are packaged in a data model (InpDescrModel)
 Children are KbTop, but selectively shown and placed to reflect cluster type.
@@ -1502,7 +1502,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
         # UI elements
         gtk.EventBox.__init__(self)
-        KbBindable.__init__(self, inpsymprefix, dispstate)
+        HidBindable.__init__(self, inpsymprefix, dispstate)
 
         self.inpsymprefix = inpsymprefix
         self.dispstate = dispstate
@@ -1853,8 +1853,6 @@ class HidLayoutWidget (gtk.VBox):
     def set_dispstate (self, dispstate):
         self.dispstate = dispstate
         self.hidview.set_dispstate(dispstate)
-#        for k in self.hidtops.valueiter():
-#            k.set_dispstate(dispstate)
 
     def get_vislayers (self):
         return self.dispstate.vislayers
@@ -1928,7 +1926,7 @@ KblayoutWidget = HidLayoutWidget
 
 # Testing standalone window.
 
-class KblayoutWindow (gtk.Window):
+class HidLayoutWindow (gtk.Window):
     def __init__ (self):
         gtk.Window.__init__(self)
         self.set_size_request(640, 480)
@@ -1936,14 +1934,14 @@ class KblayoutWindow (gtk.Window):
         self.layout = gtk.VBox()
         self.add(self.layout)
 
-        kbl = KblayoutWidget()
-        self.layout.add(kbl)
-        kbl.connect("key-selected", self.on_key_selected)
-        kbl.connect("bind-changed", self.on_bind_changed)
+        inpdescr = InpDescrModel(8)
+        dispstate = InpDisplayState(inpdescr)
+        hidw = HidLayoutWidget(dispstate)
+        self.layout.add(hidw)
+        hidw.connect("key-selected", self.on_key_selected)
+        hidw.connect("bind-changed", self.on_bind_changed)
 
         self.connect('delete-event', self.on_delete)
-
-        #kbl['Space'] = 'Jump'
 
     def on_delete (self, w, *args):
         gtk.main_quit()
@@ -1958,8 +1956,10 @@ class KblayoutWindow (gtk.Window):
         self.show_all()
         gtk.mainloop()
 
+KblayoutWindow = HidLayoutWindow
+
 
 if __name__ == "__main__":
-    x = KblayoutWindow()
+    x = HidLayoutWindow()
     x.run()
 
