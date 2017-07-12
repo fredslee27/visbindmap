@@ -1,15 +1,16 @@
 import unittest
 import time
 
-import kblayout
+import hidlayout
 import gobject
 import gtk
 
 
-class TestKblayout(unittest.TestCase):
+class TestHidlayout(unittest.TestCase):
     def setUp (self):
         gtk.threads_init()
-        pass
+        self.inpdescr = hidlayout.InpDescrModel(8,8)
+        self.ds = hidlayout.InpDisplayState(self.inpdescr)
 
 
     def runloop (self, playback=[lambda: None]):
@@ -29,37 +30,32 @@ class TestKblayout(unittest.TestCase):
                 t = time.time()
 
 
-#    @unittest.skip("skip models")
     def test_models (self):
         bindchanged = []
         def on_bindchange (w, *args):
             bindchanged.append(True)
 
-        x = kblayout.InpDescrModel(1)
-        x.connect("bind-changed", on_bindchange)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
-        playback=[ lambda: x.set_bind(0, "K_ESCAPE", 0, 0),
+        playback=[ lambda: self.inpdescr.set_bind(0, "K_ESCAPE", 0, 0),
                    ]
 
         self.runloop(playback)
         self.assertTrue(True in bindchanged)
 
-#    @unittest.skip("skip kbtop")
     def test_kbtop (self):
         def on_bindchange(w, *args):
             pass
-        mdl = kblayout.InpDescrModel(1)
-        mdl.connect("bind-changed", on_bindchange)
-        ds = kblayout.InpDisplayState(mdl)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
         w = gtk.Window()
-        w.set_title("Test KbTop")
+        w.set_title("Test HidTop")
         w.resize(640, 480)
 
         layout = gtk.VBox()
         w.add(layout)
 
-        b = kblayout.KbTop("K_TEST", ds)
+        b = hidlayout.HidTop("K_TEST", self.ds)
         layout.pack_start(b, expand=False, fill=False, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -69,9 +65,9 @@ class TestKblayout(unittest.TestCase):
 
         playback = [ lambda: None,
                      1,
-                     lambda: mdl.set_label("K_TEST", "TEST"),
+                     lambda: self.inpdescr.set_label("K_TEST", "TEST"),
                      1,
-                     lambda: mdl.set_bind("K_TEST", "test_changer", 0, 0),
+                     lambda: self.inpdescr.set_bind("K_TEST", "test_changer", 0, 0),
                      2
                      ]
 
@@ -84,18 +80,16 @@ class TestKblayout(unittest.TestCase):
     def test_kbplanar (self):
         def on_bindchange(w, *args):
             pass
-        mdl = kblayout.InpDescrModel(1)
-        mdl.connect("bind-changed", on_bindchange)
-        ds = kblayout.InpDisplayState(mdl)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
         w = gtk.Window()
-        w.set_title("Test KbTop")
+        w.set_title("Test HidTop")
         w.resize(640, 480)
 
         layout = gtk.VBox()
         w.add(layout)
 
-        b = kblayout.KbPlanar("L", ds)
+        b = hidlayout.HidPlanar("L", self.ds)
 #        b.set_arranger(b.arrangerDpad())
         #layout.pack_start(b, expand=False, fill=False, padding=0)
         layout.pack_start(b, expand=True, fill=True, padding=0)
@@ -159,18 +153,16 @@ class TestKblayout(unittest.TestCase):
     def test_kbplanar_radial_calc (self):
         def on_bindchange(w, *args):
             pass
-        mdl = kblayout.InpDescrModel(1)
-        mdl.connect("bind-changed", on_bindchange)
-        ds = kblayout.InpDisplayState(mdl)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
         w = gtk.Window()
-        w.set_title("Test KbTop")
+        w.set_title("Test HidTop")
         w.resize(640, 480)
 
         layout = gtk.VBox()
         w.add(layout)
 
-        b = kblayout.KbPlanar("L", ds)
+        b = hidlayout.HidPlanar("L", self.ds)
         b.set_arranger(b.arrangerRadialmenu(3))
         layout.pack_start(b, expand=False, fill=False, padding=0)
         lbl = gtk.Label("Testing...")
@@ -210,18 +202,16 @@ class TestKblayout(unittest.TestCase):
     def test_kbplanar_ctxmenu (self):
         def on_bindchange(w, *args):
             pass
-        mdl = kblayout.InpDescrModel(1)
-        mdl.connect("bind-changed", on_bindchange)
-        ds = kblayout.InpDisplayState(mdl)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
         w = gtk.Window()
-        w.set_title("Test KbTop")
+        w.set_title("Test HidTop")
         w.resize(640, 480)
 
         layout = gtk.VBox()
         w.add(layout)
 
-        b = kblayout.KbPlanar("L", ds)
+        b = hidlayout.HidPlanar("L", self.ds)
         layout.pack_start(b, expand=True, fill=True, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -249,12 +239,10 @@ class TestKblayout(unittest.TestCase):
     def test_kbplanar_persist (self):
         def on_bindchange(w, *args):
             pass
-        mdl = kblayout.InpDescrModel(1)
-        mdl.connect("bind-changed", on_bindchange)
-        ds = kblayout.InpDisplayState(mdl)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
         w = gtk.Window()
-        w.set_title("Test KbTop")
+        w.set_title("Test HidTop")
         w.resize(640, 480)
 
         layout = gtk.VBox()
@@ -268,7 +256,7 @@ class TestKblayout(unittest.TestCase):
         def rebuild ():
             if data.b:
                 layout.remove(data.b)
-            data.b = kblayout.KbPlanar("L", ds)
+            data.b = hidlayout.HidPlanar("L", self.ds)
             layout.pack_start(data.b, expand=True, fill=True, padding=0)
             lbl = gtk.Label("Testing...")
             layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -293,9 +281,8 @@ class TestKblayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
-    def test_kblayout (self):
-        mdl = kblayout.InpDescrModel(1)
-        ds = kblayout.InpDisplayState(mdl)
+    def test_hidlayout (self):
+        parent = self
         class KblayoutWindow (gtk.Window):
             def __init__ (self):
                 gtk.Window.__init__(self)
@@ -304,7 +291,7 @@ class TestKblayout(unittest.TestCase):
                 self.layout = gtk.VBox()
                 self.add(self.layout)
 
-                kbl = kblayout.KblayoutWidget(ds)
+                kbl = hidlayout.KblayoutWidget(parent.ds)
                 self.layout.add(kbl)
                 kbl.connect("key-selected", self.on_key_selected)
                 kbl.connect("bind-changed", self.on_bind_changed)
@@ -334,17 +321,14 @@ class TestKblayout(unittest.TestCase):
         w.hide()
 
     def test_change_vislayers (self):
-        mdl = kblayout.InpDescrModel(1,8)
-        ds = kblayout.InpDisplayState(mdl)
-
         w = gtk.Window()
-        w.set_title("Test KbTop")
+        w.set_title("Test HidTop")
         w.resize(640, 480)
 
         layout = gtk.VBox()
         w.add(layout)
 
-        b = kblayout.KbTop("K_TEST", ds)
+        b = hidlayout.HidTop("K_TEST", self.ds)
         layout.pack_start(b, expand=False, fill=False, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -354,18 +338,18 @@ class TestKblayout(unittest.TestCase):
 
         playback = [ lambda: None,
                      1,
-                     lambda: mdl.set_label("K_TEST", "TEST"),
+                     lambda: self.inpdescr.set_label("K_TEST", "TEST"),
                      1,
-                     lambda: mdl.set_bind("K_TEST", "test_changer", 0, 0),
+                     lambda: self.inpdescr.set_bind("K_TEST", "test_changer", 0, 0),
                      2,
-                     lambda: ds.set_vislayers(2),
+                     lambda: self.ds.set_vislayers(2),
                      2
                      ]
 
         self.runloop(playback)
         self.assertEqual(b.inp_lbl.get_text(), "TEST")
-        self.assertEqual(b.inp_binds[1].get_text(), "test_changer")
-        self.assertEqual(ds.get_vislayers(), 2)
+        self.assertEqual(b.inp_binds[0].get_text(), "test_changer")
+        self.assertEqual(self.ds.get_vislayers(), 2)
         self.assertEqual(b.vislayers, 2)
         #time.sleep(4)
         w.hide()
