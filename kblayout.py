@@ -694,7 +694,7 @@ class KbTop (gtk.Button, KbBindable):
 
         self.connect("map", self.on_map)
         self.setup_dnd()
-#        self.update_display()
+        self.update_display()
 
     def uibuild_binddisplays (self):
         if self.inp_box:
@@ -744,6 +744,11 @@ class KbTop (gtk.Button, KbBindable):
         self.align1.add(self.inp_box)
 
     def on_map (self, w):
+        logger.info("on_map %r" % self.inpsym)
+        dump = [None]*8
+        def visit (i,v): dump[i] = v
+        self.foreach_layervis(visit)
+        logger.info(" %r" % dump)
         self.update_display()
         return True
 
@@ -880,7 +885,9 @@ class ArrangerEmpty (object):
             if not inpsym in self.parent.kbtops:
                 kbtop = KbTop(inpsym, self.parent.dispstate)
                 self.parent.kbtops[inpsym] = kbtop
-                kbtop.connect("button-press-event", self.parent.on_button_press)
+                kbtop.show_all()
+                # right-click menu
+                #kbtop.connect("button-press-event", self.parent.on_button_press)
 
     def build_widget_pool (self):
         suffices = self.placements.keys()
@@ -1581,7 +1588,8 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arranger.rearrange()
         self.update_label()
         #self.show_all()
-        self.grid.show_all()
+        #self.grid.show_all()
+        self.grid.show()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
         self.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
 
