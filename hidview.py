@@ -1805,7 +1805,8 @@ class KblayoutWidget (gtk.VBox):
         for row in kbdesc:
             if row is not None:
                 for keydata in row:
-                    (label, height, width) = keydata
+                    #(label, height, width) = keydata
+                    (height, width, label) = keydata[:3]
                     if label is not None:
                         inpsym, disp = label, label
                         if '\f' in label:
