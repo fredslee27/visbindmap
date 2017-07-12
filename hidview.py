@@ -1811,7 +1811,9 @@ class HidLayoutView (gtk.Table):
         return
 
 
-class KblayoutWidget (gtk.VBox):
+class HidLayoutWidget (gtk.VBox):
+    """Controls wrapper to HidLayoutView.
+"""
     def __init__ (self, dispstate=None):
         gtk.VBox.__init__(self)
         self.dispstate = dispstate
@@ -1910,11 +1912,14 @@ class KblayoutWidget (gtk.VBox):
         del self.hidtops[inpsym]
 
 # Set up signals.
-gobject.type_register(KblayoutWidget)
-gobject.signal_new("key-selected", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (str,))
-gobject.signal_new("bind-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
-gobject.signal_new("bindid-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
-gobject.signal_new("layout-changed", KblayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+gobject.type_register(HidLayoutWidget)
+gobject.signal_new("key-selected", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (str,))
+gobject.signal_new("bind-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+gobject.signal_new("bindid-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+gobject.signal_new("layout-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+
+
+KblayoutWidget = HidLayoutWidget
 
 
 
