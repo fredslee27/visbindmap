@@ -753,7 +753,7 @@ class HidTop (gtk.Button, HidBindable):
     def set_inpsym (self, val):
         self.inpsym = val
 
-    def set_keytop (self, disp):
+    def set_hidtop (self, disp):
         if len(disp) > 2:
             self.inp_lbl.set_markup("<small>%s</small>" % disp)
         else:
@@ -764,7 +764,7 @@ class HidTop (gtk.Button, HidBindable):
         # Update keytop
         logger.debug("hidtop update_display %r" % self.inpsym)
         lbl = self.dispstate.inpdescr.get_label(self.inpsym)
-        self.set_keytop(lbl)
+        self.set_hidtop(lbl)
 
         # Update binding display
         self.mid_vis = False
@@ -878,12 +878,12 @@ class ArrangerEmpty (object):
         suffices = self.placements.keys()
         for suffix in suffices:
             inpsym = self.inpsymof(suffix)
-            if not inpsym in self.parent.kbtops:
-                kbtop = HidTop(inpsym, self.parent.dispstate)
-                self.parent.kbtops[inpsym] = kbtop
-                kbtop.show_all()
+            if not inpsym in self.parent.hidtops:
+                hidtop = HidTop(inpsym, self.parent.dispstate)
+                self.parent.hidtops[inpsym] = hidtop
+                hidtop.show_all()
                 # right-click menu
-                #kbtop.connect("button-press-event", self.parent.on_button_press)
+                #hidtop.connect("button-press-event", self.parent.on_button_press)
 
     def build_widget_pool (self):
         suffices = self.placements.keys()
@@ -894,7 +894,7 @@ class ArrangerEmpty (object):
 
     def full_rearrange (self, placements):
         """Common case of gridded arrangement, where
-placements = dict of kbtop suffix to (row,col, width,height) tuple
+placements = dict of hidtop suffix to (row,col, width,height) tuple
 """
         self.parent.detach_all()
         for suffix,elt in placements.iteritems():
@@ -904,9 +904,9 @@ placements = dict of kbtop suffix to (row,col, width,height) tuple
             right = col + xspan
             top = row
             bottom = row + yspan
-            kbtop = self.parent.kbtops[inpsym]
-            self.parent.grid.attach(kbtop, left, right, top, bottom)
-            kbtop.show()
+            hidtop = self.parent.hidtops[inpsym]
+            self.parent.grid.attach(hidtop, left, right, top, bottom)
+            hidtop.show()
         #self.parent.show_all()
 
     def rearrange (self):
@@ -1242,7 +1242,7 @@ class PseudoStack (gtk.VBox):
         self.readjust_visibility()
 
 
-class KbMenuList (gtk.ScrolledWindow, HidBindable):
+class HidMenuList (gtk.ScrolledWindow, HidBindable):
     """TreeView of list-based cluster types."""
     def __init__ (self, inpsymprefix, dispstate):
         # Based on ScrollWindowed, containing a TreeView
@@ -1314,7 +1314,7 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
         self.dropunbind = None
 
     def on_drag_end (self, w, ctx, *args):
-        logger.debug("kbmenulist drag-end")
+        logger.debug("hidmenulist drag-end")
         if self.dropunbind:
             logger.debug("drop-unbind inpsym %s" % self.dropunbind)
             self.inpdescr.set_bind(self.dropunbind, "")
@@ -1331,14 +1331,14 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
         data = None
         if info == DndOpcodes.REORDER:
             # Reordering.  Encoding source path into string.
-            logger.debug("kbmenulist drag-data-get reorder")
+            logger.debug("hidmenulist drag-data-get reorder")
             data = repr(firstpath)
         elif info == DndOpcodes.UNBIND:
-            logger.debug("kbmenulist drag-data-get unbind")
+            logger.debug("hidmenulist drag-data-get unbind")
             data = inpsym
             self.dropunbind = inpsym
         elif info == DndOpcodes.SWAP:
-            logger.debug("kbmenulist drag-data-get swap")
+            logger.debug("hidmenulist drag-data-get swap")
             data = inpsym
         if data is not None:
             seldata.set(seldata.target, 8, data)
@@ -1357,7 +1357,7 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
             return False
 
         if info == DndOpcodes.REORDER:
-            logger.debug("kbmenulist reorder")
+            logger.debug("hidmenulist reorder")
             # Reordering internally, seldata.data is tree path.
             encoded = seldata.data
             srcpath = ast.literal_eval(encoded)
@@ -1375,7 +1375,7 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
             return True
         elif info == DndOpcodes.BIND:
             # bind-drop from commands set, seldata.data is bind (str).
-            logger.debug("kbmenulist bind-drop")
+            logger.debug("hidmenulist bind-drop")
             dropinfo = w.get_dest_row_at_pos(x,y)
             seltext = seldata.data
             logger.debug("command-dropping: %r" % seltext)
@@ -1383,8 +1383,8 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
             ctx.finish(True, False, time)
             return True
         elif info == DndOpcodes.SWAP:
-            # swap with a kbtop, seldata.data is inpsym.
-            logger.debug("kbmenulist swap")
+            # swap with a hidtop, seldata.data is inpsym.
+            logger.debug("hidmenulist swap")
             othersym = seldata.data
             destsym = self.scratch[destpath][0]
             logger.debug("command-swapping: %r,%r" % (destsym, othersym))
@@ -1480,7 +1480,7 @@ class KbMenuList (gtk.ScrolledWindow, HidBindable):
         self.update_display()
 
 
-class KbPlanar (gtk.EventBox, HidBindable):
+class HidPlanar (gtk.EventBox, HidBindable):
     """Planar control cluster (stick, touchpad, etc.)
 Contents to display are packaged in a data model (InpDescrModel)
 Children are HidTop, but selectively shown and placed to reflect cluster type.
@@ -1499,14 +1499,14 @@ As arrangments can change during run-time, use strategies for rearranging:
     """
 
     def __init__ (self, inpsymprefix, dispstate):
-        """Initialize with given data model, and the input symbol prefix tied to this kbtop"""
+        """Initialize with given data model, and the input symbol prefix tied to this hidtop"""
         # UI elements
         gtk.EventBox.__init__(self)
         HidBindable.__init__(self, inpsymprefix, dispstate)
 
         self.inpsymprefix = inpsymprefix
         self.dispstate = dispstate
-        self.kbtops = dict()  # Mapping of inpsym to HidTop instance.
+        self.hidtops = dict()  # Mapping of inpsym to HidTop instance.
 
         self.frame = gtk.Frame(inpsymprefix)
         self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
@@ -1524,7 +1524,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 
         # Stacked view: first layer = the grid; second layer = menulist view
         self.stacked = PseudoStack()
-        self.menulist = KbMenuList(self.inpsymprefix, self.dispstate)
+        self.menulist = HidMenuList(self.inpsymprefix, self.dispstate)
         self.stacked.add_named(self.grid, "0")
         self.stacked.add_named(self.menulist, "1")
 
@@ -1735,15 +1735,15 @@ As arrangments can change during run-time, use strategies for rearranging:
 
     def detach_all (self):
         """Remove all widgets from table."""
-#        for k,v in self.kbtops.iteritems():
+#        for k,v in self.hidtops.iteritems():
 #            v.hide()
 #            if v.get_parent() != None:
 #                self.grid.remove(v)
         for ch in self.grid.get_children():
             self.grid.remove(ch)
 
-    def get_kbtops (self):
-        return self.kbtops.values()
+    def get_hidtops (self):
+        return self.hidtops.values()
 
 
 
@@ -1783,8 +1783,8 @@ class HidLayoutView (gtk.Table):
             inpsym, lbl, prototyp, x, y, w, h = eltdesc
             hidtop = None
             if prototyp == "cluster":
-                planar = KbPlanar(inpsym, self.dispstate)
-                for inpsym,subelt in planar.kbtops.iteritems():
+                planar = HidPlanar(inpsym, self.dispstate)
+                for inpsym,subelt in planar.hidtops.iteritems():
 #                    subelt.connect("clicked", self.on_hidtop_clicked)
                     self.hidtops[inpsym] = subelt
                     self.active = subelt
@@ -1832,7 +1832,7 @@ class HidLayoutWidget (gtk.VBox):
         self.inp_layout.set_active(0)
         self.inp_layout.connect('changed', self.on_changed)
 
-        # GUI Layout for KB Layout.
+        # GUI for HID Layout.
         self.lbl_layout = gtk.Label("Layout:")
         self.row_layout = gtk.HBox()
         self.row_layout.pack_start(self.lbl_layout, expand=False, fill=False)
@@ -1896,7 +1896,7 @@ class HidLayoutWidget (gtk.VBox):
         self.emit("bind-changed", w)
 
     def on_bindid_changed (self, w, *args):
-        #print("Kblayout: bindid-changed")
+        #print("HidLayoutWidget: bindid-changed")
         #self.bindmap[w.inpsym] = w.bind
         self.emit("bindid-changed", w)
 
