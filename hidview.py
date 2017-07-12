@@ -8,6 +8,7 @@ import math
 import ast
 
 import kbd_desc
+import hidlayout
 
 
 class DndOpcodes:  # old-style class.
@@ -1776,7 +1777,11 @@ class KblayoutWidget (gtk.VBox):
 
         idx = self.inp_layout.get_active()
         val = self.mdl_layout[idx][0]
-        self.fill_board(self.kbdesc[val])
+
+        #self.fill_board(self.kbdesc[val])
+        self.activehid = hidlayout.HidLayoutStore(val)
+        self.activehid.build_from_rowrun(self.kbdesc[val])
+        self.fill_board(self.activehid)
 
         self.pack_start(self.row_layout, expand=False, fill=False)
         self.pack_start(self.grid, expand=False, fill=False)
@@ -1797,7 +1802,7 @@ class KblayoutWidget (gtk.VBox):
     def kbdesc (self):
         return kbd_desc.KBD
 
-    def fill_board (self, kbdesc):
+    def fill_boardX (self, kbdesc):
         grid = self.grid
         keytops = {}
         rownum = 0
@@ -1843,6 +1848,44 @@ class KblayoutWidget (gtk.VBox):
             colnum = 0
         self.keytops = keytops
 
+    def fill_board (self, hiddesc):
+        grid = self.grid
+        hidelts = {}
+        rownum = 0
+        colnum = 0
+
+        for eltdesc in hiddesc:
+            inpsym, lbl, prototyp, x, y, w, h = eltdesc
+            hidelt = None
+            if prototyp == "cluster":
+                planar = KbPlanar(inpsym, self.dispstate)
+                for inpsym,subelt in planar.kbtops.iteritems():
+                    subelt.connect("clicked", self.on_keytop_clicked)
+                    hidelts[inpsym] = subelt
+                    self.active = subelt
+                attach_tweaks = {
+                    'xoptions': gtk.FILL,
+                    'yoptions': gtk.FILL,
+                    'xpadding': 4,
+                    'ypadding': 4,
+                }
+                grid.attach(planar, x, x+w, y, y+h, **attach_tweaks)
+                planar.show_all()
+                planar.update_display()
+            elif prototyp == "key":
+                hidelt = KbTop(inpsym, self.dispstate)
+                hidelt.connect("clicked", self.on_keytop_clicked)
+                hidelts[inpsym] = hidelt
+                self.active = hidelt
+                grid.attach(hidelt, x, x+w, y, y+h)
+                hidelt.show_all()
+            else:
+                pass
+            if hidelts.has_key(inpsym):
+                logger.warn("potential duplicate: %s" % inpsym)
+
+        self.keytops = hidelts
+
     def clear_board (self):
         grid = self.grid
         for ch in grid.get_children():
@@ -1856,8 +1899,11 @@ class KblayoutWidget (gtk.VBox):
         data = self.mdl_layout[idx]
         val = data[0]
         kbdata = self.kbdesc[val]
+        self.activehid = hidlayout.HidLayoutStore(val)
+        self.activehid.build_from_rowrun(kbdata)
         self.clear_board()
-        self.fill_board(kbdata)
+        #self.fill_board(kbdata)
+        self.fill_board(self.activehid)
         #self.show_all()
         self.show()
         self.emit("layout-changed", val)
