@@ -1114,6 +1114,7 @@ class VisMapperApp (object):
 
     def reset (self):
         self.models.bindstore.reset()
+        self.models.dispstate.cluster_defaults()
         self.ui.reset()
         self.update_main_title()
 
