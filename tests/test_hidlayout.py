@@ -44,7 +44,7 @@ class TestHidlayout(unittest.TestCase):
         self.runloop(playback)
         self.assertTrue(True in bindchanged)
 
-    def test_kbtop (self):
+    def test_hidtop (self):
         def on_bindchange(w, *args):
             pass
         self.inpdescr.connect("bind-changed", on_bindchange)
@@ -57,6 +57,7 @@ class TestHidlayout(unittest.TestCase):
         w.add(layout)
 
         b = hidlayout.HidTop("K_TEST", self.ds)
+        b.set_hidtop(self.inpdescr.get_label("K_TEST"))
         layout.pack_start(b, expand=False, fill=False, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -67,8 +68,11 @@ class TestHidlayout(unittest.TestCase):
         playback = [ lambda: None,
                      1,
                      lambda: self.inpdescr.set_label("K_TEST", "TEST"),
+                     lambda: b.set_hidtop(self.inpdescr.get_label("K_TEST")),
+                     lambda: self.assertEqual(b.inp_lbl.get_text(), "TEST"),
                      1,
                      lambda: self.inpdescr.set_bind("K_TEST", "test_changer", 0, 0),
+                     lambda: b.set_dispbinds(self.ds.resolve_bind_group_markup("K_TEST")),
                      2
                      ]
 
@@ -78,7 +82,7 @@ class TestHidlayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
-    def test_kbplanar (self):
+    def test_hidplanar (self):
         def on_bindchange(w, *args):
             pass
         self.inpdescr.connect("bind-changed", on_bindchange)
@@ -90,7 +94,7 @@ class TestHidlayout(unittest.TestCase):
         layout = gtk.VBox()
         w.add(layout)
 
-        b = hidlayout.HidPlanar("L", self.ds)
+        b = hidlayout.HidPlanar("L#", self.ds)
 #        b.set_arranger(b.arrangerDpad())
         #layout.pack_start(b, expand=False, fill=False, padding=0)
         layout.pack_start(b, expand=True, fill=True, padding=0)
@@ -151,7 +155,7 @@ class TestHidlayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
-    def test_kbplanar_radial_calc (self):
+    def test_hidplanar_radial_calc (self):
         def on_bindchange(w, *args):
             pass
         self.inpdescr.connect("bind-changed", on_bindchange)
@@ -163,7 +167,7 @@ class TestHidlayout(unittest.TestCase):
         layout = gtk.VBox()
         w.add(layout)
 
-        b = hidlayout.HidPlanar("L", self.ds)
+        b = hidlayout.HidPlanar("L#", self.ds)
         b.set_arranger(b.arrangerRadialmenu(3))
         layout.pack_start(b, expand=False, fill=False, padding=0)
         lbl = gtk.Label("Testing...")
@@ -200,7 +204,7 @@ class TestHidlayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
-    def test_kbplanar_ctxmenu (self):
+    def test_hidplanar_ctxmenu (self):
         def on_bindchange(w, *args):
             pass
         self.inpdescr.connect("bind-changed", on_bindchange)
@@ -212,7 +216,7 @@ class TestHidlayout(unittest.TestCase):
         layout = gtk.VBox()
         w.add(layout)
 
-        b = hidlayout.HidPlanar("L", self.ds)
+        b = hidlayout.HidPlanar("L#", self.ds)
         layout.pack_start(b, expand=True, fill=True, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -237,7 +241,7 @@ class TestHidlayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
-    def test_kbplanar_persist (self):
+    def test_hidplanar_persist (self):
         def on_bindchange(w, *args):
             pass
         self.inpdescr.connect("bind-changed", on_bindchange)
@@ -257,7 +261,7 @@ class TestHidlayout(unittest.TestCase):
         def rebuild ():
             if data.b:
                 layout.remove(data.b)
-            data.b = hidlayout.HidPlanar("L", self.ds)
+            data.b = hidlayout.HidPlanar("L#", self.ds)
             layout.pack_start(data.b, expand=True, fill=True, padding=0)
             lbl = gtk.Label("Testing...")
             layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -330,6 +334,7 @@ class TestHidlayout(unittest.TestCase):
         w.add(layout)
 
         b = hidlayout.HidTop("K_TEST", self.ds)
+        b.set_hidtop(self.inpdescr.get_label("K_TEST"))
         layout.pack_start(b, expand=False, fill=False, padding=0)
         lbl = gtk.Label("Testing...")
         layout.pack_start(lbl, expand=False, fill=True, padding=0)
@@ -340,10 +345,14 @@ class TestHidlayout(unittest.TestCase):
         playback = [ lambda: None,
                      1,
                      lambda: self.inpdescr.set_label("K_TEST", "TEST"),
+                     lambda: b.set_hidtop(self.inpdescr.get_label("K_TEST")),
+                     lambda: self.assertEqual(b.inp_lbl.get_text(), "TEST"),
                      1,
                      lambda: self.inpdescr.set_bind("K_TEST", "test_changer", 0, 0),
+                     lambda: b.set_dispbinds(self.ds.resolve_bind_group_markup("K_TEST")),
                      2,
                      lambda: self.ds.set_vislayers(2),
+                     lambda: b.update_display(),
                      2
                      ]
 
@@ -352,6 +361,7 @@ class TestHidlayout(unittest.TestCase):
         self.assertEqual(b.inp_binds[0].get_text(), "test_changer")
         self.assertEqual(self.ds.get_vislayers(), 2)
         self.assertEqual(b.vislayers, 2)
+        self.assertTrue(b.lyr_lbls[1].get_visible())
         #time.sleep(4)
         w.hide()
 

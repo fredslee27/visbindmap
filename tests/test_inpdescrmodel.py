@@ -1,7 +1,7 @@
 import unittest
 import time
 
-import kblayout
+import hidlayout
 import gobject
 import gtk
 
@@ -9,6 +9,8 @@ import gtk
 class TestInpDescrModel(unittest.TestCase):
     def setUp (self):
         gtk.threads_init()
+        self.inpdescr = hidlayout.InpDescrModel(8,8)
+        self.ds = hidlayout.InpDisplayState(self.inpdescr)
         pass
 
 
@@ -35,11 +37,9 @@ class TestInpDescrModel(unittest.TestCase):
         def on_bindchange (w, *args):
             bindchanged.append(True)
 
-        x = kblayout.InpDescrModel(8,8)
-        x.connect("bind-changed", on_bindchange)
-        y = kblayout.InpDisplayState(x)
+        self.inpdescr.connect("bind-changed", on_bindchange)
 
-        playback=[ lambda: y.set_bind("K_ESCAPE", None),
+        playback=[ lambda: self.ds.set_bind("K_ESCAPE", None),
                    ]
 
         self.runloop(playback)
@@ -49,28 +49,24 @@ class TestInpDescrModel(unittest.TestCase):
         layerchanged = []
         def on_layerchange (w, *args):
             layerchanged.append(True)
-        x = kblayout.InpDescrModel(8,8)
-        y = kblayout.InpDisplayState(x)
-        y.connect("display-adjusted", on_layerchange)
-        playback = [ lambda: y.set_layer(2),
+        self.ds.connect("display-adjusted", on_layerchange)
+        playback = [ lambda: self.ds.set_layer(2),
                      ]
         self.runloop(playback)
         self.assertTrue(True in layerchanged)
-        self.assertEqual(y.get_layer(), 2)
+        self.assertEqual(self.ds.get_layer(), 2)
 
 
     def test_group_change (self):
         groupchanged = []
         def on_groupchange (w, *args):
             groupchanged.append(True)
-        x = kblayout.InpDescrModel(8,8)
-        y = kblayout.InpDisplayState(x)
-        y.connect("display-adjusted", on_groupchange)
-        playback = [ lambda: y.set_group(1),
+        self.ds.connect("display-adjusted", on_groupchange)
+        playback = [ lambda: self.ds.set_group(1),
                      ]
         self.runloop(playback)
         self.assertTrue(True in groupchanged)
-        self.assertEqual(y.get_group(), 1)
+        self.assertEqual(self.ds.get_group(), 1)
 
 
     def test_get_bind_via_implicit (self):
@@ -80,37 +76,68 @@ class TestInpDescrModel(unittest.TestCase):
         def on_bindchange (w, *args): bindchanged.append(True)
         def on_layerchange (w, *args): layerchanged.append(True)
         def on_groupchange (w, *args): groupchanged.append(True)
-        x = kblayout.InpDescrModel(8,8)
-        y = kblayout.InpDisplayState(x)
-        x.connect("bind-changed", on_bindchange)
-        y.connect("display-adjusted", on_layerchange)
-        y.connect("display-adjusted", on_groupchange)
-        playback = [ lambda: y.set_group(1),
-                     lambda: y.set_layer(3),
-                     lambda: y.set_bind('K_ESCAPE', 'Quit'),
-                     lambda: y.set_group(2),
-                     lambda: y.set_bind('K_ESCAPE', 'NotQuit'),
+        self.inpdescr.connect("bind-changed", on_bindchange)
+        self.ds.connect("display-adjusted", on_layerchange)
+        self.ds.connect("display-adjusted", on_groupchange)
+        playback = [ lambda: self.ds.set_group(1),
+                     lambda: self.ds.set_layer(3),
+                     lambda: self.ds.set_bind('K_ESCAPE', 'Quit'),
+                     lambda: self.ds.set_group(2),
+                     lambda: self.ds.set_bind('K_ESCAPE', 'NotQuit'),
                      ]
         self.runloop(playback)
         self.assertTrue(True in bindchanged)
         self.assertTrue(True in layerchanged)
         self.assertTrue(True in groupchanged)
-        self.assertEqual(y.get_group(), 2)
-        self.assertEqual(y.get_layer(), 3)
-        self.assertEqual(y.get_bind("K_ESCAPE"), 'NotQuit')
-        self.assertEqual(y.get_bind("K_ESCAPE", group=1, layer=3), 'Quit')
+        self.assertEqual(self.ds.get_group(), 2)
+        self.assertEqual(self.ds.get_layer(), 3)
+        self.assertEqual(self.ds.get_bind("K_ESCAPE"), 'NotQuit')
+        self.assertEqual(self.ds.get_bind("K_ESCAPE", group=1, layer=3), 'Quit')
 
     def test_get_binds1 (self):
-        x = kblayout.InpDescrModel(8,8)
-        y = kblayout.InpDisplayState(x)
-        playback = [ lambda: y.set_bind('K_ESCAPE', 'Quit'),
-                     lambda: y.set_bind('K_ESCAPE', 'NotQuit', layer=1),
+        playback = [ lambda: self.ds.set_bind('K_ESCAPE', 'Quit'),
+                     lambda: self.ds.set_bind('K_ESCAPE', 'NotQuit', layer=1),
                      ]
         self.runloop(playback)
-        self.assertEqual(y.get_bind("K_ESCAPE", layer=0), 'Quit')
-        self.assertEqual(y.get_bind("K_ESCAPE", layer=1), 'NotQuit')
-        self.assertEqual(y.resolve_bind("K_ESCAPE", layer=0), (False, "Quit"))
-        self.assertEqual(y.resolve_bind("K_ESCAPE", layer=1), (False, "NotQuit"))
+        self.assertEqual(self.ds.get_bind("K_ESCAPE", layer=0), 'Quit')
+        self.assertEqual(self.ds.get_bind("K_ESCAPE", layer=1), 'NotQuit')
+        self.assertEqual(self.ds.resolve_bind("K_ESCAPE", layer=0), (False, "Quit"))
+        self.assertEqual(self.ds.resolve_bind("K_ESCAPE", layer=1), (False, "NotQuit"))
+
+    def test_get_groupbind (self):
+        self.inpdescr.set_bind("K_TEST", "_0", 0, 0)
+        self.inpdescr.set_bind("K_TEST", "__1", 1, 1)
+        self.inpdescr.set_bind("K_TEST", "__2", 1, 2)
+        self.inpdescr.set_bind("K_TEST", "__3", 1, 3)
+        self.inpdescr.set_bind("K_TEST", "__4", 1, 4)
+        self.inpdescr.set_bind("K_TEST", "__5", 1, 5)
+        self.inpdescr.set_bind("K_TEST", "__6", 1, 6)
+        self.inpdescr.set_bind("K_TEST", "_7", 0, 7)
+        self.inpdescr.set_bind("K_TEST", "___7", 2, 7)
+        self.inpdescr.set_bind("K_TEST", "<<_6", 2, 6)
+        a,b = self.ds.resolve_bind("K_TEST", 0, 0)
+
+        self.assertEqual(a, False)
+        self.assertEqual(b, "_0")
+
+        g = self.ds.resolve_bind_group("K_TEST", 1)
+        self.assertEqual(len(g), 8)
+        self.assertEqual(g[0], (True, "_0"))
+        self.assertEqual(g[1], (False, "__1"))
+        self.assertEqual(g[2], (False, "__2"))
+        self.assertEqual(g[3], (False, "__3"))
+        self.assertEqual(g[7], (True, "_7"))
+
+        g = self.ds.resolve_bind_group("K_TEST", 2)
+        self.assertEqual(len(g), 8)
+        self.assertEqual(g[0], (True, "_0"))
+        self.assertEqual(g[7], (False, "___7"))
+
+        gm = self.ds.resolve_bind_group_markup("K_TEST", 2)
+        self.assertEqual(len(gm), 8)
+        self.assertEqual(gm[0], "<i><small>_0</small></i>")
+        self.assertEqual(gm[6], "&lt;&lt;_6")
+        self.assertEqual(gm[7], "___7")
 
 # TODO: test model failing:
 # * change group to OOB

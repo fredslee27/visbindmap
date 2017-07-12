@@ -65,7 +65,8 @@ class Logger (object):
     def info (self, *msgparts):  self.__gate(3, "===", *msgparts)
     def debug (self, *msgparts): self.__gate(4, "+++", *msgparts)
     _levels = [ fatal, error, warn, info, debug ]
-logger = Logger(Logger.info)
+#logger = Logger(Logger.info)
+logger = Logger(Logger.debug)
 # set log level with: logger.level = logger.warn
 # log with: logger.info("...", "...", ...)
 
@@ -522,48 +523,96 @@ Emits 'display-adjusted' in any change of display settings or InpDescrModel cont
         self.inpdescr.set_bind(inpsym, v, groupnum, layernum)
         #self.emit('display-adjusted')
 
-    def resolve_bind (self, inpsym,  group=None, layer=None):
-        """Determine effective binding of a inpsym based on passthrough rules.
+    def resolve_bind_group (self, inpsym, group=None):
+        """Determine effective binding in a group of a inpsym,
+using passthrough rules.
+
+Each element is a tuple of (bool, str):
+  bool = retrieved by passthrough
+  str = effective binding
 """
+
         passthrough = False
         groupnum = group if group is not None else self.get_group()
-        layernum = layer if layer is not None else self.get_layer()
+#        layernum = layer if layer is not None else self.get_layer()
         groupfollow = groupnum
-        retval = None
-        while (retval is None) and (groupfollow is not None):
+        retval = []
+
+        fellthrough = False
+        while groupfollow is not None:
             grp = self.inpdescr.get_grouplist(groupfollow)
-            layerfollow = layernum
-            while (retval is None) and (layerfollow is not None):
-                layermap = grp.get_layermap(layerfollow)
-                if layermap:
-                    retval = layermap.get_bind(inpsym)
-                if retval is None:
-                    passthrough = True
-                    if layerfollow != layermap._fallback:
-                        layerfollow = layermap._fallback
-                    else:
-                        layerfollow = None
-                    passthrough = True
-                layerfollow = None  ## don't follow layer for now.
-            if retval is None:
-                passthrough = True
-                if grp.fallback != groupfollow:
-                    groupfollow = grp.fallback
-                else:
-                    groupfollow = None
-        return passthrough, retval
+            while len(retval) < len(grp.layers):
+                retval.append((False,""))
+            for layernum in range(len(grp.layers)):
+                layermap = grp.get_layermap(layernum)
+                probe = layermap.get_bind(inpsym)
+                if not retval[layernum][1]:
+                    retval[layernum] = (fellthrough, probe)
+            groupfollow = grp.fallback if grp.fallback != groupfollow else None
+            fellthrough = True
+        return retval
+
+    def resolve_bind_group_markup (self, inpsym, group=None):
+        grpbind = self.resolve_bind_group(inpsym, group)
+        retval = []
+        for fellthrough,plaintext in grpbind:
+            escbindlit = glib.markup_escape_text(plaintext) if plaintext is not None else ""
+            if fellthrough:  # italicize
+                item = "<i><small>{}</small></i>".format(escbindlit)
+            else:  # unadorned.
+                item = escbindlit
+            retval.append(item)
+        return retval
+
+#    def resolve_bind (self, inpsym,  group=None, layer=None):
+#        """Determine effective binding of a inpsym based on passthrough rules.
+#"""
+#        passthrough = False
+#        groupnum = group if group is not None else self.get_group()
+#        layernum = layer if layer is not None else self.get_layer()
+#        groupfollow = groupnum
+#        retval = None
+#        while (retval is None) and (groupfollow is not None):
+#            grp = self.inpdescr.get_grouplist(groupfollow)
+#            layerfollow = layernum
+#            while (retval is None) and (layerfollow is not None):
+#                layermap = grp.get_layermap(layerfollow)
+#                if layermap:
+#                    retval = layermap.get_bind(inpsym)
+#                if retval is None:
+#                    passthrough = True
+#                    if layerfollow != layermap._fallback:
+#                        layerfollow = layermap._fallback
+#                    else:
+#                        layerfollow = None
+#                    passthrough = True
+#                layerfollow = None  ## don't follow layer for now.
+#            if retval is None:
+#                passthrough = True
+#                if grp.fallback != groupfollow:
+#                    groupfollow = grp.fallback
+#                else:
+#                    groupfollow = None
+#        return passthrough, retval
+
+    def resolve_bind (self, inpsym,  group=None, layer=None):
+        groupnum = group if group is not None else self.get_group()
+        layernum = layer if layer is not None else self.get_layer()
+        grpbind = self.resolve_bind_group(inpsym, group=groupnum)
+        retval = grpbind[layernum]
+        # Returns tuple (bool,str)
+        return retval
 
     def resolve_bind_markup (self, inpsym, group=None, layer=None):
         passthrough, plaintext = self.resolve_bind(inpsym, group, layer)
         if plaintext:
+            escbindlit = glib.markup_escape_text(plaintext)
             if passthrough:
                 # Fell back to group 0; italicize.
-                escbindlit = glib.markup_escape_text(plaintext)
                 retval = "<i><small>{}</small></i>".format(escbindlit)
                 return retval
             else:
                 # Direct hit; return unadorned.
-                escbindlit = glib.markup_escape_text(plaintext)
                 return escbindlit
         return ""
 
@@ -609,7 +658,6 @@ width, height - in terms of cells (gtk.Table, GtkGrid)
     # TODO: overload mutators and check for size maximums there.
     def append (self, parentiter, rowdata):
         x, y, w, h = rowdata[3:7]
-        print("appending use %r" % (rowdata,))
         xlim = x + w
         ylim = y + h
         if xlim > self.ncols:
@@ -678,14 +726,18 @@ class HidLayouts (gtk.ListStore):
 
 
 
+# HID = Human(-Computer) Interface Device; including: keyboard, mouse, joystick, gamepad
+
 class HidBindable (object):
     """Base class for elements that can take binds (from command set)."""
+
     def __init__ (self, inpsym, dispstate):
         self.inpsym = inpsym
         self.dispstate = dispstate
-        self.conn_display_adjusted = self.dispstate.connect("display-adjusted", self.on_display_adjusted)
-        self.conn_bind_changed = self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
-        self.conn_label_changed = self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+        #self.conn_display_adjusted = self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+        #self.conn_bind_changed = self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+        #self.conn_label_changed = self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+        self.dispbinds = []   # Array of binds to display, elements are tuple (binding, attr) per layer.  With markup.
 
         temp = gtk.Entry()
         self.refstyle = temp.get_style().copy()
@@ -704,16 +756,51 @@ class HidBindable (object):
     def set_vislayers (self, val):
         logger.debug("changing vislayers")
         self.dispstate.set_vislayers(val)
+
     def get_bind (self, inpsym, group=None, layer=None):
-        return self.dispstate.get_bind(inpsym, group, layer)
+        raise NotImplementedError("HidBindinable.get_bind() should not be implemented")
+        #return self.dispstate.get_bind(inpsym, group, layer)
     def set_bind (self, inpsym, v, group=None, layer=None):
+        raise NotImplementedError("HidBindinable.set_bind() should not be implemented")
         self.dispstate.set_bind(inpsym, v, group, layer)
     def resolve_bind (self, inpsym, group=None, layer=None):
+        raise NotImplementedError("HidBindinable.resolve_bind() should not be implemented")
         return self.dispstate.resolve_bind(inpsym, group, layer)
     def resolve_bind_markup (self, inpsym, group=None, layer=None):
+        raise NotImplementedError("HidBindinable.resolve_bind_markup() should not be implemented")
         return self.dispstate.resolve_bind_markup(inpsym, group, layer)
     def swap_bind (self, firstsym, secondsym, group=None, layer=None):
+        raise NotImplementedError("HidBindinable.swap_bind() should not be implemented")
         return self.dispstate.swap_bind(firstsym, secondsym, group, layer)
+
+    def get_label (self):
+        raise NotImplementedError("get_label() is abstract")
+    def set_label (self, val):
+        raise NotImplementedError("set_label() is abstract")
+
+    def get_layervis (self):
+        # array of bool
+        return self.layervis
+    def set_layervis (self, v):
+        self.layervis = v
+        self.update_layervis()
+
+    def update_layervis (self):
+        # override.
+        pass
+
+    def set_dispbinds (self, grpbind):
+        """Set displayed binds for all layers at once.
+grpbind = list of bindings (with pango markup), one per layer in sequence."""
+        self.dispbinds = grpbind[:]  # copy
+        self.update_dispbinds()
+
+    def update_dispbinds (self):
+        # override.
+        pass
+
+    def contains_inpsym (self, inpsym):
+        return self.inpsym == inpsym
 
     def foreach_layervis (self, cb):
         """To avoid lots of for-loop with nested predicates, this walker function calls cb with two arguments: (layer_number, is_visible)."""
@@ -761,7 +848,8 @@ class HidTop (gtk.Button, HidBindable):
         self.spacer = gtk.HBox()
 
         # Fill label (first row)
-        self.label = self.dispstate.inpdescr.get_label(self.inpsym)
+        #self.label = self.dispstate.inpdescr.get_label(self.inpsym)
+        self.label = inpsym
 
         # Alignment widget.
         self.align0 = gtk.Alignment(0, 0, 0, 0)
@@ -782,7 +870,8 @@ class HidTop (gtk.Button, HidBindable):
         self.bindrows = []      # Box for each line of hrule+lyr+bind
         self.inp_box = None
 
-        self.uibuild_binddisplays()
+        nlayers = self.dispstate.inpdescr.get_numlayers()
+        self.uibuild_binddisplays(nlayers)
 
         self.box_bind.add(self.align1)
 
@@ -794,27 +883,25 @@ class HidTop (gtk.Button, HidBindable):
         self.setup_dnd()
 #        self.update_display()
 
-    def uibuild_binddisplays (self):
+    def uibuild_binddisplays (self, nlayers=None):
         if self.inp_box:
             if self.inp_box.get_parent():
                 self.align1.remove(self.inp_box)
             else:
-                logger.info("no parent %r %r" % (self.inp_box, self.inpsym))
+                logger.debug("no parent %r %r" % (self.inp_box, self.inpsym))
 
         self.inp_box = gtk.VBox()
 
-        m = max(1, self.dispstate.inpdescr.get_numlayers())
         # Input binding displays.
-        self.inp_binds = [ gtk.Label() for n in range(m) ]
+        self.inp_binds = [ gtk.Label() for n in range(nlayers) ]
         # Background for binding displays.
-        self.bg_binds = [ gtk.EventBox() for n in range(m) ]
+        self.bg_binds = [ gtk.EventBox() for n in range(nlayers) ]
         # label for binding display layers.
-        self.lyr_lbls = [ gtk.Label() for n in range(m) ]
-        self.hrules = [ gtk.HSeparator() for n in range(m) ]
+        self.lyr_lbls = [ gtk.Label() for n in range(nlayers) ]
+        self.hrules = [ gtk.HSeparator() for n in range(nlayers) ]
 
         # set up droppable binding display (dressed up as a text entry).
         # Prepare multi-layer view for HidTop.
-        nlayers = self.dispstate.inpdescr.get_numlayers()
         for i in range(0, nlayers):
             ib = self.inp_binds[i]
             ib.set_alignment(0, 0.5)
@@ -850,6 +937,23 @@ class HidTop (gtk.Button, HidBindable):
     def set_inpsym (self, val):
         self.inpsym = val
 
+    def get_label (self):
+        return self.label.get_text()
+    def set_label (self, v):
+        self.set_hidtop(v)
+
+    def update_layervis (self):
+        nlayers = len(self.layervis)
+        self.uibuild_binddisplays()
+        self.update_display()
+        return
+
+    def update_dispbinds (self):
+        # Populate bind displays from self.dispbinds[]
+        # TODO: expand self.inp_box when maxlayers grow.
+        for lyr in range(len(self.dispbinds)):
+            self.inp_binds[lyr].set_markup(self.dispbinds[lyr])
+
     def set_hidtop (self, disp):
         if len(disp) > 2:
             self.inp_lbl.set_markup("<small>%s</small>" % disp)
@@ -860,8 +964,8 @@ class HidTop (gtk.Button, HidBindable):
     def update_display (self):
         # Update keytop
         logger.debug("hidtop update_display %r" % self.inpsym)
-        lbl = self.dispstate.inpdescr.get_label(self.inpsym)
-        self.set_hidtop(lbl)
+        #lbl = self.dispstate.inpdescr.get_label(self.inpsym)
+        #self.set_hidtop(lbl)
 
         # Update binding display
         self.mid_vis = False
@@ -883,8 +987,8 @@ class HidTop (gtk.Button, HidBindable):
                 bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
                 bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
 
-                val = self.resolve_bind_markup(self.inpsym, layer=i)
-                self.inp_binds[i].set_markup(val)
+                #val = self.resolve_bind_markup(self.inpsym, layer=i)
+                #self.inp_binds[i].set_markup(val)
                 self.lyr_lbls[i].set_visible(self.vislayers > 1)
             else:
                 self.bindrows[i].hide()
@@ -932,7 +1036,8 @@ class HidTop (gtk.Button, HidBindable):
     def on_drag_end (self, w, ctx, *args):
         if self.pending_drag_unbinding:
             logger.debug("hidtop unbind %s" % self.inpsym)
-            self.set_bind(self.inpsym, "")
+            #self.set_bind(self.inpsym, "")
+            self.emit("layer-bind-changed", self.inpsym, "")
             self.pending_drag_unbinding = False
         return
 
@@ -943,7 +1048,8 @@ class HidTop (gtk.Button, HidBindable):
             # Commands dropping.
             seltext = seldata.data
             logger.debug("hidtop Command install: %s <= %s" % (w.inpsym, seltext))
-            self.set_bind(self.inpsym, seltext)
+            #self.set_bind(self.inpsym, seltext)
+            self.emit("layer-bind-changed", self.inpsym, seltext)
             ctx.finish(True, False, 0)
             return True
         elif info == DndOpcodes.SWAP:
@@ -953,10 +1059,23 @@ class HidTop (gtk.Button, HidBindable):
             ctx.finish(True, False, 0)
             return True
 
+#gobject.type_register(HidTop)
+#gobject.signal_new("layer-bind-change", HidTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.STRING, gobject.STRING))
+#gobject.signal_new("layer-bind-swap", HidTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.STRING, gobject.STRING))
 
 
+
+class HidTopArrangeable (HidTop):
+    """HidTop proxy to hook into arranger and cluster (HidPlanar) on HidTop operations."""
+    def __init__ (self, cluster, arranger, inpsym, dispstate):
+        HidTop.__init__(self, inpsym, dispstate)
+        self.arranger = arranger
+        self.cluster = cluster
 
 class ArrangerEmpty (object):
+    """Base case for arranger: no sub-elements.
+Also base class for arrangers.
+"""
     NAME = "empty"
     W = 12
     H = 12
@@ -976,7 +1095,9 @@ class ArrangerEmpty (object):
         for suffix in suffices:
             inpsym = self.inpsymof(suffix)
             if not inpsym in self.parent.hidtops:
-                hidtop = HidTop(inpsym, self.parent.dispstate)
+                #hidtop = HidTop(inpsym, self.parent.dispstate)
+                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
+                hidtop.set_label(inpsym)
                 self.parent.hidtops[inpsym] = hidtop
                 hidtop.show_all()
                 # right-click menu
@@ -1240,7 +1361,7 @@ class ArrangerRadialmenu (ArrangerEmpty):
     def __repr__ (self):
         return "{!s}({:d})".format(self.__class__.__name__, self.cap)
 
-class ArrangerListmenu_alternate (ArrangerEmpty):
+class ArrangerMenulist_alternate (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
 Presents each menu item as an individual HidTop.
@@ -1271,7 +1392,7 @@ Presents each menu item as an individual HidTop.
             self.parent.stacked.pack_start(self.parent.menulist, True, True, 0)
         self.full_rearrange(self.placements)
 
-class ArrangerListmenu (ArrangerEmpty):
+class ArrangerMenulist (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
 Applicable to: touch menu, radial menu, scrollwheel items.
 Presents all menuitems in a TreeView.
@@ -1294,7 +1415,9 @@ Presents all menuitems in a TreeView.
 
     def rearrange (self):
         self.parent.stacked.set_visible_child_name("1")
-        self.parent.menulist.pull_data()
+        # TODO: sync data somehow?
+        #self.parent.menulist.pull_data()
+        self.parent.menulist.update_display()
         #self.parent.menulist.set_vislayers(self.parent.vislayers)
 
 
@@ -1322,6 +1445,12 @@ class PseudoStack (gtk.VBox):
                 page.show_all()
             else:
                 page.hide_all()
+
+    def get_visible_child (self):
+        return self.active.get_children()[0]
+    def get_visible_child_name (self):
+        match = [ k for k,v in self.pages if v.get_children()[0] == self.active ]
+        return match[0]
 
     def set_visible_child (self, child):
         for page in self.pages.itervalues():
@@ -1376,13 +1505,22 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
         for i in range(0, 20):
             inpsym = "{}{}".format(self.inpsymprefix, i+1)
             self.scratch.append((inpsym,) + (None,)*nlayers)
-        self.pull_data()  # Populate .scratch from InpDescrModel
+#        self.pull_data()  # Populate .scratch from InpDescrModel
         self.treeview.set_model(self.scratch)
         # Set up drag-and-drop.
         self.setup_dnd()
 
+#        self.conn_display_adjusted = self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+#        self.conn_bind_changed = self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+#        self.conn_label_changed = self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+
         self.show_all()
         self.update_display()
+
+    def get_label (self):
+        return self.inpsymprefix
+    def set_label (self, v):
+        pass
 
     def setup_dnd (self):
         """Set up drag-and-drop."""
@@ -1414,7 +1552,7 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
         logger.debug("hidmenulist drag-end")
         if self.dropunbind:
             logger.debug("drop-unbind inpsym %s" % self.dropunbind)
-            self.inpdescr.set_bind(self.dropunbind, "")
+            self.set_bind(self.dropunbind, "")
             self.dropunbind = None
         return True
 
@@ -1494,13 +1632,13 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
     def drop_in_bind (self, treepath, newval):
         """Carry out action of (completing) a drop of a command on tree at path."""
         inpsym = self.scratch[treepath][0]
-        self.set_bind(inpsym, newval)
-        # Update inpdescr model, then rely on signals to auto-update scratch.
+        # TODO: propagate to inpdescr
         return
 
     def drag_bind (self, bias, srcpath, dstpath):
         # mass pull.
-        listbinds = [ b for s,b in self.scratch ]
+        #listbinds = [ b for s,b in self.scratch ]
+        listbinds = [ r[1+self.layer] for r in self.scratch ]
         srcrow = srcpath[0]
         dstrow = dstpath[0]
         srcbind = listbinds[srcrow]
@@ -1528,23 +1666,31 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
             n = i+1
             inpsym = "{}{}".format(self.inpsymprefix, n)
             self.set_bind(inpsym, bind)
-            self.scratch.append((inpsym, bind))
+            nlayers = self.dispstate.inpdescr.get_numlayers()
+            self.scratch.append((inpsym,) + ("",)*nlayers)
 #        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
 #            self.inpdescr.handler_unblock(h)
         return
 
-    def pull_data (self):
-        """Synchronize .scratch based on InpDescrModel"""
-        nlayers = self.dispstate.inpdescr.get_numlayers()
+#    def pull_data (self):
+#        """Synchronize .scratch based on InpDescrModel"""
+#        nlayers = self.dispstate.inpdescr.get_numlayers()
+#        for row in self.scratch:
+#            inpsym = row[0]
+#            def visit_bindcol (i, v):
+#                bind_markup = self.resolve_bind_markup(inpsym, layer=i)
+#                row[1+i] = bind_markup
+#            self.foreach_layervis(visit_bindcol)
+    def update_dispbinds (self):
         for row in self.scratch:
+            # row == (inpsym, bind[0], bind[1], bind[2], ...)
             inpsym = row[0]
             def visit_bindcol (i, v):
-                bind_markup = self.resolve_bind_markup(inpsym, layer=i)
-                row[1+i] = bind_markup
+                row[1+i] = self.dispbinds[i]
             self.foreach_layervis(visit_bindcol)
 
     def update_display (self):
-        logger.debug("menulist update_display")
+        logger.info("menulist update_display")
 
         def visit_bindcol (i, v):
             if v:
@@ -1561,20 +1707,39 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
             else:
                 self.bindcols[i].set_visible(False)
         self.foreach_layervis(visit_bindcol)
+        self.queue_draw()
         return
 
-    def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
-        self.pull_data()
-    def on_inpdescr_label_changed (self, *args):
-        self.pull_data()
-    def on_inpdescr_layer_changed (self, inpdescr, layernum, *args):
-        self._layer = layernum
-        self.pull_data()
-        self.update_display()
-    def on_inpdescr_group_changed (self, inpdescr, groupnum, *args):
-        self._group = groupnum
-        self.pull_data()
-        self.update_display()
+#    def on_inpdescr_bind_changed (self, mdl, grp, lyr, inpsym):
+#        self.pull_data()
+#    def on_inpdescr_label_changed (self, *args):
+#        self.pull_data()
+#    def on_inpdescr_layer_changed (self, inpdescr, layernum, *args):
+#        self._layer = layernum
+#        self.pull_data()
+#        self.update_display()
+#    def on_inpdescr_group_changed (self, inpdescr, groupnum, *args):
+#        self._group = groupnum
+#        self.pull_data()
+#        self.update_display()
+
+
+
+class HidCluster (object):
+    """Clusters hold a collection of HidTop in particular arrangement.
+Nestable.
+"""
+    def __init__ (self):
+        pass
+
+    def get_label (self):
+        return
+    def set_label (self, v):
+        pass
+
+    def update_layervis (self):
+        return
+
 
 
 class HidPlanar (gtk.EventBox, HidBindable):
@@ -1593,7 +1758,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 * (r) RadialMenu {1..20} : #1..#20
 * (l) MenuList {1..20} : #1..#20
 * (o) OneButton : o
-    """
+"""
 
     def __init__ (self, inpsymprefix, dispstate):
         """Initialize with given data model, and the input symbol prefix tied to this hidtop"""
@@ -1602,8 +1767,9 @@ As arrangments can change during run-time, use strategies for rearranging:
         HidBindable.__init__(self, inpsymprefix, dispstate)
 
         self.inpsymprefix = inpsymprefix
+        self.hid_label = self.inpsymprefix  # initialize with copy.
         self.dispstate = dispstate
-        self.hidtops = dict()  # Mapping of inpsym to HidTop instance.
+        self.hidtops = dict()  # Mapping of inpsym to HidTopArrangeable instance.
 
         self.frame = gtk.Frame(inpsymprefix)
         self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
@@ -1638,6 +1804,22 @@ As arrangments can change during run-time, use strategies for rearranging:
     def on_map (self, *args):
         self.update_display()
 
+    def get_label (self):
+        return self.hid_label
+    def set_label (self, v):
+        self.hid_label = v
+        self.update_label()
+
+    def update_layervis (self):
+        for ch in self.grid.get_children():
+            try:
+                ch.set_layervis(self.layervis)
+            except AttributeError:
+                pass
+            except:
+                raise
+        self.menulist.set_layervis(self.layervis)
+
     def arrangerTouchmenu (self, cap=2):
         self.detach_all()
         self.arrangerTouchmenu0.set_capacity(cap)
@@ -1659,14 +1841,15 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arrangerGyrotilt = ArrangerGyrotilt(self)
         self.arrangerTouchmenu0 = ArrangerTouchmenu(self, 2)
         self.arrangerRadialmenu0 = ArrangerRadialmenu(self, 2)
-        self.arrangerListmenu = ArrangerListmenu(self)
+        self.arrangerMenulist = ArrangerMenulist(self)
 
         self.arranger = self.arrangerEmpty
 
     def update_label (self):
         #self.frame.set_label("{} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
-        self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
+        #self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.inpsymprefix, self.arranger.NAME))
         #self.frame_lbl_sym.set_markup("<a href='#a'>{} &lt;{!s}&gt;</a>".format(self.inpsymprefix, self.arranger.NAME))
+        self.frame_lbl_sym.set_label(" {} <{!s}>".format(self.hid_label, self.arranger.NAME))
 
     def find_arranger (self, name):
         match = [ a for a in self.__dict__.itervalues() if isinstance(a, ArrangerEmpty) and a.NAME == name ]
@@ -1676,19 +1859,21 @@ As arrangments can change during run-time, use strategies for rearranging:
     def get_arranger (self):
         return self.arranger
     def set_arranger (self, arranger):
+        oldval = self.arranger
         if callable(arranger):
             self.arranger = arranger()
         elif arranger is None:
             self.arranger = self.arrangerEmpty
         else:
             self.arranger = arranger
-        self.arranger.rearrange()
         self.update_label()
+        self.arranger.rearrange()
         #self.show_all()
         #self.grid.show_all()
         self.grid.show()
         # save cluster type by name into InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
-        self.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
+        #self.set_bind(self.inpsymprefix, self.arranger.NAME, 0, 0)
+        self.emit("cluster-type-changed", oldval.NAME, self.arranger.NAME)
 
     def on_inpdescr_bind_changed (self, inpdescr, group, layer, inpsym):
         # Ignore bind changes for the inpsym prefix (saving cluster type).
@@ -1700,6 +1885,14 @@ As arrangments can change during run-time, use strategies for rearranging:
         arranger = self.find_arranger(cltype)
         self.set_arranger(arranger)
         return
+
+    def contains_inpsym (self, inpsym):
+        return (inpsym in self.hidtops)
+    def refresh_hie (self, inpsym):
+        # Update label and/or bind.
+        logger.debug("hidplanar refresh_hie")
+        self.rearranger.rearrange()
+        pass
 
     def make_menu (self, menudesc):
         menu = gtk.Menu()
@@ -1765,7 +1958,7 @@ As arrangments can change during run-time, use strategies for rearranging:
                     ("2_0 items", lambda: self.arrangerRadialmenu(20)),
                     ]),
                 ]),
-            ( "_List Menu", self.arrangerListmenu ),
+            ( "_List Menu", self.arrangerMenulist ),
             ]
         menu = self.make_menu(context_menu_desc)
         if menu_title:
@@ -1822,12 +2015,16 @@ As arrangments can change during run-time, use strategies for rearranging:
         return True
 
     def update_display (self):
+        logger.info("hidplanar update_display")
         self.detach_all()
         # Retrieve intended cluster type by name from InpDescrModel, using this input's prefix as the key, in group 0 layer 0.
-        cluster_type = self.get_bind(self.inpsymprefix, 0, 0)
-        self.set_cluster_type(cluster_type)
+        # TODO: update cluster type from outside
+#        cluster_type = self.get_bind(self.inpsymprefix, 0, 0)
+#        self.set_cluster_type(cluster_type)
         if self.arranger:
             self.arranger.rearrange()
+        logger.info(" > menulist update_display")
+        self.menulist.update_display()
         return
 
     def detach_all (self):
@@ -1842,6 +2039,8 @@ As arrangments can change during run-time, use strategies for rearranging:
     def get_hidtops (self):
         return self.hidtops.values()
 
+gobject.type_register(HidPlanar)
+gobject.signal_new("cluster-type-changed", HidPlanar, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
 
 
 
@@ -1850,8 +2049,10 @@ class HidLayoutView (gtk.Table):
         gtk.Table.__init__(self, homogeneous=True)
         # mapping of inpsym to Widget (look up widget by inpsym).
         self.hidtops = dict()
+        self.clusters = dict()
         self.hiddesc = None
         self.dispstate = dispstate
+        self.setup_signals()
 
     def get_layout (self):
         return self.hiddesc
@@ -1881,9 +2082,11 @@ class HidLayoutView (gtk.Table):
             hidtop = None
             if prototyp == "cluster":
                 planar = HidPlanar(inpsym, self.dispstate)
-                for inpsym,subelt in planar.hidtops.iteritems():
+                for subsym,subelt in planar.hidtops.iteritems():
 #                    subelt.connect("clicked", self.on_hidtop_clicked)
-                    self.hidtops[inpsym] = subelt
+                    self.hidtops[subsym] = subelt
+                    lbltext = self.dispstate.inpdescr.get_label(subsym)
+                    subelt.set_label(lbltext)
                     self.active = subelt
                 attach_tweaks = {
                     'xoptions': gtk.FILL,
@@ -1892,12 +2095,15 @@ class HidLayoutView (gtk.Table):
                     'ypadding': 4,
                 }
                 self.attach(planar, x, x+w, y, y+h, **attach_tweaks)
+                self.clusters[inpsym] = planar
                 planar.show_all()
                 planar.update_display()
             elif prototyp == "key":
                 hidtop = HidTop(inpsym, self.dispstate)
 #                hidtop.connect("clicked", self.on_hidtop_clicked)
                 self.hidtops[inpsym] = hidtop
+                lbltext = self.dispstate.inpdescr.get_label(inpsym)
+                hidtop.set_label(lbltext)
                 self.active = hidtop
                 self.attach(hidtop, x, x+w, y, y+h)
                 hidtop.show_all()
@@ -1906,6 +2112,52 @@ class HidLayoutView (gtk.Table):
             if self.hidtops.has_key(inpsym):
                 logger.warn("potential duplicate: %s" % inpsym)
         return
+
+    def setup_signals (self):
+        # all widgets need to be updated.
+        self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+        mdl = self.dispstate.inpdescr
+        mdl.connect("bind-changed", self.on_inpdescr_bind_changed)
+        mdl.connect("label-changed", self.on_inpdescr_label_changed)
+
+    def update_display (self):
+        for w in self.hidtops.itervalues():
+            w.update_display()
+        for w in self.clusters.itervalues():
+            w.update_display()
+        return
+
+    def refresh_hie (self, inpsym):
+        """Refresh HID element."""
+        logger.debug("refresh_hie %r" % inpsym)
+        w = self.hidtops.get(inpsym, None)
+        if w:
+            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+            w.set_dispbinds(grpbind)
+            #w.update_display()
+#        w = self.clusters.get(inpsym, None)
+#        if w:
+#            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+#            w.set_dispbinds(grpbind)
+#            #w.refresh_hie(inpsym)
+        return
+
+    def on_display_adjusted (self, ds, *args):
+        # all widgets need to be updated.
+        self.update_display()
+
+    def on_inpdescr_bind_changed (self, mdl, group, layer, inpsym):
+        # Binding changed; update relevant widgets.
+        self.refresh_hie(inpsym)
+
+    def on_inpdescr_label_changed (self, mdl, inpsym):
+        # Label for a widget changed; update relevant widget(s).
+        #self.refresh_hie(inpsym)
+        w = self.hidtops.get(inpsym, None)
+        if w:
+            v = self.dispstate.inpdescr.get_label(inpsym)
+            # TODO: escape markup
+            w.set_label(v)
 
 
 implicit_layouts = HidLayouts()
