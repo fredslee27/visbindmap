@@ -1752,15 +1752,15 @@ class KblayoutWidget (gtk.VBox):
     def __init__ (self, dispstate=None):
         gtk.VBox.__init__(self)
         self.dispstate = dispstate
-        self.keytops = {}
+        self.hidtops = {}
         self.active = False
         self.grid = gtk.Table(homogeneous=True)
         #self.grid = gtk.Table(homogeneous=False)
 
         # Selector for specific layout.
         self.mdl_layout = gtk.ListStore(str)
-        kbnames = sorted(self.kbdesc.keys())
-        for k in kbnames:
+        hidnames = sorted(self.hiddesc.keys())
+        for k in hidnames:
             self.mdl_layout.append((k,))
         self.inp_layout = gtk.ComboBox(self.mdl_layout)
         self.cell_layout = gtk.CellRendererText()
@@ -1778,9 +1778,8 @@ class KblayoutWidget (gtk.VBox):
         idx = self.inp_layout.get_active()
         val = self.mdl_layout[idx][0]
 
-        #self.fill_board(self.kbdesc[val])
         self.activehid = hidlayout.HidLayoutStore(val)
-        self.activehid.build_from_rowrun(self.kbdesc[val])
+        self.activehid.build_from_rowrun(self.hiddesc[val])
         self.fill_board(self.activehid)
 
         self.pack_start(self.row_layout, expand=False, fill=False)
@@ -1790,7 +1789,7 @@ class KblayoutWidget (gtk.VBox):
         return self.dispstate
     def set_dispstate (self, dispstate):
         self.dispstate = dispstate
-        for k in self.keytops.valueiter():
+        for k in self.hidtops.valueiter():
             k.set_dispstate(dispstate)
 
     def get_vislayers (self):
@@ -1799,69 +1798,24 @@ class KblayoutWidget (gtk.VBox):
         self.dispstate.set_vislayers(v)
 
     @property
-    def kbdesc (self):
+    def hiddesc (self):
         return kbd_desc.KBD
-
-    def fill_boardX (self, kbdesc):
-        grid = self.grid
-        keytops = {}
-        rownum = 0
-        colnum = 0
-        for row in kbdesc:
-            if row is not None:
-                for keydata in row:
-                    #(label, height, width) = keydata
-                    (height, width, label) = keydata[:3]
-                    if label is not None:
-                        inpsym, disp = label, label
-                        if '\f' in label:
-                            (disp, inpsym) = label.split('\f', 1)
-                            if self.dispstate:
-                                self.dispstate.inpdescr.set_label(inpsym, disp)
-                        l, r = colnum, colnum+width
-                        t, b = rownum, rownum+2*height
-                        #print("attach %r %r %r %r %r" % (keytop, l, r, t, b))
-                        if inpsym.endswith("#"):
-                            planar = KbPlanar(inpsym, self.dispstate)
-                            for inpsym,kbtop in planar.kbtops.iteritems():
-                                kbtop.connect("clicked", self.on_keytop_clicked)
-                                keytops[inpsym] = kbtop
-                                self.active = kbtop
-                            #print("planar attach (%d,%d, %d,%d)"%  (l,r, t,b))
-                            #grid.attach(planar, l, r, t, b, xoptions=0, yoptions=0)
-                            grid.attach(planar, l, r, t, b, xoptions=gtk.FILL, yoptions=gtk.FILL, xpadding=4, ypadding=4)
-                            planar.show_all()
-                            planar.update_display()
-                            #grid.attach(planar, l, r, t, b)
-                        else:
-                            keytop = KbTop(inpsym, self.dispstate)
-                            keytop.connect("clicked", self.on_keytop_clicked)
-                            keytops[inpsym] = keytop
-                            self.active = keytop
-                            grid.attach(keytop, l, r, t, b)
-                            keytop.show_all()
-                        if keytops.has_key(inpsym):
-                            logger.warn("potential duplicate: %s" % inpsym)
-                    colnum += width
-                rownum += 1  # totals 2 for non-empty row.
-            rownum += 1
-            colnum = 0
-        self.keytops = keytops
 
     def fill_board (self, hiddesc):
         grid = self.grid
-        hidelts = {}
+        # HID Element Tops
+        hidtops = {}
         rownum = 0
         colnum = 0
 
         for eltdesc in hiddesc:
             inpsym, lbl, prototyp, x, y, w, h = eltdesc
-            hidelt = None
+            hidtop = None
             if prototyp == "cluster":
                 planar = KbPlanar(inpsym, self.dispstate)
                 for inpsym,subelt in planar.kbtops.iteritems():
-                    subelt.connect("clicked", self.on_keytop_clicked)
-                    hidelts[inpsym] = subelt
+                    subelt.connect("clicked", self.on_hidtop_clicked)
+                    hidtops[inpsym] = subelt
                     self.active = subelt
                 attach_tweaks = {
                     'xoptions': gtk.FILL,
@@ -1873,18 +1827,18 @@ class KblayoutWidget (gtk.VBox):
                 planar.show_all()
                 planar.update_display()
             elif prototyp == "key":
-                hidelt = KbTop(inpsym, self.dispstate)
-                hidelt.connect("clicked", self.on_keytop_clicked)
-                hidelts[inpsym] = hidelt
-                self.active = hidelt
-                grid.attach(hidelt, x, x+w, y, y+h)
-                hidelt.show_all()
+                hidtop = KbTop(inpsym, self.dispstate)
+                hidtop.connect("clicked", self.on_hidtop_clicked)
+                hidtops[inpsym] = hidtop
+                self.active = hidtop
+                grid.attach(hidtop, x, x+w, y, y+h)
+                hidtop.show_all()
             else:
                 pass
-            if hidelts.has_key(inpsym):
+            if hidtops.has_key(inpsym):
                 logger.warn("potential duplicate: %s" % inpsym)
 
-        self.keytops = hidelts
+        self.hidtops = hidtops
 
     def clear_board (self):
         grid = self.grid
@@ -1892,23 +1846,22 @@ class KblayoutWidget (gtk.VBox):
             grid.remove(ch)
             ch.destroy()
         grid.resize(1,1)
-        self.keytops = {}
+        self.hidtops = {}
 
     def on_changed (self, w, *args):
         idx = w.get_active()
         data = self.mdl_layout[idx]
         val = data[0]
-        kbdata = self.kbdesc[val]
+        hiddata = self.hiddesc[val]
         self.activehid = hidlayout.HidLayoutStore(val)
-        self.activehid.build_from_rowrun(kbdata)
+        self.activehid.build_from_rowrun(hiddata)
         self.clear_board()
-        #self.fill_board(kbdata)
         self.fill_board(self.activehid)
         #self.show_all()
         self.show()
         self.emit("layout-changed", val)
 
-    def on_keytop_clicked (self, w, *args):
+    def on_hidtop_clicked (self, w, *args):
         inpsym = w.inpsym
         logger.debug("target: %s" % inpsym)
         self.emit("key-selected", inpsym)
@@ -1923,13 +1876,13 @@ class KblayoutWidget (gtk.VBox):
         self.emit("bindid-changed", w)
 
     def __getitem__ (self, inpsym):
-        return self.keytops[inpsym]
+        return self.hidtops[inpsym]
 
     def __setitem__ (self, inpsym, val):
-        self.keytops[inpsym].bind = val
+        self.hidtops[inpsym].bind = val
 
     def __delitem__ (self, inpsym):
-        del self.keytops[inpsym]
+        del self.hidtops[inpsym]
 
 # Set up signals.
 gobject.type_register(KblayoutWidget)
