@@ -2,6 +2,7 @@ import unittest
 import time
 
 import hidlayout
+import kbd_desc
 import gobject
 import gtk
 
@@ -354,10 +355,23 @@ class TestHidlayout(unittest.TestCase):
         #time.sleep(4)
         w.hide()
 
+    def test_hidlayout0 (self):
+        kbkey= "en_US (pc104)"
+        hiddesc = kbd_desc.KBD[kbkey]
+        layout = hidlayout.HidLayoutStore(kbkey)
+        layout.build_from_rowrun(hiddesc)
+        flat = []
+        for row in layout:
+            flat.append( layout.get(row.iter, 0, 1, 2, 3, 4, 5, 6) )
+        #print("flat = %r" % (flat,))
+        self.assertTrue(('ESC', 'Esc', 'key', 0, 0, 6, 1) in flat)
+        self.assertTrue(('UP', 'Up', 'key', 6, 12, 6, 1) in flat)
+        self.assertEqual(layout.nrows, 14)
+        self.assertEqual(layout.ncols, 87)
+
+
 
 
 if __name__ == '__main__':
     unittest.main()
-
-
 
