@@ -1092,69 +1092,156 @@ class HidTopArrangeable (HidTop):
         self.arranger = arranger
         self.cluster = cluster
 
-class ArrangerEmpty (object):
+class Arranger (object):
     """Base case for arranger: no sub-elements.
 Also base class for arrangers.
 """
-    NAME = "empty"
+    NAME = "base"
     W = 12
     H = 12
+    # Simplified placements: based on cell groupings of WxH, locations of sub-sym hidtops keyed by inpsym.  Programmatically convert to HidLayoutStore.
     SIMPLE_PLACEMENTS = { }
-    def __init__ (self, parent):
+    def __init__ (self, parent, layoutmap=None):
         self.parent = parent
         self.placements = dict()
+        if layoutmap is None:
+            layoutmap = HidLayoutStore("{}.{}".format(parent.inpsym, self.NAME))
+        self.layoutmap = layoutmap
+
         if self.SIMPLE_PLACEMENTS:
-            for k,v in self.SIMPLE_PLACEMENTS.iteritems():
-                row,col = v
-                self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
+            self._derive_layoutmap_from_simple_placements(self.layoutmap, self.SIMPLE_PLACEMENTS)
+#            for k,v in self.SIMPLE_PLACEMENTS.iteritems():
+#                row,col = v
+#                self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
+#                lbl = "{}{}".format(parent.inpsym, k)
+#                inpsym = "{}{}".format(parent.inpsym, k)
+#                x, y = col*self.H, row*self.H
+#                w, h = self.W, self.H
+#                rowdata = (inpsym, lbl, "key", x, y, w, h)
+#                self.layoutmap.append(None, rowdata)
         self.build_widget_pool()
 
-    def _populate_widget_pool (self, suffices):
-        """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
-        suffices = self.placements.keys()
-        for suffix in suffices:
-            inpsym = self.inpsymof(suffix)
-            if not inpsym in self.parent.hidtops:
-                #hidtop = HidTop(inpsym, self.parent.dispstate)
-                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
-                hidtop.set_label(inpsym)
-                self.parent.hidtops[inpsym] = hidtop
-                hidtop.show_all()
-                # right-click menu
-                #hidtop.connect("button-press-event", self.parent.on_button_press)
+    def _derive_layoutmap_from_simple_placements (self, layoutmap, simple_placements):
+        for k,v in simple_placements.iteritems():
+            row,col = v
+            lbl = "{}{}".format(self.parent.inpsym, k)
+            inpsym = "{}{}".format(self.parent.inpsym, k)
+            x, y = col*self.H, row*self.H
+            w, h = self.W, self.H
+            rowdata = (inpsym, lbl, "key", x, y, w, h)
+            layoutmap.append(None, rowdata)
+        return layoutmap
 
-    def build_widget_pool (self):
-        suffices = self.placements.keys()
-        self._populate_widget_pool(suffices)
+    def _populate_widget_pool (self, layoutmap=None):
+        """Create HidTop instances as needed to add into parent, filling parent.hidtops and parent.clusters.
+"""
+        """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
+#        suffices = self.placements.keys()
+#        for suffix in suffices:
+#            inpsym = self.inpsymof(suffix)
+#            if not inpsym in self.parent.hidtops:
+#                #hidtop = HidTop(inpsym, self.parent.dispstate)
+#                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
+#                hidtop.set_label(inpsym)
+#                self.parent.hidtops[inpsym] = hidtop
+#                hidtop.show_all()
+#                # right-click menu
+#                #hidtop.connect("button-press-event", self.parent.on_button_press)
+        if layoutmap is None:
+            layoutmap = self.layoutmap
+
+        for eltdata in layoutmap:
+            inpsym, lbl, prototyp = eltdata[0], eltdata[1], eltdata[2]
+            print("populating %r,%r" % (inpsym, lbl))
+            if not inpsym in self.parent.hidtops:
+#                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
+                if prototyp == 'cluster':
+                    planar = HidPlanar(inpsym, self.parent.dispstate)
+                    for subsym,subelt in self.parent.hidtops.iteritems():
+                        self.parent.hidtops[subsym] = subelt
+                        lbltext = layoutmap.get_label(subsym)
+                        subelt.set_label(lbltext)
+                        self.active = subelt
+                    attach_tweaks = {
+                        'xoptions': gtk.FILL,
+                        'yoptions': gtk.FILL,
+                        'xpadding': 4,
+                        'ypadding': 4,
+                    }
+                    self.parent.clusters[inpsym] = planar
+                    self.parent.hidtops[inpsym] = planar
+                    planar.show_all()
+                    planar.update_display()
+                elif prototyp == 'key':
+                    hidtop = HidTop(inpsym, self.parent.dispstate)
+                    self.parent.hidtops[inpsym] = hidtop
+                    lbltext = lbl
+                    hidtop.set_label(lbltext)
+                    self.active = hidtop
+                    hidtop.show_all()
+                else:
+                    pass
+        return
+
+    def get_layoutmap (self):
+        return self.layoutmap
+    def set_layoutmap (self, val):
+        self.layoutmap = val
+        self._populate_widget_pool(self.layoutmap)
+
+    def build_widget_pool (self, suffices=()):
+#        suffices = self.placements.keys()
+#        self._populate_widget_pool(suffices)
+        self._populate_widget_pool(self.layoutmap)
 
     def inpsymof (self, suffix):
         return "{}{}".format(self.parent.inpsymprefix, suffix)
 
-    def full_rearrange (self, placements):
+    def full_rearrange (self, layoutmap):
         """Common case of gridded arrangement, where
 placements = dict of hidtop suffix to (row,col, width,height) tuple
 """
         self.parent.detach_all()
-        for suffix,elt in placements.iteritems():
-            row,col,xspan,yspan = elt
-            inpsym = self.inpsymof(suffix)
+        self.parent.grid.resize(12,12)
+        for elt in layoutmap:
+            print("elt = %r" % (elt,))
+            inpsym,lbl,prototyp,col,row,xspan,yspan = elt
+            if col < 0 or row < 0:
+                # Treat negative positions as "ignore".
+                continue
+            #inpsym = self.inpsymof(suffix)
             left = col
             right = col + xspan
             top = row
             bottom = row + yspan
             hidtop = self.parent.hidtops[inpsym]
             self.parent.grid.attach(hidtop, left, right, top, bottom)
-            hidtop.show()
+            #hidtop.hide_all()
+            hidtop.show_all()
+            #hidtop.show()
         #self.parent.show_all()
 
     def rearrange (self):
         self.parent.stacked.set_visible_child_name("0")
-        self.full_rearrange(self.placements)
+        self.full_rearrange(self.layoutmap)
 
     def __repr__ (self):
         return "{!s}()".format(self.__class__.__name__)
 
+class ArrangerEmpty (Arranger):
+    """no-element arranger."""
+    NAME = "empty"
+    def __init__ (self, parent):
+        Arranger.__init__(self, parent)
+
+class ArrangerStored (Arranger):
+    """Arranged based on HidLayoutStore."""
+    NAME = "stored"
+    def __init__ (self, parent, layoutmap):
+        Arranger.__init__(self, parent, layoutmap)
+
 class ArrangerOneButton (ArrangerEmpty):
+    """Large single button."""
     NAME = "SingleButton"
     # Click
     W = 12
@@ -1165,6 +1252,8 @@ class ArrangerOneButton (ArrangerEmpty):
     }
 
 class ArrangerScrollwheel (ArrangerEmpty):
+    """Scroll wheel of the up/down/center variety.
+For scroll-items, use MenuList."""
     NAME = "ScrollWheel"
     # Up Click Down
     W = 4
@@ -1176,6 +1265,7 @@ class ArrangerScrollwheel (ArrangerEmpty):
     }
 
 class ArrangerDpad (ArrangerEmpty):
+    """Direction pad"""
     NAME = "Dpad"
     # Up Down Left Right Center/Click OuterRing
     W = 4
@@ -1190,6 +1280,7 @@ class ArrangerDpad (ArrangerEmpty):
     }
 
 class ArrangerDiamond (ArrangerEmpty):
+    """Button cluster: N, W, E, S; aka Y, X, B, A"""
     NAME = "ButtonQuad"
     # North East West South Click/Center
     W = 4
@@ -1203,7 +1294,8 @@ class ArrangerDiamond (ArrangerEmpty):
     }
 
 class ArrangerMouse (ArrangerEmpty):
-    NAME = "Mouse[Region]"
+    """Mouse/trackball."""
+    NAME = "Mouse"
     # touch click double-tap x y
     W = 4
     H = 4
@@ -1216,6 +1308,7 @@ class ArrangerMouse (ArrangerEmpty):
     }
 
 class ArrangerMouseRegion (ArrangerEmpty):
+    """Mouse region."""
     NAME = "MouseRegion"
     W = 12
     H = 12
@@ -1224,6 +1317,7 @@ class ArrangerMouseRegion (ArrangerEmpty):
     }
 
 class ArrangerJoystick (ArrangerEmpty):
+    """Joystick: left/right, up/down."""
     NAME = "Joystick"
     # x-, x+, y-, y+, Click, OuterRing
     W = 4
@@ -1238,6 +1332,7 @@ class ArrangerJoystick (ArrangerEmpty):
     }
 
 class ArrangerGyrotilt (ArrangerEmpty):
+    """Gyroscope tiltable: yaw left/right, up/down, roll left/right"""
     NAME = "GyroTilt"
     # x-, x+, y-, y+, w-, w+, Click, OuterRing
     W = 4
@@ -1253,7 +1348,8 @@ class ArrangerGyrotilt (ArrangerEmpty):
     }
 
 class ArrangerTouchmenu (ArrangerEmpty):
-    NAME = "Touch Menu"
+    """(on-screen display) touch menu."""
+    NAME = "TouchMenu"
     ALL_PLACEMENTS = {
     2: {
         '1': (0,0,6,12),  '2': (0,6,6,12),
@@ -1279,9 +1375,9 @@ class ArrangerTouchmenu (ArrangerEmpty):
     },
     13: {
         '1': (0,0,3,3),  '2': (0,3,3,3),  '3': (0,6,3,3),  '4': (0,9,3,3),
-        '5': (3,0,3,3),                                      '6': (3,9,3,3),
+        '5': (3,0,3,3),                                    '6': (3,9,3,3),
                                 '13': (3,3,6,6),
-        '7': (6,0,3,3),                                      '8': (6,9,3,3),
+        '7': (6,0,3,3),                                    '8': (6,9,3,3),
         '9': (9,0,3,3), '10': (9,3,3,3), '11': (9,6,3,3), '12': (9,9,3,3),
     },
     16: {
@@ -1293,15 +1389,34 @@ class ArrangerTouchmenu (ArrangerEmpty):
     }
 
     def __init__ (self, parent, cap=2):
-        ArrangerEmpty.__init__(self, parent)
+        self.parent = parent
+        self.all_layouts = dict()
+        self._build_all_layouts()
         self.set_capacity(cap)
-        self.build_widget_pool()
+        ArrangerEmpty.__init__(self, parent)
+        #self.build_widget_pool()
+
+    def _build_all_layouts (self):
+        """Convert dict of SIMPLE_PLACEMENTS to dict of HidLayoutStore."""
+        for k,v in self.ALL_PLACEMENTS.iteritems():
+            storename = k
+            layoutmap = HidLayoutStore(storename)
+            for suffix,dims in v.iteritems():
+                y,x,w,h = dims
+                inpsym = "{}{}".format(self.parent.inpsymprefix, suffix)
+                lbl = inpsym
+                prototyp = 'key'
+                rowdata = (inpsym, lbl, prototyp, x, y, w, h)
+                layoutmap.append(None, rowdata)
+            self.all_layouts[k] = layoutmap
+        return
 
     def build_widget_pool (self):
         """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         # Generate '1'..'16' inclusive.
         suffices = [ str(ofs) for ofs in range(1, 17) ]
-        self._populate_widget_pool(suffices)
+        # Populate widget pool based on largest layout.
+        self._populate_widget_pool(self.all_layouts[16])
 
     def set_capacity (self, cap):
         thresholds = self.ALL_PLACEMENTS.keys()
@@ -1311,6 +1426,7 @@ class ArrangerTouchmenu (ArrangerEmpty):
         lim = thresholds[0]
         self.cap = lim
         self.placements = self.ALL_PLACEMENTS[self.cap]
+        self.layoutmap = self.all_layouts[self.cap]
 
     def __repr__ (self):
         return "{!s}({})".format(self.__class__.__name__, self.cap)
@@ -1339,7 +1455,9 @@ class ArrangerTouchmenu16 (ArrangerTouchmenu):
 
 
 class ArrangerRadialmenu (ArrangerEmpty):
-    NAME = "Radial Menu"
+    """(on-screen display) radial menu, aka pie menu"""
+    NAME = "RadialMenu"
+    MAX_ITEMS = 20
     def __init__ (self, parent, cap=2):
         ArrangerEmpty.__init__(self, parent)
         #self.placements = [ (0,6,1,1), (12,6,1,1) ]
@@ -1347,15 +1465,23 @@ class ArrangerRadialmenu (ArrangerEmpty):
             '1':  (0,6),
             '2': (12,6),
         }
-        self.cap = 2
+        self.layoutmap = HidLayoutStore(parent.inpsymprefix)
+        for n in range(1,self.MAX_ITEMS+1):
+            inpsym = "{}{}".format(self.parent.inpsymprefix, n)
+            lbl = inpsym
+            prototyp = 'key'
+            rowdata = (inpsym, lbl, prototyp, -1, -1, -1, -1)
+            self.layoutmap.append(None, rowdata)
+        #self.cap = 2
         self.set_capacity(cap)
         self.build_widget_pool()
 
     def build_widget_pool (self):
         """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         # Generate '1'..'20' inclusive.
-        suffices = [ str(ofs) for ofs in range(1, 21) ]
-        self._populate_widget_pool(suffices)
+        #suffices = [ str(ofs) for ofs in range(1, 21) ]
+        #self._populate_widget_pool(suffices)
+        self._populate_widget_pool(self.layoutmap)
 
     def set_capacity (self, cap=2):
         if (cap < 1):
@@ -1376,6 +1502,12 @@ class ArrangerRadialmenu (ArrangerEmpty):
             col = int((ty * r) + r + .5)
             suffix = "{}".format(idx+1)
             self.placements[suffix] = (row, col, w,h)
+            self.layoutmap[idx+1][3] = row
+            self.layoutmap[idx+1][4] = col
+            self.layoutmap[idx+1][5] = w
+            self.layoutmap[idx+1][6] = h
+        for idx in range(self.cap, self.MAX_ITEMS):
+            self.layoutmap[idx][3] = -1
         return
 
     def __repr__ (self):
@@ -1383,10 +1515,11 @@ class ArrangerRadialmenu (ArrangerEmpty):
 
 class ArrangerMenulist_alternate (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
+Buttons crammed into a grid.
 Applicable to: touch menu, radial menu, scrollwheel items.
 Presents each menu item as an individual HidTop.
 """
-    NAME = "menu list"
+    NAME = "menu_list"
     def __init__ (self, parent):
         ArrangerEmpty.__init__(self, parent)
         for idx in range(0,24):
@@ -1414,6 +1547,7 @@ Presents each menu item as an individual HidTop.
 
 class ArrangerMenulist (ArrangerEmpty):
     """Flat view of menu for brainstorming bind contents.
+TreeView, where each row corresponds to a hidtop.
 Applicable to: touch menu, radial menu, scrollwheel items.
 Presents all menuitems in a TreeView.
 """
@@ -1780,7 +1914,7 @@ set_bind proxy:
 Properties, direct:
 @property label : str = label for hid cluster, if applicable (e.g. HidPlanar)
 @property layoutmap : HidLayoutStore
-@property subelts : dict[] = dict of nested HidBindable, keyed by inpsym
+@property hidtops : dict[] = dict of nested HidBindable, keyed by inpsym
 
 """
     def __init__ (self, hidparent, inpsymprefix, dispstate):
@@ -1788,7 +1922,7 @@ Properties, direct:
         self.hidparent = hidparent
         self.layoutmap = None
         self._hidlabel = None
-        self.subelts = dict()
+        self.hidtops = dict()
         self.dispstate = dispstate
 
     def __init__gtk__ (self, inpsymprefix):
@@ -1824,13 +1958,13 @@ Override in subclasses.
     def set_layoutmap (self, layoutval):
         self.layoutmap = layoutval
 
-    def get_subelts (self):
-        return self.subelts
-    def set_subelts (self, val):
-        self.subelts = val
+    def get_hidtops (self):
+        return self.hidtops
+    def set_hidtops (self, val):
+        self.hidtops = val
 
     def get_subelt (self, inpsym):
-        hidelt = self.subelts.get(inpsym, None)
+        hidelt = self.hidtops.get(inpsym, None)
         return hidelt
 
 
@@ -1853,6 +1987,7 @@ Override in subclasses.
 
 
     def update_layervis (self, v):
+        """Updates the layer visibility list(of bool)"""
         return
 
     def update_hidlabel (self):
@@ -1902,6 +2037,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 * (r) RadialMenu {1..20} : #1..#20
 * (l) MenuList {1..20} : #1..#20
 * (o) OneButton : o
+* (s) LayoutStore : ...
 """
 
     def __init__ (self, inpsymprefix, dispstate):
@@ -1914,17 +2050,21 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.hid_label = self.inpsymprefix  # initialize with copy.
         self.dispstate = dispstate
         self.hidtops = dict()  # Mapping of inpsym to HidTopArrangeable instance.
+        self.clusters = dict()
 
         self.frame = gtk.Frame(inpsymprefix)
-        self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
         # Frame title: [ HBox: [Button>Menu] [Label] ]
         self.frame_title = gtk.HBox()
         self.frame_lbl_sym = gtk.Label()
         self.frame_btn = gtk.Button(unichr(0x2026))
         self.frame_btn.set_tooltip_text("Change variant for this planar cluster")
-        self.frame_title.pack_start(self.frame_btn, False, False, 0)
-        self.frame_title.pack_start(self.frame_lbl_sym, False, False, 0)
-        self.frame.set_label_widget(self.frame_title)
+        if inpsymprefix:
+            self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
+            self.frame_title.pack_start(self.frame_btn, False, False, 0)
+            self.frame_title.pack_start(self.frame_lbl_sym, False, False, 0)
+            self.frame.set_label_widget(self.frame_title)
+        else:
+            self.frame.set_shadow_type(gtk.SHADOW_NONE)
 
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells per widget.
         self.grid = gtk.Table(12,12,True)
@@ -1953,6 +2093,11 @@ As arrangments can change during run-time, use strategies for rearranging:
     def set_label (self, v):
         self.hid_label = v
         self.update_label()
+
+    def get_layoutmap (self):
+        return self.arrangerStored.get_layoutmap()
+    def set_layoutmap (self, val):
+        self.arrangerStored.set_layoutmap(val)
 
     def update_layervis (self):
         for ch in self.grid.get_children():
@@ -1986,6 +2131,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.arrangerTouchmenu0 = ArrangerTouchmenu(self, 2)
         self.arrangerRadialmenu0 = ArrangerRadialmenu(self, 2)
         self.arrangerMenulist = ArrangerMenulist(self)
+        self.arrangerStored = ArrangerStored(self, None)
 
         self.arranger = self.arrangerEmpty
 
@@ -2058,6 +2204,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         context_menu_desc = [
             # Tuples of (item_lable, arranger_factory)
             ( "_None", self.arrangerEmpty ),
+            ( "_Fixed", self.arrangerStored ),
             ( "_SingleButton", self.arrangerOneButton ),
             ( "Scroll_Wheel", self.arrangerScrollwheel ),
             ( "_DPad", self.arrangerDpad ),
@@ -2178,6 +2325,7 @@ As arrangments can change during run-time, use strategies for rearranging:
 #            if v.get_parent() != None:
 #                self.grid.remove(v)
         for ch in self.grid.get_children():
+            ch.hide()
             self.grid.remove(ch)
 
     def get_hidtops (self):
@@ -2187,17 +2335,11 @@ gobject.type_register(HidPlanar)
 gobject.signal_new("cluster-type-changed", HidPlanar, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
 
 
-
-
 class HidView2 (HidCluster, gtk.Table):
     """Top-level HID cluster device, e.g. keyboard.
 """
     def __init__gtk__ (self, inpsymprefix):
         gtk.Table.__init__(self)
-
-    # TODO: remove after transition.
-    @property
-    def hidtops (self): return self.subelts
 
     def build_cluster (self):
         self.clusters = dict()
@@ -2210,7 +2352,7 @@ class HidView2 (HidCluster, gtk.Table):
             self.remove(ch)
             ch.destroy()
         self.resize(1,1)
-        self.subelts.clear()
+        self.hidtops.clear()
 
     def populate_board (self):
         # Temporary, subject to filtering.
@@ -2250,13 +2392,13 @@ class HidView2 (HidCluster, gtk.Table):
                 hidtop.show_all()
             else:
                 pass
-            if self.subelts.has_key(inpsym):
+            if self.hidtops.has_key(inpsym):
                 logger.warn("potential duplicate: %s" % inpsym)
 
         # Copy to member field.
-        self.subelts.clear()
+        self.hidtops.clear()
         for k,v in hidtops.iteritems():
-            self.subelts[k] = v
+            self.hidtops[k] = v
         return
 
     def update_display (self):
@@ -2416,7 +2558,8 @@ class HidLayoutWidget (gtk.VBox):
         self.build_layout_selector()   # .mdl_layout, .row_layout
 
         # GUI for HID Layout.
-        self.hidview = HidView2(self, "", self.dispstate)
+        #self.hidview = HidView2(self, "", self.dispstate)
+        self.hidview = HidPlanar("", self.dispstate)
 
         # Initial layout.
         idx = self.inp_layout.get_active()
@@ -2484,9 +2627,10 @@ class HidLayoutWidget (gtk.VBox):
     def rebuild_display (self):
         # Update visuals to reflect active layout.
         self.hidview.set_layoutmap(self.activehid)
-        self.hidview.build_cluster()
-        for hidtop in self.hidview.hidtops.itervalues():
-            hidtop.connect('clicked', self.on_hidtop_clicked)
+        self.hidview.set_arranger(self.hidview.arrangerStored)
+#        self.hidview.build_cluster()
+#        for hidtop in self.hidview.hidtops.itervalues():
+#            hidtop.connect('clicked', self.on_hidtop_clicked)
 
     def on_active_layout_changed (self, w, *args):
         idx = w.get_active()
