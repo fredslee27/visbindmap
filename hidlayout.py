@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# vi: set tabstop=4 expandtab shiftwidth=4 :
+
 from __future__ import print_function
 
 import sys
@@ -836,7 +836,17 @@ grpbind = list of bindings (with pango markup), one per layer in sequence."""
 
 class HidTop (gtk.Button, HidBindable):
     """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
-    Contents to display are packaged in a data model (InpDescrModel)
+Contents to display are packaged in a data model (InpDescrModel)
+
+Properties:
+ @property grpbind : tuple(bool, str) = binds for all layers in current group; elt
+ @property label : str = keytop label
+ @property layervis : list[] = list of bool per layer
+
+Parent callback:
+ * after-hidtop-dropped
+ * after-hidtop-swapped
+ * after-hidtop-erased
     """
     def __init__ (self, inpsym, dispstate):
         """Initialize with given data model, and the input symbol tied to this hidtop"""
@@ -1728,16 +1738,139 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
 class HidCluster (object):
     """Clusters hold a collection of HidTop in particular arrangement.
 Nestable.
+Tracks HidTop instances belonging to cluster.
+Cluster tracks drag-drop activity on nested HidTop.
+internal activity:
+ - drag from cmdset to hidtop = assign bind: ("assign-bind", inpsym, bindval)
+ - drag from hidtop to hidtop = swap bind: ("swap-bind", target-inpsym, source-inpsym)
+ - drag from hidtop to cmdset/trash = erase bind ("erase-bind, target-inpsym)
+external activity:
+ - set inpsym for cluster: @property label
+ - a bind changed, propagate (as proxy) to internal hidtop: @property Proxy.bind
+ - a label changed, propagate (as proxy) to the internal hidtop: @property Proxy.label
+ - vislayers changed, update internal hidtops: @property layervis
+
+ + remove all nested elements: clear_board()
+ + place nested elements into position: populate_board()
+ + show/refresh relevant nested elements: update_display()
+
+Base class for:
+* HidPlanar - Steam Controller touchpad personality
+* HidBoard - toplevel view.
+
+set_bind proxy:
+ * INPSYM.bind()
+    => Cluster.Proxy(INPSYM).bind()
+    => Cluster.subtop.bind(), Cluster.bookkeeping()
+~~ set_label proxy
+
+
+
+Properties, direct:
+@property label : str = label for hid cluster, if applicable (e.g. HidPlanar)
+@property layoutmap : HidLayoutStore
+@property subelts : list[] = list of nested HidBindable, keyed by inpsym
+
 """
-    def __init__ (self):
+    def __init__ (self, hidparent, inpsymprefix):
+        self.__init__gtk__(self, inpsymprefix)
+        self.hidparent = hidparent
+        self.layoutmap = None
+        self._hidlabel = None
+        self.subelts = list()
+        self.subelts_lu = dict()
+
+    def __init__gtk__ (self, inpsymprefix):
         pass
+
+    def build_cluster (self):
+        """Build cluster internals, delegated by __init__.
+Override in subclasses.
+"""
+        pass
+
+    def make_hidtop (self, inpsym):
+        """Factory function to generate an immediately nested HidTop."""
+        inst = None
+        #inst = HidTopProxy(inpsym, None)
+        #inst = HidTopProxy(self, inpsym)
+        return inst
+
+    def make_hidplanar (self, inpsym):
+        """Factory function to generate nested HidPlanar."""
+        pass
+
 
     def get_label (self):
-        return
+        return self._hidlabel
     def set_label (self, v):
+        self._hidlabel = v
+        self.update_hidlabel()
+    hidlabel = property(get_label, set_label)
+
+    def get_layoutmap (self):
+        return self.layoutmap
+    def set_layoutmap (self, layoutval):
+        self.layoutmap = layoutval
+
+    def get_subelts (self):
+        return self.subelts
+    def set_subelts (self, val):
+        self.subelts = val
+
+    def get_subelt (self, inpsym):
+        hidelt = self.subelts_lu.get(inpsym, None)
+        return hidelt
+
+
+    def on_subelt_assign_bind (self, hidelt, inpsym, bindval):
+        pass
+    def on_subelt_swap_bind (self, hidelt, target_inpsym, source_inpsym):
+        pass
+    def on_subelt_erase_bind (self, hidelt, inpsym):
         pass
 
-    def update_layervis (self):
+
+    def clear_board (self):
+        pass
+
+    def populate_board (self):
+        pass
+
+    def setup_signals (self):
+        pass
+
+
+    def update_layervis (self, v):
+        return
+
+    def update_hidlabel (self):
+        """Override in subclasses.
+Update any relevant HID element label."""
+        return
+
+
+
+    def get_dispstate (self):
+        return self.dispstate
+    def set_dispstate (self, val):
+        self.dispstate = val
+        for elt in self.hidtops.valueiter():
+            elt.set_dispstate(val)
+
+    def update_display (self):
+        pass
+
+    def refresh_hie (self, inpsym):
+        pass
+
+    def on_display_adjusted (self, ds, *args):
+        return
+
+    def on_inpdescr_bind_changed (self, mdl, group, layer, inpsym):
+        return
+
+    def on_inpdescr_label_changed (self, mdl, inpsym):
         return
 
 
@@ -2044,6 +2177,33 @@ gobject.signal_new("cluster-type-changed", HidPlanar, gobject.SIGNAL_RUN_FIRST, 
 
 
 
+
+class HidView2 (HidCluster, gtk.Table):
+    """Top-level HID cluster device, e.g. keyboard.
+"""
+    def __init__gtk__ (self, inpsymprefix):
+        gtk.Table.__init__(self)
+
+    def build_cluster (self):
+        self.clear_board()
+        self.populate_board()
+        self.update_display()
+
+    def clear_board (self):
+        for ch in self.get_children():
+            self.remove(ch)
+            ch.destroy()
+        self.resize(1,1)
+        self.hidtops.clear()
+        pass
+
+    def populate_board (self):
+        pass
+
+    def update_display (self):
+        pass
+
+
 class HidLayoutView (gtk.Table):
     def __init__ (self, dispstate):
         gtk.Table.__init__(self, homogeneous=True)
@@ -2162,6 +2322,9 @@ class HidLayoutView (gtk.Table):
 
 implicit_layouts = HidLayouts()
 implicit_layouts.build_from_legacy_store()
+
+
+
 
 class HidLayoutWidget (gtk.VBox):
     """Controls wrapper to HidLayoutView.
