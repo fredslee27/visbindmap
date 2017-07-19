@@ -654,6 +654,7 @@ width, height - in terms of cells (gtk.Table, GtkGrid)
         self.name = layout_name
         self.nrows = 0
         self.ncols = 0
+        self.lookup = dict()
 
     # TODO: overload mutators and check for size maximums there.
     def append (self, parentiter, rowdata):
@@ -664,7 +665,16 @@ width, height - in terms of cells (gtk.Table, GtkGrid)
             self.ncols = xlim
         if ylim > self.nrows:
             self.nrows = ylim
-        gtk.TreeStore.append(self, parentiter, rowdata)
+        treeiter = gtk.TreeStore.append(self, parentiter, rowdata)
+        inpsym = rowdata[0]
+        self.lookup[inpsym] = self.get_path(treeiter)
+
+    def get_label (self, inpsym):
+        treeiter = self.lookup.get(inpsym, None)
+        lbl = ""
+        if treeiter:
+            lbl = self[treeiter][1]
+        return lbl
 
     def build_from_rowrun (self, desc):
         rownum = 0
@@ -1735,6 +1745,7 @@ class HidMenuList (gtk.ScrolledWindow, HidBindable):
 
 
 
+# Does not subclass HidBindable since top-level HidView is not.
 class HidCluster (object):
     """Clusters hold a collection of HidTop in particular arrangement.
 Nestable.
@@ -1769,16 +1780,16 @@ set_bind proxy:
 Properties, direct:
 @property label : str = label for hid cluster, if applicable (e.g. HidPlanar)
 @property layoutmap : HidLayoutStore
-@property subelts : list[] = list of nested HidBindable, keyed by inpsym
+@property subelts : dict[] = dict of nested HidBindable, keyed by inpsym
 
 """
-    def __init__ (self, hidparent, inpsymprefix):
-        self.__init__gtk__(self, inpsymprefix)
+    def __init__ (self, hidparent, inpsymprefix, dispstate):
+        self.__init__gtk__(inpsymprefix)
         self.hidparent = hidparent
         self.layoutmap = None
         self._hidlabel = None
-        self.subelts = list()
-        self.subelts_lu = dict()
+        self.subelts = dict()
+        self.dispstate = dispstate
 
     def __init__gtk__ (self, inpsymprefix):
         pass
@@ -1819,7 +1830,7 @@ Override in subclasses.
         self.subelts = val
 
     def get_subelt (self, inpsym):
-        hidelt = self.subelts_lu.get(inpsym, None)
+        hidelt = self.subelts.get(inpsym, None)
         return hidelt
 
 
@@ -2184,7 +2195,12 @@ class HidView2 (HidCluster, gtk.Table):
     def __init__gtk__ (self, inpsymprefix):
         gtk.Table.__init__(self)
 
+    # TODO: remove after transition.
+    @property
+    def hidtops (self): return self.subelts
+
     def build_cluster (self):
+        self.clusters = dict()
         self.clear_board()
         self.populate_board()
         self.update_display()
@@ -2194,58 +2210,22 @@ class HidView2 (HidCluster, gtk.Table):
             self.remove(ch)
             ch.destroy()
         self.resize(1,1)
-        self.hidtops.clear()
-        pass
+        self.subelts.clear()
 
     def populate_board (self):
-        pass
+        # Temporary, subject to filtering.
+        hidtops = dict()
 
-    def update_display (self):
-        pass
-
-
-class HidLayoutView (gtk.Table):
-    def __init__ (self, dispstate):
-        gtk.Table.__init__(self, homogeneous=True)
-        # mapping of inpsym to Widget (look up widget by inpsym).
-        self.hidtops = dict()
-        self.clusters = dict()
-        self.hiddesc = None
-        self.dispstate = dispstate
-        self.setup_signals()
-
-    def get_layout (self):
-        return self.hiddesc
-    def set_layout (self, hiddesc):
-        self.hiddesc = hiddesc
-
-    def get_dispstate (self):
-        return self.dispstate
-    def set_dispstate (self, val):
-        self.dispstate = val
-        for elt in self.hidtops.valueiter():
-            elt.set_dispstate(val)
-
-    def clear_board (self):
-        for ch in self.get_children():
-            self.remove(ch)
-            ch.destroy()
-        self.resize(1,1)
-        self.hidtops.clear()
-
-    def populate_board (self):
-        """Fill grid with HID element tops."""
-        self.hidtops.clear()
-
-        for eltdesc in self.hiddesc:
+        for eltdesc in self.layoutmap:
             inpsym, lbl, prototyp, x, y, w, h = eltdesc
             hidtop = None
             if prototyp == "cluster":
                 planar = HidPlanar(inpsym, self.dispstate)
-                for subsym,subelt in planar.hidtops.iteritems():
+                for subsym,subelt in hidtops.iteritems():
 #                    subelt.connect("clicked", self.on_hidtop_clicked)
-                    self.hidtops[subsym] = subelt
-                    lbltext = self.dispstate.inpdescr.get_label(subsym)
+                    hidtops[subsym] = subelt
+                    #lbltext = self.dispstate.inpdescr.get_label(subsym)
+                    lbltext = self.layoutmap.get_label(subsym)
                     subelt.set_label(lbltext)
                     self.active = subelt
                 attach_tweaks = {
@@ -2261,63 +2241,158 @@ class HidLayoutView (gtk.Table):
             elif prototyp == "key":
                 hidtop = HidTop(inpsym, self.dispstate)
 #                hidtop.connect("clicked", self.on_hidtop_clicked)
-                self.hidtops[inpsym] = hidtop
-                lbltext = self.dispstate.inpdescr.get_label(inpsym)
+                hidtops[inpsym] = hidtop
+                #lbltext = self.dispstate.inpdescr.get_label(inpsym)
+                lbltext = lbl
                 hidtop.set_label(lbltext)
                 self.active = hidtop
                 self.attach(hidtop, x, x+w, y, y+h)
                 hidtop.show_all()
             else:
                 pass
-            if self.hidtops.has_key(inpsym):
+            if self.subelts.has_key(inpsym):
                 logger.warn("potential duplicate: %s" % inpsym)
+
+        # Copy to member field.
+        self.subelts.clear()
+        for k,v in hidtops.iteritems():
+            self.subelts[k] = v
+        return
+
+    def update_display (self):
         return
 
     def setup_signals (self):
         # all widgets need to be updated.
-        self.dispstate.connect("display-adjusted", self.on_display_adjusted)
-        mdl = self.dispstate.inpdescr
-        mdl.connect("bind-changed", self.on_inpdescr_bind_changed)
-        mdl.connect("label-changed", self.on_inpdescr_label_changed)
-
-    def update_display (self):
-        for w in self.hidtops.itervalues():
-            w.update_display()
-        for w in self.clusters.itervalues():
-            w.update_display()
+        #self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+        #mdl = self.dispstate.inpdescr
+        #mdl.connect("bind-changed", self.on_inpdescr_bind_changed)
+        #mdl.connect("label-changed", self.on_inpdescr_label_changed)
         return
-
-    def refresh_hie (self, inpsym):
-        """Refresh HID element."""
-        logger.debug("refresh_hie %r" % inpsym)
-        w = self.hidtops.get(inpsym, None)
-        if w:
-            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
-            w.set_dispbinds(grpbind)
-            #w.update_display()
-#        w = self.clusters.get(inpsym, None)
-#        if w:
-#            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
-#            w.set_dispbinds(grpbind)
-#            #w.refresh_hie(inpsym)
-        return
-
-    def on_display_adjusted (self, ds, *args):
-        # all widgets need to be updated.
-        self.update_display()
 
     def on_inpdescr_bind_changed (self, mdl, group, layer, inpsym):
         # Binding changed; update relevant widgets.
-        self.refresh_hie(inpsym)
+        return
 
     def on_inpdescr_label_changed (self, mdl, inpsym):
         # Label for a widget changed; update relevant widget(s).
-        #self.refresh_hie(inpsym)
-        w = self.hidtops.get(inpsym, None)
-        if w:
-            v = self.dispstate.inpdescr.get_label(inpsym)
-            # TODO: escape markup
-            w.set_label(v)
+        return
+
+
+#class HidLayoutView (gtk.Table):
+#    def __init__ (self, dispstate):
+#        gtk.Table.__init__(self, homogeneous=True)
+#        # mapping of inpsym to Widget (look up widget by inpsym).
+#        self.hidtops = dict()
+#        self.clusters = dict()
+#        self.hiddesc = None
+#        self.dispstate = dispstate
+#        self.setup_signals()
+#
+#    def get_layout (self):
+#        return self.hiddesc
+#    def set_layout (self, hiddesc):
+#        self.hiddesc = hiddesc
+#
+#    def get_dispstate (self):
+#        return self.dispstate
+#    def set_dispstate (self, val):
+#        self.dispstate = val
+#        for elt in self.hidtops.valueiter():
+#            elt.set_dispstate(val)
+#
+#    def clear_board (self):
+#        for ch in self.get_children():
+#            self.remove(ch)
+#            ch.destroy()
+#        self.resize(1,1)
+#        self.hidtops.clear()
+#
+#    def populate_board (self):
+#        """Fill grid with HID element tops."""
+#        self.hidtops.clear()
+#
+#        for eltdesc in self.hiddesc:
+#            inpsym, lbl, prototyp, x, y, w, h = eltdesc
+#            hidtop = None
+#            if prototyp == "cluster":
+#                planar = HidPlanar(inpsym, self.dispstate)
+#                for subsym,subelt in planar.hidtops.iteritems():
+##                    subelt.connect("clicked", self.on_hidtop_clicked)
+#                    self.hidtops[subsym] = subelt
+#                    lbltext = self.dispstate.inpdescr.get_label(subsym)
+#                    subelt.set_label(lbltext)
+#                    self.active = subelt
+#                attach_tweaks = {
+#                    'xoptions': gtk.FILL,
+#                    'yoptions': gtk.FILL,
+#                    'xpadding': 4,
+#                    'ypadding': 4,
+#                }
+#                self.attach(planar, x, x+w, y, y+h, **attach_tweaks)
+#                self.clusters[inpsym] = planar
+#                planar.show_all()
+#                planar.update_display()
+#            elif prototyp == "key":
+#                hidtop = HidTop(inpsym, self.dispstate)
+##                hidtop.connect("clicked", self.on_hidtop_clicked)
+#                self.hidtops[inpsym] = hidtop
+#                lbltext = self.dispstate.inpdescr.get_label(inpsym)
+#                hidtop.set_label(lbltext)
+#                self.active = hidtop
+#                self.attach(hidtop, x, x+w, y, y+h)
+#                hidtop.show_all()
+#            else:
+#                pass
+#            if self.hidtops.has_key(inpsym):
+#                logger.warn("potential duplicate: %s" % inpsym)
+#        return
+#
+#    def setup_signals (self):
+#        # all widgets need to be updated.
+#        self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+#        mdl = self.dispstate.inpdescr
+#        mdl.connect("bind-changed", self.on_inpdescr_bind_changed)
+#        mdl.connect("label-changed", self.on_inpdescr_label_changed)
+#
+#    def update_display (self):
+#        for w in self.hidtops.itervalues():
+#            w.update_display()
+#        for w in self.clusters.itervalues():
+#            w.update_display()
+#        return
+#
+#    def refresh_hie (self, inpsym):
+#        """Refresh HID element."""
+#        logger.debug("refresh_hie %r" % inpsym)
+#        w = self.hidtops.get(inpsym, None)
+#        if w:
+#            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+#            w.set_dispbinds(grpbind)
+#            #w.update_display()
+##        w = self.clusters.get(inpsym, None)
+##        if w:
+##            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+##            w.set_dispbinds(grpbind)
+##            #w.refresh_hie(inpsym)
+#        return
+#
+#    def on_display_adjusted (self, ds, *args):
+#        # all widgets need to be updated.
+#        self.update_display()
+#
+#    def on_inpdescr_bind_changed (self, mdl, group, layer, inpsym):
+#        # Binding changed; update relevant widgets.
+#        self.refresh_hie(inpsym)
+#
+#    def on_inpdescr_label_changed (self, mdl, inpsym):
+#        # Label for a widget changed; update relevant widget(s).
+#        #self.refresh_hie(inpsym)
+#        w = self.hidtops.get(inpsym, None)
+#        if w:
+#            v = self.dispstate.inpdescr.get_label(inpsym)
+#            # TODO: escape markup
+#            w.set_label(v)
 
 
 implicit_layouts = HidLayouts()
@@ -2327,46 +2402,60 @@ implicit_layouts.build_from_legacy_store()
 
 
 class HidLayoutWidget (gtk.VBox):
-    """Controls wrapper to HidLayoutView.
+    """Controller wrapper to HidLayoutView.
 """
-    def __init__ (self, dispstate=None):
+    def __init__ (self, dispstate=None, all_layouts=None):
         gtk.VBox.__init__(self)
         self.dispstate = dispstate
         self.active = False
-        self.hidview = HidLayoutView(self.dispstate)
+        self.all_layouts = None
+        if self.all_layouts is None:
+            self.all_layouts = implicit_layouts
 
         # Selector for specific layout.
+        self.build_layout_selector()   # .mdl_layout, .row_layout
+
+        # GUI for HID Layout.
+        self.hidview = HidView2(self, "", self.dispstate)
+
+        # Initial layout.
+        idx = self.inp_layout.get_active()
+        val = self.mdl_layout[idx][0]
+        #self.activehid = HidLayoutStore(val)
+        #self.activehid.build_from_rowrun(self.hiddesc[val])
+        self.activename = val
+        self.activehid = self.all_layouts[val]
+        #self.fill_board(self.activehid)
+
+        # Compose GUI.
+        self.pack_start(self.row_layout, expand=False, fill=False)
+        self.pack_start(self.hidview, expand=False, fill=False)
+
+        self.rebuild_display()
+
+    def build_layout_selector (self):
+        # Data model for selector.
         self.mdl_layout = gtk.ListStore(str)
         hidnames = sorted(self.all_layouts.keys())
         for k in hidnames:
             self.mdl_layout.append((k,))
+
+        # Combo (drop) list.
         self.inp_layout = gtk.ComboBox(self.mdl_layout)
         self.cell_layout = gtk.CellRendererText()
         self.inp_layout.pack_start(self.cell_layout)
         self.inp_layout.add_attribute(self.cell_layout, 'text', 0)
         self.inp_layout.set_active(0)
-        self.inp_layout.connect('changed', self.on_changed)
+        self.inp_layout.connect('changed', self.on_active_layout_changed)
 
-        # GUI for HID Layout.
+        # Label for selector.
         self.lbl_layout = gtk.Label("Layout:")
+
+        # Compose GUI.
         self.row_layout = gtk.HBox()
         self.row_layout.pack_start(self.lbl_layout, expand=False, fill=False)
         self.row_layout.pack_start(self.inp_layout, expand=False, fill=False)
 
-        idx = self.inp_layout.get_active()
-        val = self.mdl_layout[idx][0]
-
-        #self.activehid = HidLayoutStore(val)
-        #self.activehid.build_from_rowrun(self.hiddesc[val])
-        self.activehid = self.all_layouts[val]
-        self.fill_board(self.activehid)
-
-        self.pack_start(self.row_layout, expand=False, fill=False)
-        self.pack_start(self.hidview, expand=False, fill=False)
-
-    @property
-    def all_layouts (self):
-        return implicit_layouts
 
     def get_dispstate (self):
         return self.dispstate
@@ -2374,45 +2463,44 @@ class HidLayoutWidget (gtk.VBox):
         self.dispstate = dispstate
         self.hidview.set_dispstate(dispstate)
 
+    def get_layouts (self):
+        return self.all_layouts
+    def set_layouts (self, val):
+        self.all_layouts = val
+
+    def get_active (self):
+        return self.activename
+    def set_active (self, val):
+        self.activename = val
+        self.activehid = self.all_layouts[val]
+        # TODO: update display
+        self.rebuild_display()
+
     def get_vislayers (self):
         return self.dispstate.vislayers
     def set_vislayers (self, v):
         self.dispstate.set_vislayers(v)
 
-    def fill_board (self, hiddata):
-        self.hidview.set_layout(hiddata)
-        self.hidview.clear_board()
-        self.hidview.populate_board()
+    def rebuild_display (self):
+        # Update visuals to reflect active layout.
+        self.hidview.set_layoutmap(self.activehid)
+        self.hidview.build_cluster()
         for hidtop in self.hidview.hidtops.itervalues():
             hidtop.connect('clicked', self.on_hidtop_clicked)
 
-    def clear_board (self):
-        self.hidview.clear_board()
-
-    def on_changed (self, w, *args):
+    def on_active_layout_changed (self, w, *args):
         idx = w.get_active()
         data = self.mdl_layout[idx]
         val = data[0]
+        self.activename = val
         self.activehid = self.all_layouts[val]
-        self.clear_board()
-        self.fill_board(self.activehid)
+        #self.clear_board()
+        #self.fill_board(self.activehid)
         #self.show_all()
+        self.rebuild_display()
         self.show()
-        self.emit("layout-changed", val)
+#        self.emit("layout-changed", val)
 
-    def on_hidtop_clicked (self, w, *args):
-        inpsym = w.inpsym
-        logger.debug("target: %s" % inpsym)
-        self.emit("key-selected", inpsym)
-
-    def on_bind_changed (self, w, *args):
-        #self.bindmap[w.inpsym] = w.bind
-        self.emit("bind-changed", w)
-
-    def on_bindid_changed (self, w, *args):
-        #print("HidLayoutWidget: bindid-changed")
-        #self.bindmap[w.inpsym] = w.bind
-        self.emit("bindid-changed", w)
 
     def __getitem__ (self, inpsym):
         return self.hidtops[inpsym]
@@ -2422,6 +2510,22 @@ class HidLayoutWidget (gtk.VBox):
 
     def __delitem__ (self, inpsym):
         del self.hidtops[inpsym]
+
+
+    def on_hidtop_clicked (self, w, *args):
+        inpsym = w.inpsym
+        logger.debug("target: %s" % inpsym)
+        self.emit("key-selected", inpsym)
+
+#    def on_bind_changed (self, w, *args):
+#        #self.bindmap[w.inpsym] = w.bind
+#        self.emit("bind-changed", w)
+#
+#    def on_bindid_changed (self, w, *args):
+#        #print("HidLayoutWidget: bindid-changed")
+#        #self.bindmap[w.inpsym] = w.bind
+#        self.emit("bindid-changed", w)
+
 
 # Set up signals.
 gobject.type_register(HidLayoutWidget)
@@ -2448,7 +2552,7 @@ class HidLayoutWindow (gtk.Window):
 
         inpdescr = InpDescrModel(8)
         dispstate = InpDisplayState(inpdescr)
-        hidw = HidLayoutWidget(dispstate)
+        hidw = HidLayoutWidget(dispstate, implicit_layouts)
         self.layout.add(hidw)
         hidw.connect("key-selected", self.on_key_selected)
         hidw.connect("bind-changed", self.on_bind_changed)
