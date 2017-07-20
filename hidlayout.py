@@ -1133,7 +1133,9 @@ Also base class for arrangers.
         return layoutmap
 
     def _populate_widget_pool (self, layoutmap=None):
-        """Create HidTop instances as needed to add into parent, filling parent.hidtops and parent.clusters.
+        """Create instances of HidTop as needed.
+Instances just need to exist, they do not attach to widgets just yet.
+Fills parent.hidtops and parent.clusters.
 """
         """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
 #        suffices = self.placements.keys()
@@ -1199,7 +1201,7 @@ Also base class for arrangers.
 
     def full_rearrange (self, layoutmap):
         """Common case of gridded arrangement, where
-placements = dict of hidtop suffix to (row,col, width,height) tuple
+layoutmap = HidStoreLayout instance, rows are (inpsym, lbl, prototype, row, col, width|colspan, height|rowspan)
 """
         self.parent.detach_all()
         self.parent.grid.resize(12,12)
@@ -1217,8 +1219,8 @@ placements = dict of hidtop suffix to (row,col, width,height) tuple
             hidtop = self.parent.hidtops[inpsym]
             self.parent.grid.attach(hidtop, left, right, top, bottom)
             #hidtop.hide_all()
-            hidtop.show_all()
-            #hidtop.show()
+            #hidtop.show_all()
+            hidtop.show()
         #self.parent.show_all()
 
     def rearrange (self):
@@ -1414,7 +1416,7 @@ class ArrangerTouchmenu (ArrangerEmpty):
     def build_widget_pool (self):
         """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
         # Generate '1'..'16' inclusive.
-        suffices = [ str(ofs) for ofs in range(1, 17) ]
+        #suffices = [ str(ofs) for ofs in range(1, 17) ]
         # Populate widget pool based on largest layout.
         self._populate_widget_pool(self.all_layouts[16])
 
@@ -1484,29 +1486,28 @@ class ArrangerRadialmenu (ArrangerEmpty):
         self._populate_widget_pool(self.layoutmap)
 
     def set_capacity (self, cap=2):
-        if (cap < 1):
-            cap = 1
-        if (cap > 20):
-            cap = 20
+        cap = max(1, cap)
+        cap = min(cap, self.MAX_ITEMS)
         self.cap = cap
         # Radial places from top going clockwise.
         self.placements.clear()
         for idx in range(0, self.cap):
             angle = idx * (2 * math.pi) / cap
-            theta = math.pi - angle
+            #theta = math.pi - angle
+            theta = - (math.pi / 2) + angle
             w, h = 1, 1
             tx = math.cos(theta)
             ty = math.sin(theta)
             r = 6
-            row = int((tx * r) + r + .5)
-            col = int((ty * r) + r + .5)
+            row = int((ty * r) + r + .5)
+            col = int((tx * r) + r + .5)
             suffix = "{}".format(idx+1)
             self.placements[suffix] = (row, col, w,h)
-            self.layoutmap[idx+1][3] = row
-            self.layoutmap[idx+1][4] = col
-            self.layoutmap[idx+1][5] = w
-            self.layoutmap[idx+1][6] = h
-        for idx in range(self.cap, self.MAX_ITEMS):
+            self.layoutmap[idx][3] = col
+            self.layoutmap[idx][4] = row
+            self.layoutmap[idx][5] = w
+            self.layoutmap[idx][6] = h
+        for idx in range(cap, self.MAX_ITEMS):
             self.layoutmap[idx][3] = -1
         return
 
@@ -2059,11 +2060,13 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.frame_btn = gtk.Button(unichr(0x2026))
         self.frame_btn.set_tooltip_text("Change variant for this planar cluster")
         if inpsymprefix:
+            # Add decoration to non-root Planar (i.e. inpsyprefix is True-ish)
             self.frame.set_shadow_type(gtk.SHADOW_ETCHED_OUT)
             self.frame_title.pack_start(self.frame_btn, False, False, 0)
             self.frame_title.pack_start(self.frame_lbl_sym, False, False, 0)
             self.frame.set_label_widget(self.frame_title)
         else:
+            # top-level (root) Planar has inpsymprefix value that is False-ish.
             self.frame.set_shadow_type(gtk.SHADOW_NONE)
 
         # Table is (3x3), (4x4), or (6x6); LCD=(12,12), use multiple cells per widget.
@@ -2334,207 +2337,6 @@ As arrangments can change during run-time, use strategies for rearranging:
 gobject.type_register(HidPlanar)
 gobject.signal_new("cluster-type-changed", HidPlanar, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
 
-
-class HidView2 (HidCluster, gtk.Table):
-    """Top-level HID cluster device, e.g. keyboard.
-"""
-    def __init__gtk__ (self, inpsymprefix):
-        gtk.Table.__init__(self)
-
-    def build_cluster (self):
-        self.clusters = dict()
-        self.clear_board()
-        self.populate_board()
-        self.update_display()
-
-    def clear_board (self):
-        for ch in self.get_children():
-            self.remove(ch)
-            ch.destroy()
-        self.resize(1,1)
-        self.hidtops.clear()
-
-    def populate_board (self):
-        # Temporary, subject to filtering.
-        hidtops = dict()
-
-        for eltdesc in self.layoutmap:
-            inpsym, lbl, prototyp, x, y, w, h = eltdesc
-            hidtop = None
-            if prototyp == "cluster":
-                planar = HidPlanar(inpsym, self.dispstate)
-                for subsym,subelt in hidtops.iteritems():
-#                    subelt.connect("clicked", self.on_hidtop_clicked)
-                    hidtops[subsym] = subelt
-                    #lbltext = self.dispstate.inpdescr.get_label(subsym)
-                    lbltext = self.layoutmap.get_label(subsym)
-                    subelt.set_label(lbltext)
-                    self.active = subelt
-                attach_tweaks = {
-                    'xoptions': gtk.FILL,
-                    'yoptions': gtk.FILL,
-                    'xpadding': 4,
-                    'ypadding': 4,
-                }
-                self.attach(planar, x, x+w, y, y+h, **attach_tweaks)
-                self.clusters[inpsym] = planar
-                planar.show_all()
-                planar.update_display()
-            elif prototyp == "key":
-                hidtop = HidTop(inpsym, self.dispstate)
-#                hidtop.connect("clicked", self.on_hidtop_clicked)
-                hidtops[inpsym] = hidtop
-                #lbltext = self.dispstate.inpdescr.get_label(inpsym)
-                lbltext = lbl
-                hidtop.set_label(lbltext)
-                self.active = hidtop
-                self.attach(hidtop, x, x+w, y, y+h)
-                hidtop.show_all()
-            else:
-                pass
-            if self.hidtops.has_key(inpsym):
-                logger.warn("potential duplicate: %s" % inpsym)
-
-        # Copy to member field.
-        self.hidtops.clear()
-        for k,v in hidtops.iteritems():
-            self.hidtops[k] = v
-        return
-
-    def update_display (self):
-        return
-
-    def setup_signals (self):
-        # all widgets need to be updated.
-        #self.dispstate.connect("display-adjusted", self.on_display_adjusted)
-        #mdl = self.dispstate.inpdescr
-        #mdl.connect("bind-changed", self.on_inpdescr_bind_changed)
-        #mdl.connect("label-changed", self.on_inpdescr_label_changed)
-        return
-
-    def on_inpdescr_bind_changed (self, mdl, group, layer, inpsym):
-        # Binding changed; update relevant widgets.
-        return
-
-    def on_inpdescr_label_changed (self, mdl, inpsym):
-        # Label for a widget changed; update relevant widget(s).
-        return
-
-
-#class HidLayoutView (gtk.Table):
-#    def __init__ (self, dispstate):
-#        gtk.Table.__init__(self, homogeneous=True)
-#        # mapping of inpsym to Widget (look up widget by inpsym).
-#        self.hidtops = dict()
-#        self.clusters = dict()
-#        self.hiddesc = None
-#        self.dispstate = dispstate
-#        self.setup_signals()
-#
-#    def get_layout (self):
-#        return self.hiddesc
-#    def set_layout (self, hiddesc):
-#        self.hiddesc = hiddesc
-#
-#    def get_dispstate (self):
-#        return self.dispstate
-#    def set_dispstate (self, val):
-#        self.dispstate = val
-#        for elt in self.hidtops.valueiter():
-#            elt.set_dispstate(val)
-#
-#    def clear_board (self):
-#        for ch in self.get_children():
-#            self.remove(ch)
-#            ch.destroy()
-#        self.resize(1,1)
-#        self.hidtops.clear()
-#
-#    def populate_board (self):
-#        """Fill grid with HID element tops."""
-#        self.hidtops.clear()
-#
-#        for eltdesc in self.hiddesc:
-#            inpsym, lbl, prototyp, x, y, w, h = eltdesc
-#            hidtop = None
-#            if prototyp == "cluster":
-#                planar = HidPlanar(inpsym, self.dispstate)
-#                for subsym,subelt in planar.hidtops.iteritems():
-##                    subelt.connect("clicked", self.on_hidtop_clicked)
-#                    self.hidtops[subsym] = subelt
-#                    lbltext = self.dispstate.inpdescr.get_label(subsym)
-#                    subelt.set_label(lbltext)
-#                    self.active = subelt
-#                attach_tweaks = {
-#                    'xoptions': gtk.FILL,
-#                    'yoptions': gtk.FILL,
-#                    'xpadding': 4,
-#                    'ypadding': 4,
-#                }
-#                self.attach(planar, x, x+w, y, y+h, **attach_tweaks)
-#                self.clusters[inpsym] = planar
-#                planar.show_all()
-#                planar.update_display()
-#            elif prototyp == "key":
-#                hidtop = HidTop(inpsym, self.dispstate)
-##                hidtop.connect("clicked", self.on_hidtop_clicked)
-#                self.hidtops[inpsym] = hidtop
-#                lbltext = self.dispstate.inpdescr.get_label(inpsym)
-#                hidtop.set_label(lbltext)
-#                self.active = hidtop
-#                self.attach(hidtop, x, x+w, y, y+h)
-#                hidtop.show_all()
-#            else:
-#                pass
-#            if self.hidtops.has_key(inpsym):
-#                logger.warn("potential duplicate: %s" % inpsym)
-#        return
-#
-#    def setup_signals (self):
-#        # all widgets need to be updated.
-#        self.dispstate.connect("display-adjusted", self.on_display_adjusted)
-#        mdl = self.dispstate.inpdescr
-#        mdl.connect("bind-changed", self.on_inpdescr_bind_changed)
-#        mdl.connect("label-changed", self.on_inpdescr_label_changed)
-#
-#    def update_display (self):
-#        for w in self.hidtops.itervalues():
-#            w.update_display()
-#        for w in self.clusters.itervalues():
-#            w.update_display()
-#        return
-#
-#    def refresh_hie (self, inpsym):
-#        """Refresh HID element."""
-#        logger.debug("refresh_hie %r" % inpsym)
-#        w = self.hidtops.get(inpsym, None)
-#        if w:
-#            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
-#            w.set_dispbinds(grpbind)
-#            #w.update_display()
-##        w = self.clusters.get(inpsym, None)
-##        if w:
-##            grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
-##            w.set_dispbinds(grpbind)
-##            #w.refresh_hie(inpsym)
-#        return
-#
-#    def on_display_adjusted (self, ds, *args):
-#        # all widgets need to be updated.
-#        self.update_display()
-#
-#    def on_inpdescr_bind_changed (self, mdl, group, layer, inpsym):
-#        # Binding changed; update relevant widgets.
-#        self.refresh_hie(inpsym)
-#
-#    def on_inpdescr_label_changed (self, mdl, inpsym):
-#        # Label for a widget changed; update relevant widget(s).
-#        #self.refresh_hie(inpsym)
-#        w = self.hidtops.get(inpsym, None)
-#        if w:
-#            v = self.dispstate.inpdescr.get_label(inpsym)
-#            # TODO: escape markup
-#            w.set_label(v)
 
 
 implicit_layouts = HidLayouts()
