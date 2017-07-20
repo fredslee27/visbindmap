@@ -869,7 +869,8 @@ Parent callback:
 
         # Fill label (first row)
         #self.label = self.dispstate.inpdescr.get_label(self.inpsym)
-        self.label = inpsym
+        lbl = self.label = inpsym
+        self.set_label(lbl)
 
         # Alignment widget.
         self.align0 = gtk.Alignment(0, 0, 0, 0)
@@ -949,8 +950,16 @@ Parent callback:
         self.align1.add(self.inp_box)
 
     def on_map (self, w):
+        logger.debug("hidtop map %r=%r" % (self.inpsym, self.label))
         self.update_display()
         return True
+
+    def show (self):
+        logger.debug("hidtop show %r=%r" % (self.inpsym, self.label))
+        self.update_display()
+    def hide (self):
+        logger.debug("hidtop hide %r=%r" % (self.inpsym, self.label))
+        self.update_display()
 
     def get_inpsym (self):
         return self.inpsym
@@ -958,8 +967,13 @@ Parent callback:
         self.inpsym = val
 
     def get_label (self):
-        return self.label.get_text()
+        #return self.label.get_text()
+        return self.label
     def set_label (self, v):
+        self.label = v
+        logger.debug("set_label %r <- %r" % (self.inpsym, v))
+        if not v:
+            raise Exception("Break")
         self.set_hidtop(v)
 
     def update_layervis (self):
@@ -983,12 +997,13 @@ Parent callback:
 
     def update_display (self):
         # Update keytop
-        logger.debug("hidtop update_display %r" % self.inpsym)
+        logger.debug("hidtop update_display %r=%r" % (self.inpsym,self.get_label()))
         #lbl = self.dispstate.inpdescr.get_label(self.inpsym)
         #self.set_hidtop(lbl)
 
         # Update binding display
         self.mid_vis = False
+        self.show_all()
         def visit_bindrow (i, v):
             if v:
                 self.bindrows[i].show()
@@ -1154,15 +1169,16 @@ Fills parent.hidtops and parent.clusters.
 
         for eltdata in layoutmap:
             inpsym, lbl, prototyp = eltdata[0], eltdata[1], eltdata[2]
-            print("populating %r,%r" % (inpsym, lbl))
+            logger.debug("populating %r,%r" % (inpsym, lbl))
             if not inpsym in self.parent.hidtops:
 #                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
                 if prototyp == 'cluster':
                     planar = HidPlanar(inpsym, self.parent.dispstate)
-                    for subsym,subelt in self.parent.hidtops.iteritems():
+                    for subsym,subelt in planar.hidtops.iteritems():
                         self.parent.hidtops[subsym] = subelt
-                        lbltext = layoutmap.get_label(subsym)
-                        subelt.set_label(lbltext)
+                        lbltext = planar.arranger.layoutmap.get_label(subsym)
+                        if lbltext:
+                            subelt.set_label(lbltext)
                         self.active = subelt
                     attach_tweaks = {
                         'xoptions': gtk.FILL,
@@ -1172,15 +1188,17 @@ Fills parent.hidtops and parent.clusters.
                     }
                     self.parent.clusters[inpsym] = planar
                     self.parent.hidtops[inpsym] = planar
-                    planar.show_all()
+                    #planar.show_all()
+                    planar.show()
                     planar.update_display()
                 elif prototyp == 'key':
-                    hidtop = HidTop(inpsym, self.parent.dispstate)
-                    self.parent.hidtops[inpsym] = hidtop
                     lbltext = lbl
+                    hidtop = HidTop(inpsym, self.parent.dispstate)
                     hidtop.set_label(lbltext)
+                    self.parent.hidtops[inpsym] = hidtop
                     self.active = hidtop
-                    hidtop.show_all()
+                    #hidtop.show_all()
+                    hidtop.show()
                 else:
                     pass
         return
@@ -1206,7 +1224,7 @@ layoutmap = HidStoreLayout instance, rows are (inpsym, lbl, prototype, row, col,
         self.parent.detach_all()
         self.parent.grid.resize(12,12)
         for elt in layoutmap:
-            print("elt = %r" % (elt,))
+            logger.debug("elt = %r" % (elt,))
             inpsym,lbl,prototyp,col,row,xspan,yspan = elt
             if col < 0 or row < 0:
                 # Treat negative positions as "ignore".
@@ -1597,7 +1615,8 @@ class PseudoStack (gtk.VBox):
         for page in self.pages.itervalues():
 #            (page.show_all if self.active == page else page.hide_all)()
             if page == self.active:
-                page.show_all()
+                #page.show_all()
+                page.show()
             else:
                 page.hide_all()
 
@@ -2516,6 +2535,7 @@ class HidLayoutWindow (gtk.Window):
 
     def run (self):
         self.show_all()
+        #self.show()
         gtk.mainloop()
 
 
