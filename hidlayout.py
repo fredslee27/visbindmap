@@ -2108,7 +2108,8 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.connect("map", self.on_map)
 
     def on_map (self, *args):
-        self.update_display()
+        #self.update_display()
+        return True
 
     def get_label (self):
         return self.hid_label
@@ -2338,6 +2339,9 @@ As arrangments can change during run-time, use strategies for rearranging:
             self.arranger.rearrange()
         logger.info(" > menulist update_display")
         self.menulist.update_display()
+        gtk.Frame.show_all(self)
+        #self.show_all()
+        #self.frame_title.show_all()
         return
 
     def detach_all (self):
