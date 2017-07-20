@@ -223,7 +223,7 @@ class InpDescrModel (gobject.GObject):
 #        self._group = 0
 #        # active layer
 #        self._layer = 0
-#        self.cluster_defaults()
+        self.cluster_defaults()
 
     def clear (self):
         for grp in self.groups:
@@ -243,15 +243,15 @@ class InpDescrModel (gobject.GObject):
         for i in range(other.get_numgroups()):
             self.set_grouplist(i, other.get_grouplist(i))
 
-#    def cluster_defaults (self):
-#        # Handful of default binds.
-#        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
-#        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
-#        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
-#        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
-#        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
-#        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
-#        return
+    def cluster_defaults (self):
+        # Handful of default binds.
+        self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
+        self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
+        self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("R#", ArrangerJoystick.NAME, 0, 0)
+        self.set_bind("B#", ArrangerDiamond.NAME, 0, 0)
+        self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
+        return
 
     def get_label (self, inpsym):
         """If no model data, return inpsym as the label."""
@@ -2399,6 +2399,11 @@ class HidLayoutWidget (gtk.VBox):
         self.pack_start(self.row_layout, expand=False, fill=False)
         self.pack_start(self.hidview, expand=False, fill=False)
 
+        # dumb struct.
+        class signal_handlers:
+            clicked = dict()
+        self.signal_handlers = signal_handlers
+
         self.rebuild_display()
 
     def build_layout_selector (self):
@@ -2456,6 +2461,12 @@ class HidLayoutWidget (gtk.VBox):
 #        self.hidview.build_cluster()
 #        for hidtop in self.hidview.hidtops.itervalues():
 #            hidtop.connect('clicked', self.on_hidtop_clicked)
+        for hidsym in self.hidview.hidtops:
+            if not hidsym in self.signal_handlers.clicked:
+                hidelt = self.hidview.hidtops[hidsym]
+                if isinstance(hidelt, HidTop):
+                    sh = hidelt.connect('clicked', self.on_hidtop_clicked)
+                    self.signal_handlers.clicked[hidsym] = sh
 
     def on_active_layout_changed (self, w, *args):
         idx = w.get_active()
