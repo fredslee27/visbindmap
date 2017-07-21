@@ -379,7 +379,54 @@ class TestHidlayout(unittest.TestCase):
         self.assertEqual(layout.nrows, 14)
         self.assertEqual(layout.ncols, 87)
 
+    def test_hidtop_signals (self):
+        def on_nop (self, *args):
+            pass
+        w = gtk.Window()
+        w.set_title("Test HidTop")
+        w.resize(640, 480)
 
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = hidlayout.HidTop("K_TEST", self.ds)
+        b.set_hidtop(self.inpdescr.get_label("K_TEST"))
+        layout.pack_start(b, expand=False, fill=False, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        #bb = hidlayout.HidBindable(None, None)
+        #bb.connect("bind-assigned", on_nop)
+
+        b.connect("bind-assigned", on_nop)
+
+        w.show_all()
+
+    def test_hidplanar_signals (self):
+        def on_nop (self, *args):
+            pass
+        w = gtk.Window()
+        w.set_title("Test HidTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = hidlayout.HidPlanar("L#", self.ds)
+        #b.set_hidtop(self.inpdescr.get_label("K_TEST"))
+        layout.pack_start(b, expand=False, fill=False, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        #bb = hidlayout.HidBindable(None, None)
+        #bb.connect("bind-assigned", on_nop)
+
+        b.connect("bind-assigned", on_nop)
+        b.connect("cluster-type-changed", on_nop)
+
+        w.show_all()
 
 
 if __name__ == '__main__':

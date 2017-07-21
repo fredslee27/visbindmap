@@ -47,7 +47,7 @@ class TeeLog (object):
         return (self.outstream is not None)
 
 logger = hidlayout.logger
-logger.level = logger.info
+#logger.level = logger.info
 
 
 
@@ -526,7 +526,7 @@ class VisCmds (gtk.VBox):
         (treemdl, treeiter) = treesel.get_selected()
         if info == DndOpcodes.BIND:
             # Commands dragging.
-            logger.debug("info is 1 => Commands dragging")
+            logger.debug("info is %d => Commands dragging" % info)
             if treemdl.iter_has_child(treeiter):
                 # non-terminal item; fail.
                 sel.set_text("", 0)

@@ -742,6 +742,9 @@ class HidBindable (object):
     """Base class for elements that can take binds (from command set)."""
 
     def __init__ (self, inpsym, dispstate):
+#    def build (self, inpsym, dispstate):
+        #gobject.GObject.__init__(self)
+        #self.__gobject_init__()
         self.inpsym = inpsym
         self.dispstate = dispstate
         #self.conn_display_adjusted = self.dispstate.connect("display-adjusted", self.on_display_adjusted)
@@ -843,6 +846,17 @@ grpbind = list of bindings (with pango markup), one per layer in sequence."""
     def update_display (self):
         raise NotImplementedError("update_display() is abstract")
 
+    __gsignals__ = {
+        'bind-assigned': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
+        'bind-swapped': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
+        'bind-erased': (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
+    }
+
+#gobject.type_register(HidBindable)
+#gobject.signal_new("bind-assigned", HidBindable, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
+#gobject.signal_new("bind-swapped", HidBindable, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
+#gobject.signal_new("bind-erased", HidBindable, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,))
+
 
 class HidTop (gtk.Button, HidBindable):
     """UI element of a key(board) top.  Presented as the inpsym on the first row, and a boxed text entry on the second row for the binding.
@@ -863,6 +877,7 @@ Parent callback:
         # UI elements
         gtk.Button.__init__(self)
         HidBindable.__init__(self, inpsym, dispstate)
+        #HidBindable.build(self, inpsym, dispstate)
         self.plane = gtk.VBox()
         self.inp_lbl = gtk.Label()
         self.spacer = gtk.HBox()
@@ -1072,29 +1087,33 @@ Parent callback:
         if self.pending_drag_unbinding:
             logger.debug("hidtop unbind %s" % self.inpsym)
             #self.set_bind(self.inpsym, "")
-            self.emit("layer-bind-changed", self.inpsym, "")
+            #self.emit("layer-bind-changed", self.inpsym, "")
+            self.emit("bind-erased", self.inpsym)
             self.pending_drag_unbinding = False
         return
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
-        #print("%s drag-data-received %r" % (self.__class__.__name__, w))
         logger.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
         if info == DndOpcodes.BIND:
             # Commands dropping.
             seltext = seldata.data
             logger.debug("hidtop Command install: %s <= %s" % (w.inpsym, seltext))
             #self.set_bind(self.inpsym, seltext)
-            self.emit("layer-bind-changed", self.inpsym, seltext)
+            #self.emit("layer-bind-changed", self.inpsym, seltext)
+            self.emit("bind-assigned", self.inpsym, seltext)
             ctx.finish(True, False, 0)
             return True
         elif info == DndOpcodes.SWAP:
             othersym = seldata.data
             logger.debug("hidtop Command swap: %s <=> %s" % (w.inpsym, othersym))
-            self.swap_bind(w.inpsym, othersym)
+            #self.swap_bind(w.inpsym, othersym)
+            self.emit("bind-swapped", w.inpsym, othersym)
             ctx.finish(True, False, 0)
             return True
 
-#gobject.type_register(HidTop)
+    __gsignals__ = HidBindable.__gsignals__
+
+gobject.type_register(HidTop)
 #gobject.signal_new("layer-bind-change", HidTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.STRING, gobject.STRING))
 #gobject.signal_new("layer-bind-swap", HidTop, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.STRING, gobject.STRING))
 
@@ -1172,6 +1191,7 @@ Fills parent.hidtops and parent.clusters.
             logger.debug("populating %r,%r" % (inpsym, lbl))
             if not inpsym in self.parent.hidtops:
 #                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
+                hidtop = None
                 if prototyp == 'cluster':
                     planar = HidPlanar(inpsym, self.parent.dispstate)
                     for subsym,subelt in planar.hidtops.iteritems():
@@ -1191,6 +1211,7 @@ Fills parent.hidtops and parent.clusters.
                     #planar.show_all()
                     planar.show()
                     planar.update_display()
+                    hidtop = planar
                 elif prototyp == 'key':
                     lbltext = lbl
                     hidtop = HidTop(inpsym, self.parent.dispstate)
@@ -1199,8 +1220,12 @@ Fills parent.hidtops and parent.clusters.
                     self.active = hidtop
                     #hidtop.show_all()
                     hidtop.show()
+
                 else:
                     pass
+                hidtop.connect('bind-assigned', self.parent.on_subelt_bind_assigned)
+                hidtop.connect('bind-swapped', self.parent.on_subelt_bind_swapped)
+                hidtop.connect('bind-erased', self.parent.on_subelt_bind_erased)
         return
 
     def get_layoutmap (self):
@@ -1906,9 +1931,9 @@ Nestable.
 Tracks HidTop instances belonging to cluster.
 Cluster tracks drag-drop activity on nested HidTop.
 internal activity:
- - drag from cmdset to hidtop = assign bind: ("assign-bind", inpsym, bindval)
- - drag from hidtop to hidtop = swap bind: ("swap-bind", target-inpsym, source-inpsym)
- - drag from hidtop to cmdset/trash = erase bind ("erase-bind, target-inpsym)
+ - drag from cmdset to hidtop = assign bind: ("bind-assigned", inpsym, bindval)
+ - drag from hidtop to hidtop = swap bind: ("bind-swapped", target-inpsym, source-inpsym)
+ - drag from hidtop to cmdset/trash = erase bind ("bind-erased", target-inpsym)
 external activity:
  - set inpsym for cluster: @property label
  - a bind changed, propagate (as proxy) to internal hidtop: @property Proxy.bind
@@ -1986,14 +2011,6 @@ Override in subclasses.
     def get_subelt (self, inpsym):
         hidelt = self.hidtops.get(inpsym, None)
         return hidelt
-
-
-    def on_subelt_assign_bind (self, hidelt, inpsym, bindval):
-        pass
-    def on_subelt_swap_bind (self, hidelt, target_inpsym, source_inpsym):
-        pass
-    def on_subelt_erase_bind (self, hidelt, inpsym):
-        pass
 
 
     def clear_board (self):
@@ -2357,9 +2374,29 @@ As arrangments can change during run-time, use strategies for rearranging:
     def get_hidtops (self):
         return self.hidtops.values()
 
-gobject.type_register(HidPlanar)
-gobject.signal_new("cluster-type-changed", HidPlanar, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
+    def on_subelt_bind_assigned (self, hidelt, inpsym, bindval):
+        self.emit("bind-assigned", inpsym, bindval)
+        return True
+    def on_subelt_bind_swapped (self, hidelt, target_inpsym, source_inpsym):
+        self.emit("bind-swapped", target_inpsym, source_inpsym)
+        return True
+    def on_subelt_bind_erased (self, hidelt, inpsym):
+        self.emit("bind-erased", inpsym)
+        return True
 
+#    __gsignals__ = HidBindable.__gsignals__.copy().update({
+#      "cluster-type-chnaged": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
+#      })
+    __gsignals__ = dict(
+      [(k,v) for k,v in HidBindable.__gsignals__.iteritems() ]
+      +
+      [ (k,v) for k,v in {
+        "cluster-type-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
+      }.iteritems() ]
+    )
+
+#gobject.type_register(HidPlanar)
+#gobject.signal_new("cluster-type-changed", HidPlanar, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING))
 
 
 implicit_layouts = HidLayouts()
@@ -2399,9 +2436,13 @@ class HidLayoutWidget (gtk.VBox):
         self.pack_start(self.row_layout, expand=False, fill=False)
         self.pack_start(self.hidview, expand=False, fill=False)
 
-        # dumb struct.
+        # dumb struct, track signal handler ids.
         class signal_handlers:
             clicked = dict()
+            cluster_type_changed = dict()
+            bind_assigned = dict()
+            bind_swapped = dict()
+            bind_erased = dict()
         self.signal_handlers = signal_handlers
 
         self.rebuild_display()
@@ -2461,13 +2502,30 @@ class HidLayoutWidget (gtk.VBox):
 #        self.hidview.build_cluster()
 #        for hidtop in self.hidview.hidtops.itervalues():
 #            hidtop.connect('clicked', self.on_hidtop_clicked)
-        for hidsym in self.hidview.hidtops:
-            if not hidsym in self.signal_handlers.clicked:
-                hidelt = self.hidview.hidtops[hidsym]
-                if isinstance(hidelt, HidTop):
-                    sh = hidelt.connect('clicked', self.on_hidtop_clicked)
-                    self.signal_handlers.clicked[hidsym] = sh
+        for inpsym in self.hidview.hidtops:
+            if not inpsym in self.signal_handlers.clicked:
+                hidelt = self.hidview.hidtops[inpsym]
+                sh = None
+                try:
+                    # Connect 'clicked' signal for those that support it.
 
+                    sh = hidelt.connect('clicked', self.on_hidtop_clicked)
+                except TypeError:
+                    pass
+                if sh:
+                    self.signal_handlers.clicked[inpsym] = sh
+                bindgrp = self.dispstate.resolve_bind_group_markup(inpsym)
+                hidelt.set_dispbinds(bindgrp)
+        for symprefix in self.hidview.clusters:
+            if not symprefix in self.signal_handlers.cluster_type_changed:
+                hidcluster = self.hidview.clusters[symprefix]
+                sh = None
+                try:
+                    sh = hidcluster.connect('cluster-type-changed', self.on_cluster_type_changed)
+                except TypeError:
+                    pass
+                if sh:
+                    self.signal_handlers.cluster_type_changed[symprefix] = sh
     def on_active_layout_changed (self, w, *args):
         idx = w.get_active()
         data = self.mdl_layout[idx]
@@ -2496,6 +2554,16 @@ class HidLayoutWidget (gtk.VBox):
         inpsym = w.inpsym
         logger.debug("target: %s" % inpsym)
         self.emit("key-selected", inpsym)
+
+    def on_cluster_type_changed (self, w, *args):
+        pass
+
+    def on_bind_assigned (self, w, inpsym, bindval):
+        pass
+    def on_bind_swapped (self, w, srcsym, dstsym):
+        pass
+    def on_bind_erased (self, w, inpsym):
+        pass
 
 #    def on_bind_changed (self, w, *args):
 #        #self.bindmap[w.inpsym] = w.bind
