@@ -1180,45 +1180,45 @@ Fills parent.hidtops and parent.clusters.
             layoutmap = self.layoutmap
 
         for eltdata in layoutmap:
-            inpsym, lbl, prototyp = eltdata[0], eltdata[1], eltdata[2]
-            logger.debug("populating %r,%r" % (inpsym, lbl))
-            if not inpsym in self.parent.hidtops:
-#                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
-                hidtop = None
-                if prototyp == 'cluster':
-                    planar = HidPlanar(inpsym, self.parent.dispstate)
-                    for subsym,subelt in planar.hidtops.iteritems():
-                        self.parent.hidtops[subsym] = subelt
-                        lbltext = planar.arranger.layoutmap.get_label(subsym)
-                        if lbltext:
-                            subelt.set_label(lbltext)
-                        self.active = subelt
-                    attach_tweaks = {
-                        'xoptions': gtk.FILL,
-                        'yoptions': gtk.FILL,
-                        'xpadding': 4,
-                        'ypadding': 4,
-                    }
-                    self.parent.clusters[inpsym] = planar
-                    self.parent.hidtops[inpsym] = planar
-                    #planar.show_all()
-                    planar.show()
-                    planar.update_display()
-                    hidtop = planar
-                elif prototyp == 'key':
-                    lbltext = lbl
-                    hidtop = HidTop(inpsym, self.parent.dispstate)
-                    hidtop.set_label(lbltext)
-                    self.parent.hidtops[inpsym] = hidtop
-                    self.active = hidtop
-                    #hidtop.show_all()
-                    hidtop.show()
-
-                else:
-                    pass
-                hidtop.connect('bind-assigned', self.parent.on_subelt_bind_assigned)
-                hidtop.connect('bind-swapped', self.parent.on_subelt_bind_swapped)
-                hidtop.connect('bind-erased', self.parent.on_subelt_bind_erased)
+#            inpsym, lbl, prototyp = eltdata[0], eltdata[1], eltdata[2]
+#            logger.debug("populating %r,%r" % (inpsym, lbl))
+            self.parent.make_hidelt(eltdata)
+#            if not inpsym in self.parent.hidtops:
+#                hidtop = None
+#                if prototyp == 'cluster':
+#                    planar = HidPlanar(inpsym, self.parent.dispstate)
+#                    for subsym,subelt in planar.hidtops.iteritems():
+#                        self.parent.hidtops[subsym] = subelt
+#                        lbltext = planar.arranger.layoutmap.get_label(subsym)
+#                        if lbltext:
+#                            subelt.set_label(lbltext)
+#                        self.active = subelt
+#                    attach_tweaks = {
+#                        'xoptions': gtk.FILL,
+#                        'yoptions': gtk.FILL,
+#                        'xpadding': 4,
+#                        'ypadding': 4,
+#                    }
+#                    self.parent.clusters[inpsym] = planar
+#                    self.parent.hidtops[inpsym] = planar
+#                    #planar.show_all()
+#                    planar.show()
+#                    planar.update_display()
+#                    hidtop = planar
+#                elif prototyp == 'key':
+#                    lbltext = lbl
+#                    hidtop = HidTop(inpsym, self.parent.dispstate)
+#                    hidtop.set_label(lbltext)
+#                    self.parent.hidtops[inpsym] = hidtop
+#                    self.active = hidtop
+#                    #hidtop.show_all()
+#                    hidtop.show()
+#
+#                else:
+#                    pass
+#                hidtop.connect('bind-assigned', self.parent.on_subelt_bind_assigned)
+#                hidtop.connect('bind-swapped', self.parent.on_subelt_bind_swapped)
+#                hidtop.connect('bind-erased', self.parent.on_subelt_bind_erased)
         return
 
     def get_layoutmap (self):
@@ -1983,7 +1983,6 @@ Override in subclasses.
         """Factory function to generate nested HidPlanar."""
         pass
 
-
     def get_label (self):
         return self._hidlabel
     def set_label (self, v):
@@ -2217,6 +2216,50 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.rearranger.rearrange()
         pass
 
+
+    def make_hidelt (self, layout_store_row):
+        eltdata = layout_store_row
+        inpsym, lbl, prototyp = eltdata[0], eltdata[1], eltdata[2]
+        if not inpsym in self.hidtops:
+            hidtop = None
+            if prototyp == 'cluster':
+                planar = HidPlanar(inpsym, self.dispstate)
+                for subsym,subelt in planar.hidtops.iteritems():
+                    self.hidtops[subsym] = subelt
+                    lbltext = planar.arranger.layoutmap.get_label(subsym)
+                    if lbltext:
+                        subelt.set_label(lbltext)
+                    self.active = subelt
+                attach_tweaks = {
+                    'xoptions': gtk.FILL,
+                    'yoptions': gtk.FILL,
+                    'xpadding': 4,
+                    'ypadding': 4,
+                }
+                self.clusters[inpsym] = planar
+                self.hidtops[inpsym] = planar
+                #planar.show_all()
+                planar.show()
+                planar.update_display()
+                planar.connect('cluster-type-changed', self.on_subplanar_cluster_type_changed)
+                hidtop = planar
+            elif prototyp == 'key':
+                lbltext = lbl
+                hidtop = HidTop(inpsym, self.dispstate)
+                hidtop.set_label(lbltext)
+                self.hidtops[inpsym] = hidtop
+                self.active = hidtop
+                #hidtop.show_all()
+                hidtop.show()
+
+            else:
+                pass
+            hidtop.connect('bind-assigned', self.on_subelt_bind_assigned)
+            hidtop.connect('bind-swapped', self.on_subelt_bind_swapped)
+            hidtop.connect('bind-erased', self.on_subelt_bind_erased)
+        return
+
+
     def make_menu (self, menudesc):
         menu = gtk.Menu()
         for itemdesc in menudesc:
@@ -2367,6 +2410,8 @@ As arrangments can change during run-time, use strategies for rearranging:
     def get_hidtops (self):
         return self.hidtops.values()
 
+    def on_subplanar_cluster_type_changed (self, w, old, updated):
+        pass
     def on_subelt_bind_assigned (self, hidelt, inpsym, bindval):
         logger.debug("on_subelt_bind_assigned %r, %r, %r" % (hidelt, inpsym, bindval))
         self.emit("bind-assigned", inpsym, bindval)
@@ -2527,8 +2572,8 @@ class HidLayoutWidget (gtk.VBox):
                 hidelt.set_dispbinds(bindgrp)
 
             stash_signal_handler(hidelt, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
-            stash_signal_handler(hidelt, self.signal_handlers.bind_swapped, "bind-assigned", self.on_bind_assigned)
-            stash_signal_handler(hidelt, self.signal_handlers.bind_erased, "bind-assigned", self.on_bind_assigned)
+            stash_signal_handler(hidelt, self.signal_handlers.bind_swapped, "bind-swapped", self.on_bind_swapped)
+            stash_signal_handler(hidelt, self.signal_handlers.bind_erased, "bind-erased", self.on_bind_erased)
 
         for symprefix in self.hidview.clusters:
             hidcluster = self.hidview.clusters.get(symprefix, None)
@@ -2544,8 +2589,8 @@ class HidLayoutWidget (gtk.VBox):
                     self.signal_handlers.cluster_type_changed[symprefix] = sh
 
             stash_signal_handler(hidcluster, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
-            stash_signal_handler(hidcluster, self.signal_handlers.bind_swapped, "bind-assigned", self.on_bind_assigned)
-            stash_signal_handler(hidcluster, self.signal_handlers.bind_erased, "bind-assigned", self.on_bind_assigned)
+            stash_signal_handler(hidcluster, self.signal_handlers.bind_swapped, "bind-swapped", self.on_bind_swapped)
+            stash_signal_handler(hidcluster, self.signal_handlers.bind_erased, "bind-erased", self.on_bind_erased)
         return
 
     def on_active_layout_changed (self, w, *args):
@@ -2595,17 +2640,17 @@ class HidLayoutWidget (gtk.VBox):
         dstbind = bindmdl.get_bind(dstsym)
         bindmdl.set_bind(srcsym, dstbind)
         bindmdl.set_bind(dstsym, srcbind)
-        grpbind = self.inpdescr.resolve_bind_group_markup(srcsym)
+        grpbind = self.dispstate.resolve_bind_group_markup(srcsym)
         hidtop = self.hidview.hidtops.get(srcsym, None)
         if hidtop:
             hidtop.set_dispbinds(grpbind)
-        grpbind = self.inpdescr.resolve_bind_group_markup(dstsym)
+        grpbind = self.dispstate.resolve_bind_group_markup(dstsym)
         hidtop = self.hidview.hidtops.get(dstsym, None)
         if hidtop:
             hidtop.set_dispbinds(grpbind)
     def on_bind_erased (self, w, inpsym):
         self.dispstate.set_bind(inpsym, "")
-        grpbind = self.inpdescr.resolve_bind_group_markup(inpsym)
+        grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
         hidtop = self.hidview.hidtops.get(inpsym, None)
         if hidtop:
             hidtop.set_dispbinds(grpbind)
