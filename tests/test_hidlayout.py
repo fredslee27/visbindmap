@@ -347,21 +347,65 @@ class TestHidlayout(unittest.TestCase):
                      lambda: self.inpdescr.set_label("K_TEST", "TEST"),
                      lambda: b.set_hidtop(self.inpdescr.get_label("K_TEST")),
                      lambda: self.assertEqual(b.inp_lbl.get_text(), "TEST"),
-                     1,
                      lambda: self.inpdescr.set_bind("K_TEST", "test_changer", 0, 0),
                      lambda: b.set_dispbinds(self.ds.resolve_bind_group_markup("K_TEST")),
                      2,
                      lambda: self.ds.set_vislayers(2),
                      lambda: b.update_display(),
-                     2
+                     2,
+                     lambda: self.ds.set_vislayers(4),
+                     lambda: b.update_display(),
+                     2,
+                     lambda: self.ds.set_vislayers(8),
+                     lambda: b.update_display(),
+                     2,
                      ]
 
         self.runloop(playback)
         self.assertEqual(b.inp_lbl.get_text(), "TEST")
         self.assertEqual(b.inp_binds[0].get_text(), "test_changer")
-        self.assertEqual(self.ds.get_vislayers(), 2)
-        self.assertEqual(b.vislayers, 2)
+        self.assertEqual(self.ds.get_vislayers(), 8)
+        self.assertEqual(b.vislayers, 8)
         self.assertTrue(b.lyr_lbls[1].get_visible())
+        #time.sleep(4)
+        w.hide()
+
+    def test_change_layer (self):
+        w = gtk.Window()
+        w.set_title("Test HidTop")
+        w.resize(640, 480)
+
+        layout = gtk.VBox()
+        w.add(layout)
+
+        b = hidlayout.HidTop("K_TEST", self.ds)
+        b.set_hidtop(self.inpdescr.get_label("K_TEST"))
+        layout.pack_start(b, expand=False, fill=False, padding=0)
+        lbl = gtk.Label("Testing...")
+        layout.pack_start(lbl, expand=False, fill=True, padding=0)
+        layout.pack_start(gtk.HBox(), expand=True, fill=True, padding=0)
+
+        w.show_all()
+
+        playback = [ lambda: None,
+                     lambda: self.inpdescr.set_label("K_TEST", "TEST"),
+                     lambda: b.set_hidtop(self.inpdescr.get_label("K_TEST")),
+                     lambda: self.assertEqual(b.inp_lbl.get_text(), "TEST"),
+                     lambda: self.inpdescr.set_bind("K_TEST", "test_changer", 0, 0),
+                     lambda: b.set_dispbinds(self.ds.resolve_bind_group_markup("K_TEST")),
+                     1,
+                     lambda: self.ds.set_vislayers(2),
+                     lambda: b.update_display(),
+                     1,
+                     lambda: self.ds.set_vislayers(4),
+                     lambda: b.update_display(),
+                     1,
+                     lambda: self.ds.set_layer(3),
+                     lambda: b.update_display(),
+                     2,
+                     ]
+
+        self.runloop(playback)
         #time.sleep(4)
         w.hide()
 

@@ -435,6 +435,12 @@ gobject.signal_new("label-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gob
 class InpDisplayState (gobject.GObject):
     """Run-time state affecting display of input-bindables.
 Emits 'display-adjusted' in any change of display settings or InpDescrModel contents.
+
+Display states tracked:
+ * layer = current layer selected
+ * group = current group (mode) selected
+ * vislayers = number of layers to be visible at a time.
+ ** visbase = lowest layer id visibile in vislayers (as aligned at powers of 2).
 """
     def __init__ (self, inpdescr):
         gobject.GObject.__init__(self)
@@ -907,6 +913,7 @@ Parent callback:
         self.inp_box = None
 
         nlayers = self.dispstate.inpdescr.get_numlayers()
+        self.maxlayers = nlayers
         self.uibuild_binddisplays(nlayers)
 
         self.box_bind.add(self.align1)
@@ -971,9 +978,6 @@ Parent callback:
 
     def show (self):
         logger.debug("hidtop show %r=%r" % (self.inpsym, self.label))
-        self.update_display()
-    def hide (self):
-        logger.debug("hidtop hide %r=%r" % (self.inpsym, self.label))
         self.update_display()
 
     def get_inpsym (self):
@@ -1137,15 +1141,6 @@ Also base class for arrangers.
 
         if self.SIMPLE_PLACEMENTS:
             self._derive_layoutmap_from_simple_placements(self.layoutmap, self.SIMPLE_PLACEMENTS)
-#            for k,v in self.SIMPLE_PLACEMENTS.iteritems():
-#                row,col = v
-#                self.placements[k] = (row*self.H, col*self.H, self.W,self.H)
-#                lbl = "{}{}".format(parent.inpsym, k)
-#                inpsym = "{}{}".format(parent.inpsym, k)
-#                x, y = col*self.H, row*self.H
-#                w, h = self.W, self.H
-#                rowdata = (inpsym, lbl, "key", x, y, w, h)
-#                self.layoutmap.append(None, rowdata)
         self.build_widget_pool()
 
     def _derive_layoutmap_from_simple_placements (self, layoutmap, simple_placements):
@@ -1160,65 +1155,13 @@ Also base class for arrangers.
         return layoutmap
 
     def _populate_widget_pool (self, layoutmap=None):
-        """Create instances of HidTop as needed.
-Instances just need to exist, they do not attach to widgets just yet.
-Fills parent.hidtops and parent.clusters.
+        """Create instances of HidTop as needed according to visible inpsyms.
 """
-        """Create HidTop instances as needed to add into widget_pool, a dict of inpsym to widget."""
-#        suffices = self.placements.keys()
-#        for suffix in suffices:
-#            inpsym = self.inpsymof(suffix)
-#            if not inpsym in self.parent.hidtops:
-#                #hidtop = HidTop(inpsym, self.parent.dispstate)
-#                hidtop = HidTopArrangeable(self.parent, self, inpsym, self.parent.dispstate)
-#                hidtop.set_label(inpsym)
-#                self.parent.hidtops[inpsym] = hidtop
-#                hidtop.show_all()
-#                # right-click menu
-#                #hidtop.connect("button-press-event", self.parent.on_button_press)
         if layoutmap is None:
             layoutmap = self.layoutmap
 
         for eltdata in layoutmap:
-#            inpsym, lbl, prototyp = eltdata[0], eltdata[1], eltdata[2]
-#            logger.debug("populating %r,%r" % (inpsym, lbl))
             self.parent.make_hidelt(eltdata)
-#            if not inpsym in self.parent.hidtops:
-#                hidtop = None
-#                if prototyp == 'cluster':
-#                    planar = HidPlanar(inpsym, self.parent.dispstate)
-#                    for subsym,subelt in planar.hidtops.iteritems():
-#                        self.parent.hidtops[subsym] = subelt
-#                        lbltext = planar.arranger.layoutmap.get_label(subsym)
-#                        if lbltext:
-#                            subelt.set_label(lbltext)
-#                        self.active = subelt
-#                    attach_tweaks = {
-#                        'xoptions': gtk.FILL,
-#                        'yoptions': gtk.FILL,
-#                        'xpadding': 4,
-#                        'ypadding': 4,
-#                    }
-#                    self.parent.clusters[inpsym] = planar
-#                    self.parent.hidtops[inpsym] = planar
-#                    #planar.show_all()
-#                    planar.show()
-#                    planar.update_display()
-#                    hidtop = planar
-#                elif prototyp == 'key':
-#                    lbltext = lbl
-#                    hidtop = HidTop(inpsym, self.parent.dispstate)
-#                    hidtop.set_label(lbltext)
-#                    self.parent.hidtops[inpsym] = hidtop
-#                    self.active = hidtop
-#                    #hidtop.show_all()
-#                    hidtop.show()
-#
-#                else:
-#                    pass
-#                hidtop.connect('bind-assigned', self.parent.on_subelt_bind_assigned)
-#                hidtop.connect('bind-swapped', self.parent.on_subelt_bind_swapped)
-#                hidtop.connect('bind-erased', self.parent.on_subelt_bind_erased)
         return
 
     def get_layoutmap (self):
@@ -1258,6 +1201,7 @@ layoutmap = HidStoreLayout instance, rows are (inpsym, lbl, prototype, row, col,
             #hidtop.show_all()
             hidtop.show()
         #self.parent.show_all()
+        return
 
     def rearrange (self):
         self.parent.stacked.set_visible_child_name("0")
