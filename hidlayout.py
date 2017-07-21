@@ -1119,13 +1119,6 @@ gobject.type_register(HidTop)
 
 
 
-class HidTopArrangeable (HidTop):
-    """HidTop proxy to hook into arranger and cluster (HidPlanar) on HidTop operations."""
-    def __init__ (self, cluster, arranger, inpsym, dispstate):
-        HidTop.__init__(self, inpsym, dispstate)
-        self.arranger = arranger
-        self.cluster = cluster
-
 class Arranger (object):
     """Base case for arranger: no sub-elements.
 Also base class for arrangers.
@@ -2086,7 +2079,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.inpsymprefix = inpsymprefix
         self.hid_label = self.inpsymprefix  # initialize with copy.
         self.dispstate = dispstate
-        self.hidtops = dict()  # Mapping of inpsym to HidTopArrangeable instance.
+        self.hidtops = dict()  # Mapping of inpsym to HidTop instance.
         self.clusters = dict()
 
         self.frame = gtk.Frame(inpsymprefix)
@@ -2375,6 +2368,7 @@ As arrangments can change during run-time, use strategies for rearranging:
         return self.hidtops.values()
 
     def on_subelt_bind_assigned (self, hidelt, inpsym, bindval):
+        logger.debug("on_subelt_bind_assigned %r, %r, %r" % (hidelt, inpsym, bindval))
         self.emit("bind-assigned", inpsym, bindval)
         return True
     def on_subelt_bind_swapped (self, hidelt, target_inpsym, source_inpsym):
@@ -2502,9 +2496,24 @@ class HidLayoutWidget (gtk.VBox):
 #        self.hidview.build_cluster()
 #        for hidtop in self.hidview.hidtops.itervalues():
 #            hidtop.connect('clicked', self.on_hidtop_clicked)
+        def stash_signal_handler (w, handler_store, signal_name, signal_handler):
+            logger.debug('stashing signal %r.%r' % (w.inpsym, signal_name))
+            if not w.inpsym in handler_store:
+                sh = None
+                try:
+                    sh = w.connect(signal_name, signal_handler)
+                except TypeError:
+                    pass
+                if sh:
+                    handler_store[w.inpsym] = sh
+                    logger.debug("connect handler(%r,%r) = %r" % (w.inpsym, signal_name, signal_handler))
+            return
+
         for inpsym in self.hidview.hidtops:
+            hidelt = self.hidview.hidtops.get(inpsym, None)
+            if not hidelt:
+                continue
             if not inpsym in self.signal_handlers.clicked:
-                hidelt = self.hidview.hidtops[inpsym]
                 sh = None
                 try:
                     # Connect 'clicked' signal for those that support it.
@@ -2516,9 +2525,16 @@ class HidLayoutWidget (gtk.VBox):
                     self.signal_handlers.clicked[inpsym] = sh
                 bindgrp = self.dispstate.resolve_bind_group_markup(inpsym)
                 hidelt.set_dispbinds(bindgrp)
+
+            stash_signal_handler(hidelt, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
+            stash_signal_handler(hidelt, self.signal_handlers.bind_swapped, "bind-assigned", self.on_bind_assigned)
+            stash_signal_handler(hidelt, self.signal_handlers.bind_erased, "bind-assigned", self.on_bind_assigned)
+
         for symprefix in self.hidview.clusters:
+            hidcluster = self.hidview.clusters.get(symprefix, None)
+            if not hidcluster:
+                continue
             if not symprefix in self.signal_handlers.cluster_type_changed:
-                hidcluster = self.hidview.clusters[symprefix]
                 sh = None
                 try:
                     sh = hidcluster.connect('cluster-type-changed', self.on_cluster_type_changed)
@@ -2526,6 +2542,12 @@ class HidLayoutWidget (gtk.VBox):
                     pass
                 if sh:
                     self.signal_handlers.cluster_type_changed[symprefix] = sh
+
+            stash_signal_handler(hidcluster, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
+            stash_signal_handler(hidcluster, self.signal_handlers.bind_swapped, "bind-assigned", self.on_bind_assigned)
+            stash_signal_handler(hidcluster, self.signal_handlers.bind_erased, "bind-assigned", self.on_bind_assigned)
+        return
+
     def on_active_layout_changed (self, w, *args):
         idx = w.get_active()
         data = self.mdl_layout[idx]
@@ -2559,11 +2581,34 @@ class HidLayoutWidget (gtk.VBox):
         pass
 
     def on_bind_assigned (self, w, inpsym, bindval):
-        pass
+        logger.debug("bind-assign %r <- %r" % (inpsym, bindval))
+        self.dispstate.set_bind(inpsym, bindval)
+        grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+        logger.debug("grpbind(%s) = %r" % (inpsym, grpbind))
+        hidtop = self.hidview.hidtops.get(inpsym, None)
+        if hidtop:
+            hidtop.set_dispbinds(grpbind)
     def on_bind_swapped (self, w, srcsym, dstsym):
-        pass
+        logger.debug("bind-swap %r <-> %r" % (srcsym, dstsym))
+        bindmdl = self.dispstate
+        srcbind = bindmdl.get_bind(srcsym)
+        dstbind = bindmdl.get_bind(dstsym)
+        bindmdl.set_bind(srcsym, dstbind)
+        bindmdl.set_bind(dstsym, srcbind)
+        grpbind = self.inpdescr.resolve_bind_group_markup(srcsym)
+        hidtop = self.hidview.hidtops.get(srcsym, None)
+        if hidtop:
+            hidtop.set_dispbinds(grpbind)
+        grpbind = self.inpdescr.resolve_bind_group_markup(dstsym)
+        hidtop = self.hidview.hidtops.get(dstsym, None)
+        if hidtop:
+            hidtop.set_dispbinds(grpbind)
     def on_bind_erased (self, w, inpsym):
-        pass
+        self.dispstate.set_bind(inpsym, "")
+        grpbind = self.inpdescr.resolve_bind_group_markup(inpsym)
+        hidtop = self.hidview.hidtops.get(inpsym, None)
+        if hidtop:
+            hidtop.set_dispbinds(grpbind)
 
 #    def on_bind_changed (self, w, *args):
 #        #self.bindmap[w.inpsym] = w.bind
