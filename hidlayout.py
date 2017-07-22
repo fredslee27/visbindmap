@@ -434,43 +434,79 @@ gobject.signal_new("label-changed", InpDescrModel, gobject.SIGNAL_RUN_FIRST, gob
 
 class InpDisplayState (gobject.GObject):
     """Run-time state affecting display of input-bindables.
-Emits 'display-adjusted' in any change of display settings or InpDescrModel contents.
 
 Display states tracked:
  * layer = current layer selected
  * group = current group (mode) selected
  * vislayers = number of layers to be visible at a time.
  ** visbase = lowest layer id visibile in vislayers (as aligned at powers of 2).
+ * layout = current HID layout
 """
-    def __init__ (self, inpdescr):
+    def __init__ (self, inpdescr, all_layouts=None):
         gobject.GObject.__init__(self)
         self.inpdescr = inpdescr
-        self.layer = 0
-        self.group = 0
-        self.vislayers = 1
+        self._layer = 0
+        self._group = 0
+        self._vislayers = 1
+        self._layout = None  # key of active inpdescr layout.
+        self.activehid = None  # reference to active inpdescr layout.
 #        self.inpdescr.connect("layer-changed", self.on_inpdescr_layer_changed)
 #        self.inpdescr.connect("group-changed", self.on_inpdescr_group_changed)
         self.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
         self.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
         self.cluster_defaults()
 
+    def get_inpdescr (self):
+        return self.inpdescr
+    def set_inpdescr (self, v):
+        self.inpdescr = v
+
     def get_layer (self):
-        return self.layer
+        return self._layer
     def set_layer (self, val):
-        self.layer = val
-        #self.emit("layer-changed", val)
-        self.emit("display-adjusted")
+        self._layer = val
+        self.emit("layer-changed", val)
+        #self.emit("display-adjusted")
+    layer = property(get_layer, set_layer)
+
     def get_group (self):
-        return self.group
+        return self._group
     def set_group (self, val):
-        self.group = val
-        #self.emit("group-changed", val)
-        self.emit("display-adjusted")
+        self._group = val
+        self.emit("group-changed", val)
+        #self.emit("display-adjusted")
+    group = property(get_group, set_group)
+
     def get_vislayers (self):
-        return self.vislayers
+        return self._vislayers
     def set_vislayers (self, val):
-        self.vislayers = val
-        self.emit("display-adjusted")
+        self._vislayers = val
+        #self.emit("layer-changed", val)
+        #self.emit("display-adjusted")
+        self.emit("vislayers-changed", val)
+    vislayers = property(get_vislayers, set_vislayers)
+
+    def get_layoutname (self):
+        return self._layout
+    def set_layoutname (self, v):
+        self._layout = v
+        # TODO: update layout
+        self.activehid = self._all_layouts[self._layout]
+        self.emit("layout-changed")
+    layoutname = property(get_layoutname, set_layoutname)
+
+    def get_layout (self):
+        return self.activehid
+    layout = property(get_layout)
+
+    def get_layouts (self):
+        return self._all_layouts
+    def set_layouts (self, v):
+        self._all_layouts = v
+        # TODO: update layout - refresh on layout name?
+        self.activehid = self._all_layouts[self._layout]
+        self.emit("layout-changed")
+    layouts = property(get_layouts, set_layouts)
 
     def refresh (self):
         """Induce update of viewers of this model."""
@@ -483,19 +519,24 @@ Display states tracked:
         pass
 
     def clear (self):
+        """Reset to initial state."""
         self.inpdescr.clear()
         self.set_group(0)
         self.set_layer(0)
+        self.set_layoutname(None)
 
     def restore (self, other):
+        """Restore state from another."""
         if not other:
             return
         self.inpdescr.restore(other.inpdescr)
-        self.set_group(0)
-        self.set_layer(0)
+        self.set_group(other.get_group())
+        self.set_layer(other.get_layer())
+        self.set_layoutname(other.get_layoutname)
 
     def cluster_defaults (self):
-        # Handful of default binds.
+        """Handful of default binds."""
+# TODO: somewhere else.
         self.set_bind("LP#", ArrangerDpad.NAME, 0, 0)
         self.set_bind("RP#", ArrangerMouse.NAME, 0, 0)
         self.set_bind("L#", ArrangerJoystick.NAME, 0, 0)
@@ -504,19 +545,19 @@ Display states tracked:
         self.set_bind("DP#", ArrangerDpad.NAME, 0, 0)
         return
 
-    def get_layermap (self, layernum, group=None):
-        """Get layer (dict of keysym:binding) in specified group."""
-        groupnum = group if group is not None else  self.get_group()
-        if (0 <= layernum) and (layernum < self.inpdescr._maxlayers):
-            return self.inpdescr.groups[groupnum].get_layermap(layernum)
-        return None
-    def set_layermap (self, layernum, value, group=None):
-        groupnum = group if group is not None else self.get_group()
-        if (0 <= layernum) and (layernum < self.inpdescr._maxlayers):
-            if value is None:
-                self.inpdescr.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
-            else:
-                self.inpdescr.groups[groupnum].set_layermap(layernum, value)
+#    def get_layermap (self, layernum, group=None):
+#        """Get layer (dict of keysym:binding) in specified group."""
+#        groupnum = group if group is not None else  self.get_group()
+#        if (0 <= layernum) and (layernum < self.inpdescr._maxlayers):
+#            return self.inpdescr.groups[groupnum].get_layermap(layernum)
+#        return None
+#    def set_layermap (self, layernum, value, group=None):
+#        groupnum = group if group is not None else self.get_group()
+#        if (0 <= layernum) and (layernum < self.inpdescr._maxlayers):
+#            if value is None:
+#                self.inpdescr.groups[groupnum].set_layermap(layernum, InpLayer(layernum, 0))
+#            else:
+#                self.inpdescr.groups[groupnum].set_layermap(layernum, value)
 
     def get_bind (self, inpsym,  group=None, layer=None):
         groupnum = group if group is not None else self.get_group()
@@ -622,15 +663,16 @@ Each element is a tuple of (bool, str):
                 return escbindlit
         return ""
 
-    def swap_bind (self, firstsym, secondsym, group=None, layer=None):
-        firstbind = self.get_bind(firstsym, group, layer)
-        secondbind = self.get_bind(secondsym, group, layer)
-        self.set_bind(firstsym, secondbind)
-        self.set_bind(secondsym, firstbind)
-        return
+    __gsignals__ = {
+        "display-adjusted": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ()),
+        "layer-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
+        "group-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
+        "vislayers-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
+        "layout-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
+    }
 
 gobject.type_register(InpDisplayState)
-gobject.signal_new("display-adjusted", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
+#gobject.signal_new("display-adjusted", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, ())
 #gobject.signal_new("layer-changed", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (InpDisplayState, gobject.TYPE_INT,))
 #gobject.signal_new("group-changed", InpDisplayState, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (InpDisplayState, gobject.TYPE_INT,))
 
@@ -761,36 +803,56 @@ class HidBindable (object):
         temp = gtk.Entry()
         self.refstyle = temp.get_style().copy()
 
-    @property
-    def layer (self): return self.dispstate.get_layer()
-    @layer.setter
-    def set_layer (self, val): self.dispstate.set_layer(val)
-    @property
-    def group (self): return self.dispstate.get_group()
-    @group.setter
-    def set_group (self, val): self.dispstate.set_group(val)
-    @property
-    def vislayers (self): return self.dispstate.get_vislayers()
-    @vislayers.setter
-    def set_vislayers (self, val):
-        logger.debug("changing vislayers")
-        self.dispstate.set_vislayers(val)
+        # Currently active layer.
+        self._layer = 0
+        # Number of layers to show at once.
+        self._vislayers = 1
+        # array of visibility, bool per layer.
+        self._layervis = [True]
 
-    def get_bind (self, inpsym, group=None, layer=None):
-        raise NotImplementedError("HidBindinable.get_bind() should not be implemented")
-        #return self.dispstate.get_bind(inpsym, group, layer)
-    def set_bind (self, inpsym, v, group=None, layer=None):
-        raise NotImplementedError("HidBindinable.set_bind() should not be implemented")
-        self.dispstate.set_bind(inpsym, v, group, layer)
-    def resolve_bind (self, inpsym, group=None, layer=None):
-        raise NotImplementedError("HidBindinable.resolve_bind() should not be implemented")
-        return self.dispstate.resolve_bind(inpsym, group, layer)
-    def resolve_bind_markup (self, inpsym, group=None, layer=None):
-        raise NotImplementedError("HidBindinable.resolve_bind_markup() should not be implemented")
-        return self.dispstate.resolve_bind_markup(inpsym, group, layer)
-    def swap_bind (self, firstsym, secondsym, group=None, layer=None):
-        raise NotImplementedError("HidBindinable.swap_bind() should not be implemented")
-        return self.dispstate.swap_bind(firstsym, secondsym, group, layer)
+#    @property
+#    def layer (self): return self.dispstate.get_layer()
+#    @layer.setter
+#    def set_layer (self, val): self.dispstate.set_layer(val)
+#    @property
+#    def group (self): return self.dispstate.get_group()
+#    @group.setter
+#    def set_group (self, val): self.dispstate.set_group(val)
+#    @property
+#    def vislayers (self): return self.dispstate.get_vislayers()
+#    @vislayers.setter
+#    def set_vislayers (self, val):
+#        logger.debug("changing vislayers")
+#        self.dispstate.set_vislayers(val)
+
+    def get_layer (self): return self._layer
+    def set_layer (self, v):
+        self._layer = v
+        self.update_display()
+    layer = property(get_layer, set_layer)
+
+    def get_vislayers (self):
+        return self._vislayers
+    def set_vislayers (self, v):
+        self._vislayers = v
+        self.update_display()
+    vislayers = property(get_vislayers, set_vislayers)
+
+#    def get_bind (self, inpsym, group=None, layer=None):
+#        raise NotImplementedError("HidBindinable.get_bind() should not be implemented")
+#        #return self.dispstate.get_bind(inpsym, group, layer)
+#    def set_bind (self, inpsym, v, group=None, layer=None):
+#        raise NotImplementedError("HidBindinable.set_bind() should not be implemented")
+#        self.dispstate.set_bind(inpsym, v, group, layer)
+#    def resolve_bind (self, inpsym, group=None, layer=None):
+#        raise NotImplementedError("HidBindinable.resolve_bind() should not be implemented")
+#        return self.dispstate.resolve_bind(inpsym, group, layer)
+#    def resolve_bind_markup (self, inpsym, group=None, layer=None):
+#        raise NotImplementedError("HidBindinable.resolve_bind_markup() should not be implemented")
+#        return self.dispstate.resolve_bind_markup(inpsym, group, layer)
+#    def swap_bind (self, firstsym, secondsym, group=None, layer=None):
+#        raise NotImplementedError("HidBindinable.swap_bind() should not be implemented")
+#        return self.dispstate.swap_bind(firstsym, secondsym, group, layer)
 
     def get_label (self):
         raise NotImplementedError("get_label() is abstract")
@@ -799,10 +861,11 @@ class HidBindable (object):
 
     def get_layervis (self):
         # array of bool
-        return self.layervis
+        return self._layervis
     def set_layervis (self, v):
-        self.layervis = v
+        self._layervis = v
         self.update_layervis()
+    layervis = property(get_layervis, set_layervis)
 
     def update_layervis (self):
         # override.
@@ -825,7 +888,8 @@ grpbind = list of bindings (with pango markup), one per layer in sequence."""
         """To avoid lots of for-loop with nested predicates, this walker function calls cb with two arguments: (layer_number, is_visible)."""
         baselayer = self.vislayers * (self.layer / self.vislayers)
         visspan = self.vislayers
-        nlayers = self.dispstate.inpdescr.get_numlayers()
+        #nlayers = self.dispstate.inpdescr.get_numlayers()
+        nlayers = len(self._layervis)
         for i in range(nlayers):
             cb(i, (i >= baselayer) and (i < baselayer+visspan))
         return
@@ -912,7 +976,8 @@ Parent callback:
         self.bindrows = []      # Box for each line of hrule+lyr+bind
         self.inp_box = None
 
-        nlayers = self.dispstate.inpdescr.get_numlayers()
+        #nlayers = self.dispstate.inpdescr.get_numlayers()
+        nlayers = 8
         self.maxlayers = nlayers
         self.uibuild_binddisplays(nlayers)
 
@@ -932,6 +997,9 @@ Parent callback:
                 self.align1.remove(self.inp_box)
             else:
                 logger.debug("no parent %r %r" % (self.inp_box, self.inpsym))
+
+        if nlayers is None:
+            nlayers = self.maxlayers
 
         self.inp_box = gtk.VBox()
 
@@ -1024,6 +1092,7 @@ Parent callback:
         self.mid_vis = False
         self.show_all()
         def visit_bindrow (i, v):
+            logger.debug("visit_bindrow, %r, %r" % (i, v))
             if v:
                 self.bindrows[i].show()
                 if self.mid_vis:
@@ -1045,6 +1114,7 @@ Parent callback:
                 #self.inp_binds[i].set_markup(val)
                 self.lyr_lbls[i].set_visible(self.vislayers > 1)
             else:
+                logger.debug(" hiding %r" % (i,))
                 self.bindrows[i].hide()
                 self.hrules[i].hide()
         self.foreach_layervis(visit_bindrow)
@@ -2075,15 +2145,15 @@ As arrangments can change during run-time, use strategies for rearranging:
     def set_layoutmap (self, val):
         self.arrangerStored.set_layoutmap(val)
 
-    def update_layervis (self):
-        for ch in self.grid.get_children():
-            try:
-                ch.set_layervis(self.layervis)
-            except AttributeError:
-                pass
-            except:
-                raise
-        self.menulist.set_layervis(self.layervis)
+#    def update_layervis (self):
+#        for ch in self.grid.get_children():
+#            try:
+#                ch.set_layervis(self.layervis)
+#            except AttributeError:
+#                pass
+#            except:
+#                raise
+#        self.menulist.set_layervis(self.layervis)
 
     def arrangerTouchmenu (self, cap=2):
         self.detach_all()
@@ -2198,6 +2268,8 @@ As arrangments can change during run-time, use strategies for rearranging:
 
             else:
                 pass
+            hidtop.set_layer(self.get_layer())
+            hidtop.set_layervis(self.get_layervis())
             hidtop.connect('bind-assigned', self.on_subelt_bind_assigned)
             hidtop.connect('bind-swapped', self.on_subelt_bind_swapped)
             hidtop.connect('bind-erased', self.on_subelt_bind_erased)
@@ -2367,11 +2439,51 @@ As arrangments can change during run-time, use strategies for rearranging:
         self.emit("bind-erased", inpsym)
         return True
 
+
+    def get_group (self):
+        return self._group
+    def set_group (self, v):
+        self._group = v
+    def update_group (self):
+        # TODO: update bind displays.
+        pass
+
+    def get_layer (self):
+        return self._layer
+    def set_layer (self, v):
+        """Set current layer, propagagte to children."""
+        logger.debug("%s set_layer %r" % (self.__class__.__name__, v))
+        self._layer = v
+        self.update_layer()
+    def update_layer (self):
+        ## what the first visibile layer is.
+        #baselayer = self._vislayers * (self._layer / self._vislayers)
+        ## how many layers to show at once.
+        #visspan = self._vislayers
+        ## update children to:
+        for ch in self.hidtops.itervalues():
+            ch.set_layer(self._layer)
+        for cl in self.clusters.itervalues():
+            cl.set_layer(self._layer)
+
+    def get_layervis (self):
+        return self._layervis
+    def set_layervis (self, v):
+        self._layervis = v
+        self.update_layervis()
+    def update_layervis (self):
+        for ch in self.hidtops.itervalues():
+            ch.set_layervis(self._layervis)
+        for cl in self.clusters.itervalues():
+            cl.set_layervis(self._layervis)
+        self.menulist.set_layervis(self.layervis)
+        
+
 #    __gsignals__ = HidBindable.__gsignals__.copy().update({
 #      "cluster-type-chnaged": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
 #      })
     __gsignals__ = dict(
-      [(k,v) for k,v in HidBindable.__gsignals__.iteritems() ]
+      [ (k,v) for k,v in HidBindable.__gsignals__.iteritems() ]
       +
       [ (k,v) for k,v in {
         "cluster-type-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
@@ -2406,6 +2518,15 @@ class HidLayoutWidget (gtk.VBox):
         #self.hidview = HidView2(self, "", self.dispstate)
         self.hidview = HidPlanar("", self.dispstate)
 
+        self.layersel = self.LayerSelectorWidget()
+
+        # TODO: from outside.
+        mdl_groups = gtk.ListStore(int, str)
+        mdl_groups.append((0, "Global"))
+        mdl_groups.append((1, "Menu"))
+        mdl_groups.append((2, "Game"))
+        self.groupsel = self.GroupSelectorWidget(mdl_groups)
+
         # Initial layout.
         idx = self.inp_layout.get_active()
         val = self.mdl_layout[idx][0]
@@ -2417,6 +2538,8 @@ class HidLayoutWidget (gtk.VBox):
 
         # Compose GUI.
         self.pack_start(self.row_layout, expand=False, fill=False)
+        self.pack_start(self.groupsel, expand=False, fill=False)
+        self.pack_start(self.layersel, expand=False, fill=False)
         self.pack_start(self.hidview, expand=False, fill=False)
 
         # dumb struct, track signal handler ids.
@@ -2427,6 +2550,10 @@ class HidLayoutWidget (gtk.VBox):
             bind_swapped = dict()
             bind_erased = dict()
         self.signal_handlers = signal_handlers
+
+        self.dispstate.connect("layer-changed", self.on_dispstate_layer_changed)
+        self.dispstate.connect("group-changed", self.on_dispstate_group_changed)
+        self.dispstate.connect("display-adjusted", self.on_dispstate_display_adjusted)
 
         self.rebuild_display()
 
@@ -2452,6 +2579,84 @@ class HidLayoutWidget (gtk.VBox):
         self.row_layout = gtk.HBox()
         self.row_layout.pack_start(self.lbl_layout, expand=False, fill=False)
         self.row_layout.pack_start(self.inp_layout, expand=False, fill=False)
+
+
+    def GroupSelectorWidget (self, mdl_groups):
+        selector = gtk.Frame("Group")
+        selector.mdl = mdl_groups
+        selector.row = gtk.HBox()
+        selector.btnbox = gtk.HButtonBox()
+        selector.buttons = None
+
+        def rebuild_buttons (w):
+            if w.buttons:
+                for btn in w.buttons:
+                    w.buttonbox.remove(btn)
+            w.buttons = list()
+            for grpid in range(len(w.mdl)):
+                # Radio group is first button; make leader if no buttons.
+                grp = w.buttons[0] if w.buttons else None
+                lbl = w.mdl[grpid][1]  # second column => displayed name.
+                btn = gtk.RadioButton(grp, lbl)
+                btn.groupnum = grpid
+                btn.connect('toggled', self.on_group_toggled)
+                w.buttons.append(btn)
+                w.btnbox.add(btn)
+            w.row.show_all()
+            return
+        selector.rebuild_buttons = lambda: rebuild_buttons(selector)
+        def on_data_changed (w, mdl, *args):
+            rebuild_buttons(selector)
+        selector.on_data_changed = lambda *args: on_data_changed(selector, *args)
+
+        selector.mdl.connect("row-changed", selector.on_data_changed)
+        selector.mdl.connect("row-deleted", selector.on_data_changed)
+        selector.mdl.connect("row-inserted", selector.on_data_changed)
+
+        selector.rebuild_buttons()
+        selector.row.pack_start(selector.btnbox, expand=False)
+        selector.add(selector.row)
+        return selector
+
+    def on_group_toggled (self, w, *args):
+        if w.get_active():
+            self.hidview.set_group(w.groupnum)
+            pass
+
+    def LayerSelectorWidget (self):
+        selector = gtk.Frame("Layer")
+        selector.row = gtk.HBox()
+        selector.btnbox = gtk.HButtonBox()
+        selector.buttons = list()
+
+        maxshifters = 3
+        maxlayers = (1 << maxshifters)
+
+        for lyrnum in range(0, maxlayers):
+            sh = []
+            # List the shifters that are involved in activating this layer.
+            for b in range(0, maxshifters):
+                if (lyrnum & (1 << b)):
+                    sh.append("^%s" % (b+1))
+            if sh:
+                lbl = "{} ({})".format(lyrnum, " + ".join(sh))
+            else:
+                lbl = "base"
+            # Group leader is first button; use None to become group leader.
+            grp = selector.buttons[0] if selector.buttons else None
+            btn = gtk.RadioButton(grp, lbl)
+            btn.layernum = lyrnum
+            btn.connect("toggled", self.on_layer_toggled)
+            selector.buttons.append(btn)
+            selector.btnbox.add(btn)
+        selector.row.pack_start(selector.btnbox, expand=True)
+        selector.add(selector.row)
+        return selector
+
+    def on_layer_toggled (self, w, *args):
+        if w.get_active():
+            # Turn on.
+            self.hidview.set_layer(w.layernum)
 
 
     def get_dispstate (self):
@@ -2598,6 +2803,16 @@ class HidLayoutWidget (gtk.VBox):
         hidtop = self.hidview.hidtops.get(inpsym, None)
         if hidtop:
             hidtop.set_dispbinds(grpbind)
+
+    def on_dispstate_layer_changed (self, mdl, newlayer):
+        # TODO: Update all children for new layer.
+        pass
+    def on_dispstate_group_changed (self, mdl, newgroup):
+        # TODO: update all children for new group...
+        pass
+    def on_dispstate_display_adjusted (self, mdl):
+        # TODO: redraw?...
+        pass
 
 #    def on_bind_changed (self, w, *args):
 #        #self.bindmap[w.inpsym] = w.bind
