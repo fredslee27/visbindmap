@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# vim: expandtab shiftwidth=4 :
 
 from __future__ import print_function
 
@@ -10,8 +11,10 @@ import ast
 import kbd_desc
 
 
-class DndOpcodes:  # old-style class.
-    class DndOpcodeEnum (object):  # new-style class.
+class DndOpcodes:  # old-style class; enum symbols are class-scope members.
+    """Drag-And-Drop opcodes enumeration;
+this app overloads the drag-drop 'info' field to act as DnD opcode."""
+    class DndOpcodeEnum (object):  # new-style class; enum values are instances.
         _GENSYM = 1
         def __init__ (self, name, val=None):
             self.name = name
@@ -47,8 +50,31 @@ class DndOpcodes:  # old-style class.
 
 # Logging.
 class Logger (object):
+    """Logger class.
+Instantiate with Logger(Logger.{THRESHOLD}), where TRESHOLD is one of:
+ * fatal  -  user may expect the app to terminate immediately.
+ * error  -  user may expect app state to no longer reflect persistent storage ("gone crazy").
+ * warn   -  user may expect some data to be contrary to expectations ("weird").
+ * info   -  user may expect app to be consistent.
+ * debug  -  debug: development-relevant messages.
+
+Change threshold during runtime by setting property "level":
+ * loggerInstance.set_level(loggerInstance.info)
+ * loggerInstance.level = loggerInstance.error
+
+
+To change log-writing behavior:
+1: assign file-like object to .sink; all log messages use print(..., file=sink)
+ or
+2: Override logmsg(self, lvlnum, *msgparts)
+ * lvlnum = logging level of the message, for filtering purposes.
+ * *msgparts = list of message parts, intended to be concatenated with ' '.
+and is_loggable(lvlnum) as default filtering predicate:
+    if is_loggable(lvlnum): do_log_print(*msgparts)
+
+"""
     def __init__ (self, loglevel=None, sink=sys.stderr):
-        self._sink = sink
+        self.sink = sink
         if loglevel is None: loglevel = Logger.info
         self.set_level(loglevel)
 
@@ -56,19 +82,332 @@ class Logger (object):
     def set_level (self, val): self._level = val.__func__
     level = property(get_level, set_level)
 
-    def __gate (self, lvlnum, lvlmarker, *msgparts):
-        if self._level in self._levels[lvlnum:]:
-            print(lvlmarker, *msgparts, file=self._sink)
-    def fatal (self, *msgparts): self.__gate(0, "!!!", *msgparts)
-    def error (self, *msgparts): self.__gate(1, "***", *msgparts)
-    def warn (self, *msgparts):  self.__gate(2, "---", *msgparts)
-    def info (self, *msgparts):  self.__gate(3, "===", *msgparts)
-    def debug (self, *msgparts): self.__gate(4, "+++", *msgparts)
+    def is_loggable (self, lvlnum):
+        return (self._level in self._levels[lvlnum:])
+    def logmsg (self, lvlnum, *msgparts):
+        if self.is_loggable(lvlnum):
+            markers = [ "!!!", "***", "---", "===", "+++" ]
+            lvlmarker = markers[lvlnum]
+            print(lvlmarker, *msgparts, file=self.sink)
+    def fatal (self, *msgparts): self.logmsg(0, *msgparts)
+    def error (self, *msgparts): self.logmsg(1, *msgparts)
+    def warn (self, *msgparts):  self.logmsg(2, *msgparts)
+    def info (self, *msgparts):  self.logmsg(3, *msgparts)
+    def debug (self, *msgparts): self.logmsg(4, *msgparts)
     _levels = [ fatal, error, warn, info, debug ]
 #logger = Logger(Logger.info)
 logger = Logger(Logger.debug)
 # set log level with: logger.level = logger.warn
 # log with: logger.info("...", "...", ...)
+
+
+
+
+
+
+# hia = Human(-computer) Interface Atom
+# Bind storage model:
+# BindStore = dict of BindGroup
+#  + BindGroup = list of BindLayer
+#    + BindLayer = list of BindEntry
+#      + BindEntry = dict of hiasym => str
+#
+# interface pattern:
+# bindmap[group][layer][hiasym]  =>  str: binding for hiasym in group and layer
+# bindmap[group][layer]  =>  dict: all hiasyms for group and layer
+# bindmap[group]  =>  list: all layers for group
+
+
+class BindLayer (dict):
+    """dict, hiasym => str
+ key = hiasym
+ value = binding
+"""
+    pass
+    def __copy__ (self):
+        retval = dict(self)
+        return retval
+
+class BindGroup (object):
+    """list of BindLayer, one per layer available.
+ index = layer number
+ value = BindLayer
+
+"""
+    def __init__ (self, nlayers=1, fallthrough=None):
+        """
+ nlayers: int = number of layers to start with.
+ fallthrough: BindGroup = another BindGroup to use if resolution fails.
+"""
+        self.layers = list()
+        self.fallthrough = fallthrough
+        self.resize_layers(nlayers)
+        
+    def resize_layers (self, nlayers=1):
+        self.nlayers = nlayers
+        # Try grow to/past count.
+        while len(self.layers) < self.nlayers:
+            self.layers.append(BindLayer())
+        # Cull excess.
+        while len(self.layers) > self.nlayers:
+            del self.layers[-1]
+        return
+
+    def __copy__ (self):
+        retval = BindGroup(self.nlayers, self.fallthrough)
+        for lyridx in range(self.nlayers):
+            retval[lyridx] = self[lyridx].__copy__()
+        return retval
+    # Delegate sequence operators to .layers
+    def __len__ (self):             return len(self.layers)
+    def __getitem__ (self, key):
+        if isinstance(key, slice):
+            # slicing.
+            sliced = self.layers.__getitem__(key)
+            retval = BindGroup(len(sliced), None)
+            retval.layers = sliced
+            return retval
+        else:
+            return self.layers.__getitem__(key)
+    def __missing__ (self, key):    return self.layers.__missing__(key)
+    def __iter__ (self):            return self.layers.__iter__()
+    def __setitem__ (self, key, value): self.layers[key] = value
+    def __setslice__ (self, i, j, seq): self.layers.__setslice__(i,j,seq)
+    def __delslice__ (self, i, j):      self.layers.__delslice__(i,j)
+
+class BindStore (object):
+    """list of BindGroup, one per group available.
+ index = group number
+ value = BindGroup
+"""
+    def __init__ (self, ngroups=1, nlayers=1):
+        self.groups = []
+        self.ngroups = ngroups
+        self.nlayers = nlayers
+        self.resize_layers(self.nlayers)
+        self.resize_groups(self.ngroups)
+    def resize_groups (self, ngroups):
+        self.ngroups = ngroups
+        while len(self.groups) < self.ngroups:
+            self.groups.append(BindGroup(self.nlayers))
+        while len(self.groups) > self.ngroups:
+            del self.groups[-1]
+        return
+    def resize_layers (self, nlayers):
+        self.nlayers = nlayers
+        for bindgrp in self.groups:
+            bindgrp.resize_layers(self.nlayers)
+        return
+    def __copy__ (self):
+        retval = BindStore(self.ngroups, self.nlayers)
+        copymap = dict()    # map fallthrough links.
+        for grpidx in range(len(self.groups)):
+            retval.groups[grpidx] = self.groups[grpidx].__copy__()
+            copymap[self.groups[grpidx]] = retval[grpidx]
+        # Redirect remapped fallthroughs.
+        for grp in retval.groups:
+            if grp.fallthrough:
+                grp.fallthrough = copymap[grp.fallthrough]
+        return retval
+    # Delegate sequence operators to .groups
+    def __len__ (self):             return len(self.groups)
+    def __getitem__ (self, key):    return self.groups.__getitem__(key)
+    def __missing__ (self, key):    return self.groups.__missing__(key)
+    def __iter__ (self):            return self.groups.__iter__()
+    def __setitem__ (self, key, value): self.groups.__setitem__(key, value)
+    def __setslice__ (self, i, j, seq): self.groups.__setslice__(i,j,seq)
+    def __delslice__ (self, i, j):      self.groups.__delslice__(i,j)
+
+
+
+
+class DumbData (object):
+    def __getattr__ (self, attr):
+        return self.__dict__[attr]
+    def __setattr__ (self, attr, val):
+        self.__dict__[attr] = val
+    def __delattr__ (self, attr):
+        del self.__dict__[attr]
+
+
+class Bindable (object):
+    """Base class for widgets showing binds.
+"""
+    def __init__ (self, inpsym, nlayers=None, initbinds=None):
+        self._inpsym = inpsym
+        self._layer = 0     # Currently active layer.
+        if nlayers is None:
+            nlayers = 1
+        self._vis = [False]*nlayers   # List of bool, visibility of each layer; len is total number of layers.
+        self._vis[0] = True
+        if initbinds is None:
+            initbinds = (None,)*len(self._vis)
+        self._binds = initbinds     # Tuple of str, one per layer.  Tuple-ness as the grouping is an intrinsic property (immutability of the sequence).
+
+    @property
+    def nlayers (self): return len(self.vis)
+
+    def get_inpsym (self):
+        return self._inpsym
+    def set_inpsym (self, val):
+        self._inpsym = val
+    inpsym = property(get_inpsym, set_inpsym)
+
+    def get_layer (self):
+        return self._layer
+    def set_layer (self, val):
+        self._layer = val
+    layer = property(get_layer, set_layer)
+
+    def get_vis (self):
+        return self._vis
+    def set_vis (self, val):
+        self._vis = val
+    vis = property(get_vis, set_vis)
+
+    def get_binds (self):
+        return self._binds
+    def set_binds (self, bindlist):
+        if len(bindlist) < self.nlayers:
+            shortage = self.nlayers - len(bindlist)
+            self._binds = tuple(bindlist) + (None,)*shortage
+        elif len(bindlist) > self.nlayers:
+            self._binds = tuple(bindlist)[:self.nlayers]
+        else:
+            self._binds = tuple(bindlist)
+    binds = property(get_binds, set_binds)
+
+class BindableTop (gtk.Button, Bindable):
+    """The bindable atom, metaphor for keyboard key top.
+
+Supports drag-and-drop.  Semantics:
+ * from command set to btop - assign binding : bind-assigned(inpsym, bindval)
+ * from btop to btop - swap binding : bind-swaped(src-inpsym, dst-inpsym)
+ * from btop to command set - erase binding : bind-erased(src-inpsym)
+"""
+    def __init__ (self, inpsym, nlayers=1, vis=None, initbinds=None):
+        Bindable.__init__(self, inpsym, nlayers, initbinds)
+        gtk.Button.__init__(self)
+        self.setup_widgets()
+        self.setup_signals()
+        self.setup_dnd()
+#        self.connect("map", self.on_map)
+#        self.setup_dnd()
+#        self.update_display()
+
+    def setup_widgets (self):
+        # UI components:
+        #  row1 = Label
+        #  row2 = bind,layer[0]
+        #  row3 = bind,layer[1]
+        self.ui = DumbData()
+        self.ui.top = gtk.VBox()
+
+        # First row: element label; gravitate top-left.
+        self.ui.lbl = gtk.Label(str(self.inpsym))
+        self.ui.align0 = gtk.Alignment(0, 0, 0, 0)
+        self.ui.align0.add(self.ui.lbl)
+        self.ui.top.pack_start(self.ui.align0, expand=False, fill=True)
+
+        # Second row: depressed relief for binds.
+        self.ui.frame = gtk.Frame()
+        self.ui.frame.set_shadow_type(gtk.SHADOW_IN)
+        self.ui.dispbox = gtk.VBox()
+        self.ui.align1 = gtk.Alignment(0,0,1,1)  # fill/justify.
+        self.ui.align1.add(self.ui.dispbox)
+        self.ui.frame.add(self.ui.align1)
+        self.ui.top.pack_start(self.ui.frame, expand=False, fill=False)
+
+        # Third row: expanding spacer.
+        self.ui.spacer = gtk.HBox()
+        self.ui.top.pack_start(self.ui.spacer, expand=True, fill=True)
+
+        # Reference widget for styling display labels.
+        temp = gtk.Entry()
+        self.refstyle = temp.get_style().copy()
+        del temp
+
+        # Multiple/variable number of layers to display; all in .dispbox.
+        self.ui.disp = []       # Display binding.
+        self.ui.lyr = []        # Layers labeling prefix to binding.
+        self.ui.bg = []         # Backgrounds for bind displays.
+        self.ui.hrules = []     # List of HSeparator between layer rows.
+        self.ui.rows = []       # Box for each line of hrule+lyr+disp
+
+        # Attach button face.
+        self.add(self.ui.top)
+        self.show_all()
+
+        # (re)adjust binds display.
+        self.adjust_widgets()
+
+#        self.connect("map", self.on_map)
+#        self.setup_dnd()
+#        self.update_display()
+
+    def setup_signals (self):
+        pass
+
+    def setup_dnd (self):
+        pass
+
+    def adjust_widgets (self):
+        # For each binding, generate: a hrule, a lyr Label, a disp Entry, encompassing HBox (row).
+        nlayers = len(self.vis)
+        for lim_checkable in [ self.ui.disp, self.ui.lyr, self.ui.bg, self.ui.hrules, self.ui.rows ]:
+            if len(lim_checkable) < nlayers:
+                lim_checkable.extend([ None, ] * (nlayers - len(lim_checkable)))
+        logger.debug("nlayers = %d" % (nlayers,))
+        nvis = 0
+        for lyrnum in range(nlayers):
+            if not self.ui.hrules[lyrnum]:
+                self.ui.hrules[lyrnum] = gtk.HSeparator() if lyrnum != 0 else gtk.HBox()
+                self.ui.dispbox.pack_start(self.ui.hrules[lyrnum], False, False, 0)
+
+            if not self.ui.disp[lyrnum]:
+                self.ui.disp[lyrnum] = gtk.Label()
+            if not self.ui.lyr[lyrnum]:
+                self.ui.lyr[lyrnum] = gtk.Label("{}:".format(lyrnum))
+            if not self.ui.bg[lyrnum]:
+                self.ui.bg[lyrnum] = gtk.EventBox()
+                self.ui.bg[lyrnum].add(self.ui.disp[lyrnum])
+
+                bg = self.ui.bg[lyrnum]
+                usestyle = self.refstyle.bg
+                if lyrnum == self.layer:
+                    usestyle = self.refstyle.base
+                bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
+                bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
+                bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
+                bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
+
+            if not self.ui.rows[lyrnum]:
+                self.ui.rows[lyrnum] = gtk.HBox()
+                hbox = self.ui.rows[lyrnum]
+                hbox.pack_start(self.ui.lyr[lyrnum], False, False, 0)
+                #hbox.pack_start(self.ui.disp[lyrnum], True, True, 0)
+                hbox.pack_start(self.ui.bg[lyrnum], True, True, 0)
+                self.ui.dispbox.pack_start(hbox, False, False, 0)
+                print("vis[%d] => %r" % (lyrnum, self.vis[lyrnum]))
+            if self.vis[lyrnum]:
+                nvis += 1
+                if not self.ui.lyr[lyrnum].get_visible():
+                    self.ui.rows[lyrnum].show_all()
+                    self.ui.hrules[lyrnum].show()
+            else:
+                if self.ui.lyr[lyrnum].get_visible():
+                    self.ui.hrules[lyrnum].hide()
+                    self.ui.rows[lyrnum].hide_all()
+        # TODO: determine first hrule visible.
+        if nvis == 1:
+            # only one, hide lyr label and all hrules.
+            for lyr in self.ui.lyr:
+                if lyr.get_visible():
+                    lyr.hide_all()
+            for hrule in self.ui.hrules:
+                if hrule.get_visible():
+                    hrule.hide()
+        return
 
 
 class InpLayer (object):
@@ -142,6 +481,7 @@ One group of binding layer.
 Indices are group number.
 
 Multiple layers attach to a group.
+(i.e. contains multiple layers)
 """
     def __init__ (self, groupnum, fallback, numlayers, layers=None):
         self.groupnum = groupnum
@@ -972,7 +1312,7 @@ Parent callback:
         self.inp_binds = []     # Show binding.
         self.lyr_lbls = []      # Layers labeling prefix to binding.
         self.bg_binds = []      # Background for binding display.
-        self.hrules = []        # HSeparators.
+        self.hrules = []        # HSeparator.
         self.bindrows = []      # Box for each line of hrule+lyr+bind
         self.inp_box = None
 
