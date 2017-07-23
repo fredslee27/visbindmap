@@ -41,7 +41,6 @@ Loop ends when coroutine ends (uses return instead of yield)
         b.set_layer(0)
         layout.pack_start(b, True, True, 0)
         #b.set_vis([True, True, True, True])
-        b.adjust_widgets()
 
         #w.show_all()
         self.w.show()
@@ -111,6 +110,46 @@ Loop ends when coroutine ends (uses return instead of yield)
 
         self.runloop(script)
         #time.sleep(4)
+        self.w.hide()
+
+
+    def test_bindlist (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        bb = [
+          hidlayout.BindableTop("K_TEST1", 4),
+          hidlayout.BindableTop("K_TEST2", 4),
+          hidlayout.BindableTop("K_TEST3", 4),
+          hidlayout.BindableTop("K_TEST4", 4),
+          ]
+        self.assertEqual(bb[0].vis, [ True, False, False, False ])
+        v = hidlayout.BindableListView(bb)
+        bb[0].set_layer(0)
+        for x in bb:
+            x.set_vis([True, True, True, True])
+        layout.pack_start(v, True, True, 0)
+        self.assertEqual(v.layer, 0)
+
+        self.w.show()
+        layout.show()
+        v.show()
+
+        def script ():
+            v.update_layer()
+            yield 1
+            bb[0].set_layer(1)
+            v.update_layer()
+            yield 1
+            bb[0].set_vis([True, False, False, False])
+            v.update_vis()
+            yield 1
+            bb[0].set_vis([False, False, True, False])
+            v.update_vis()
+            yield 2
+            return
+
+        self.runloop(script, 1)
         self.w.hide()
 
 

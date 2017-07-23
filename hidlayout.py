@@ -298,6 +298,7 @@ class Bindable (object):
     def update_vis (self): """Called after set_vis; override."""
     def update_binds (self): """Called after set_binds; override."""
 
+
 class BindableTop (gtk.Button, Bindable):
     """The bindable atom, metaphor for keyboard key top.
 
@@ -317,6 +318,7 @@ Supports drag-and-drop.  Semantics:
 #        self.update_display()
 
     def setup_widgets (self):
+        """One-time setup; visual widgets."""
         # UI components:
         #  row1 = Label
         #  row2 = bind,layer[0]
@@ -367,16 +369,10 @@ Supports drag-and-drop.  Semantics:
 #        self.setup_dnd()
 #        self.update_display()
 
-    def setup_signals (self):
-        pass
-
-    def setup_dnd (self):
-        pass
-
     def update_hiasym (self):
+        """HIA symbol changed; may update label."""
         if self.toplabel is None:
-            self.toplabel = self.hiasym
-        # chain reaction into update_toplabel.
+            self.toplabel = self.hiasym  # chain reaction into update_toplabel.
 
     def update_toplabel (self):
         """Update GUI element for hiasym with stored value."""
@@ -388,24 +384,33 @@ Supports drag-and-drop.  Semantics:
         self.ui.lbl.set_markup(toplabel)
 
     def update_layer (self):
+        """Layer updated; repaint highlights."""
         for ofs in range(len(self.ui.bg)):
             bg = self.ui.bg[ofs]
             self.paint_bg(bg, ofs == self.layer)
 
     def update_vis (self):
+        """Visibility updated; ensure consistency with layers widgets."""
         self.adjust_widgets()
 
     def update_binds (self):
+        """Binds updated; (re)populated binds displays."""
         for ofs in range(len(self.binds)):
             bindval = self.binds[ofs]
             binddisp = self.ui.disp[ofs]
+            if bindval is None:
+                bindval = ""
             binddisp.set_markup(bindval)
 
     def paint_bg (self, bg, activestyle):
+        """Set background highlighting for a bind display;
+Copy style of an active Entry for current layer;
+Use style of out-of-focus Entry for all other layers."""
         usestyle = self.refstyle.bg
         if activestyle:
             usestyle = self.refstyle.base
         if bg.usestyle != usestyle:
+            # Update if differs.
             bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
             bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
             bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
@@ -441,6 +446,7 @@ Supports drag-and-drop.  Semantics:
             self.ui.dispbox.pack_start(hbox, False, True, 0)
 
     def adjust_widgets (self):
+        """Dynamically adjust contained widgets."""
         # For each binding, generate: a hrule, a lyr Label, a disp Entry, encompassing HBox (row).
         nlayers = len(self.vis)
         for lim_checkable in [ self.ui.disp, self.ui.lyr, self.ui.bg, self.ui.hrules, self.ui.rows ]:
@@ -474,6 +480,360 @@ Supports drag-and-drop.  Semantics:
         return
 
 
+    def setup_signals (self):
+        """One-time setup, GTK signals."""
+        pass
+
+
+    def setup_dnd (self):
+        """One-time setup, GTK Drag-and-Drop."""
+        # self as DnD source: erase, swap.
+        dnd_targets = [
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.connect("drag-data-get", self.on_drag_data_get)
+        #self.connect("drag-end", self.on_drag_end)
+
+        # self as DnD destination: bind, swap.
+        dnd_targets = [
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
+
+        self.pending_drag_unbinding = False
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # is DnD source.
+        logger.debug("hiatop.drag-data-get: %d" % info)
+        if info == DndOpcodes.UNBIND:
+            # dragged to command set.
+            logger.debug("hiatop: try unbind  %s" % self.inpsym)
+            seldata.set(seldata.target, 8, str(self.inpsym))
+            self.pending_drag_unbinding = True
+            return True
+        if info == DndOpcodes.SWAP:
+            # dragged to another BindableTop.
+            logger.debug("hiatop.drag-data-get for swap")
+            val = self.inpsym
+            seldata.set(seldata.target, 8, str(self.inpsym))
+            return True
+        return False
+
+    def on_drag_end (self, w, ctx, *args):
+        """As DnD source, drag has finished."""
+        if self.pending_drag_unbinding:  # Check if drag-to-unbind.
+            logger.debug("hiatop unbind %s" % self.inpsym)
+            self.emit("bind-erased", self.inpsym)
+            self.pending_drag_unbinding = False
+        return
+#
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        """As DnD destination, data/details received from DnD Source."""
+        logger.debug("%s drag-data-received %r" % (self.__class__.__name__, w))
+        if info == DndOpcodes.BIND:
+            # Commands dropping.
+            seltext = seldata.data
+            logger.debug("hiatop Command install: %s <= %s" % (w.inpsym, seltext))
+            self.emit("bind-assigned", self.inpsym, seltext)
+            ctx.finish(True, False, 0)
+            return True
+        elif info == DndOpcodes.SWAP:
+            othersym = seldata.data
+            logger.debug("hiatop Command swap: %s <=> %s" % (w.inpsym, othersym))
+            #self.swap_bind(w.inpsym, othersym)
+            self.emit("bind-swapped", w.inpsym, othersym)
+            ctx.finish(True, False, 0)
+            return True
+
+
+
+class BindableListStore (gtk.ListStore):
+    def __init__ (self, nlayers):
+        pass
+
+
+class BindableListView (gtk.ScrolledWindow):
+    """TreeView of list-based cluster types.
+    
+Heavily reliant on clusters acting as proxy (hiatop to hiacluster to hiaview, and backwards) to maintain consistency.
+
+Given a list of BindableTops to keep track of (watch).
+
+"""
+#    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
+    def __init__ (self, tracktops):
+        # Based on ScrollWindowed, containing a TreeView
+        gtk.ScrolledWindow.__init__(self)
+
+        #Bindable.__init__(self, "-", "", 1, {})
+
+        self._tracktops = tracktops
+        self.mdl = None
+
+        self.refstyle = gtk.Button().get_style().copy()
+
+        self.setup_states()
+        self.setup_widgets()
+        self.setup_dnd()
+
+#        self.conn_display_adjusted = self.dispstate.connect("display-adjusted", self.on_display_adjusted)
+#        self.conn_bind_changed = self.dispstate.inpdescr.connect("bind-changed", self.on_inpdescr_bind_changed)
+#        self.conn_label_changed = self.dispstate.inpdescr.connect("label-changed", self.on_inpdescr_label_changed)
+
+        self.show_all()
+#        self.update_display()
+
+    def setup_states (self):
+        pass
+
+    def get_nlayers (self):
+        return self._tracktops[0].nlayers
+    nlayers = property(get_nlayers)
+
+    def get_layer (self):
+        return self._tracktops[0].layer
+    layer = property(get_layer)
+
+    def get_vis (self):
+        return self._tracktops[0].vis
+    vis = property(get_vis)
+
+    def get_tracktops (self):
+        return self._tracktops
+    def set_tracktops (self, val):
+        self._tracktops = val
+    tracktops = property(get_tracktops, set_tracktops)
+
+    def update_layer (self):
+        for lyridx in range(self.nlayers):
+            renderer = self.renderers[lyridx]
+            bgrgb = self.refstyle.bg[gtk.STATE_NORMAL]
+            if lyridx == self.layer:
+                bgrgb = self.refstyle.base[gtk.STATE_NORMAL]
+            renderer.props.background = bgrgb
+            self.bindcols[lyridx].set_expand(True)
+        self.queue_draw()
+        return
+
+    def update_vis (self):
+        for lyridx in range(self.nlayers):
+            self.bindcols[lyridx].set_visible(bool(self.vis[lyridx]))
+        return
+
+    def setup_widgets (self):
+        # Data model.
+        nlayers = self.tracktops[0].nlayers
+        cols = (str,str,)  +  (str,) * nlayers
+        self.mdl = gtk.ListStore(*cols)
+        for hiatop in self.tracktops:
+            hiasym = hiatop.hiasym
+            hialbl = hiatop.toplabel
+            hiabinds = hiatop.binds
+            rowdata = (hiasym, hialbl,) + hiabinds
+            self.mdl.append(rowdata)
+
+        # The TreeView
+        self.treeview = gtk.TreeView(self.mdl)
+        self.rendertext = gtk.CellRendererText()
+        nlayers = self.nlayers
+        self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
+        self.treeview.append_column(self.col0)
+        self.bindcols = []
+        self.renderers = []
+        for i in range(nlayers):
+            title = "bind%d" % i
+            renderer = gtk.CellRendererText()
+            renderer.props.background = "gray"
+            datacol = i+1
+            bind_col = gtk.TreeViewColumn(title, renderer, markup=datacol)
+            self.bindcols.append(bind_col)
+            self.renderers.append(renderer)
+            self.treeview.append_column(bind_col)
+
+        self.add(self.treeview)  # and not with viewport.
+
+    def setup_dnd (self):
+        """Set up drag-and-drop."""
+        # DnD Source
+        dnd_targets = [
+          (str(DndOpcodes.REORDER), gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_WIDGET, DndOpcodes.UNBIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.treeview.connect("drag-data-get", self.on_drag_data_get)
+        self.treeview.connect("drag-end", self.on_drag_end)
+
+        # DnD Destination
+        dnd_targets = [
+          (str(DndOpcodes.REORDER), gtk.TARGET_SAME_WIDGET, DndOpcodes.REORDER),
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+          (str(DndOpcodes.SWAP), gtk.TARGET_SAME_APP, DndOpcodes.SWAP),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
+        self.treeview.connect("drag-data-received", self.on_drag_data_received)
+
+        self.droppath = None
+        self.dropunbind = None
+
+    def on_drag_end (self, w, ctx, *args):
+        logger.debug("hidmenulist drag-end")
+        if self.dropunbind:
+            logger.debug("drop-unbind inpsym %s" % self.dropunbind)
+            self.set_bind(self.dropunbind, "")
+            self.dropunbind = None
+        return True
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # As DnD source, determine what was dragged away.
+        treesel = w.get_selection()
+        mdl, pathsels = treesel.get_selected_rows()
+        firstpath = pathsels[0]
+        selrow = mdl[firstpath]
+        hiasym = selrow[0]
+        data = None
+        if info == DndOpcodes.REORDER:
+            # Reordering.  Encoding source path into string.
+            #logger.debug("hialistview drag-data-get reorder")
+            #data = repr(firstpath)
+            pass
+        elif info == DndOpcodes.UNBIND:
+            logger.debug("hidmenulist drag-data-get unbind")
+            data = hiasym
+            self.dropunbind = hiasym
+        elif info == DndOpcodes.SWAP:
+            logger.debug("hidmenulist drag-data-get swap")
+            data = hiasym
+        if data is not None:
+            seldata.set(seldata.target, 8, data)
+
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # As DnD destination, determine what was dragged in.
+        srcw = ctx.get_source_widget()
+        droppath = self.droppath
+        dropinfo = w.get_dest_row_at_pos(x,y)
+        destpath, destpos = None, None
+        if dropinfo:
+            destpath, destpos = dropinfo
+        else:
+            # all cases rely on dropinfo being valid.
+            return False
+
+        if info == DndOpcodes.REORDER:
+#            logger.debug("hidmenulist reorder")
+#            # Reordering internally, seldata.data is tree path.
+#            encoded = seldata.data
+#            srcpath = ast.literal_eval(encoded)
+#            func, bias = {
+#                gtk.TREE_VIEW_DROP_INTO_OR_BEFORE: (self.drag_bind, 0),
+#                gtk.TREE_VIEW_DROP_INTO_OR_AFTER: (self.drag_bind, 0),
+#                gtk.TREE_VIEW_DROP_BEFORE: (self.drag_bind, -1),
+#                gtk.TREE_VIEW_DROP_AFTER: (self.drag_bind, +1),
+#            }.get(destpos, (None,None))
+#            logger.debug("reordering internally: %r vs %r" % (srcpath, destpath))
+#            if callable(func):
+#                func(*(bias, srcpath, destpath))
+#            if ctx.action == gtk.gdk.ACTION_MOVE:
+#                ctx.finish(True, True, time)
+#            return True
+            pass
+        elif info == DndOpcodes.BIND:
+            # bind-drop from commands set, seldata.data is bind (str).
+            logger.debug("hialistview bind-drop")
+            dropinfo = w.get_dest_row_at_pos(x,y)
+            bindval = seldata.data
+            logger.debug("command-dropping: %r" % seltext)
+            hiasym = self.mdl[destpath][0]
+            self.emit("bind-assigned", hiasym, bindval)
+            ctx.finish(True, False, time)
+            return True
+        elif info == DndOpcodes.SWAP:
+            # swap with a hidtop, seldata.data is inpsym.
+            logger.debug("hidmenulist swap")
+            othersym = seldata.data
+            destsym = self.scratch[destpath][0]
+            logger.debug("command-swapping: %r,%r" % (destsym, othersym))
+            self.emit("bind-swapped", destsym, othersym)
+            ctx.finish(True, False, time)
+            return True
+        return False
+
+
+    def drag_bind (self, bias, srcpath, dstpath):
+        # mass pull.
+        #listbinds = [ b for s,b in self.scratch ]
+        listbinds = [ r[1+self.layer] for r in self.scratch ]
+        srcrow = srcpath[0]
+        dstrow = dstpath[0]
+        srcbind = listbinds[srcrow]
+        if bias == 0:
+            listbinds[srcrow] = listbinds[dstrow]
+            listbinds[dstrow] = srcbind
+        else:
+            listbinds[srcrow] = None  # Flag for removal.
+            if bias < 0:
+                listbinds.insert(dstrow, srcbind)
+            elif dstrow < len(listbinds):
+                listbinds.insert(dstrow+1, srcbind)
+            else:
+                listbinds.append(srcbind)
+#            if srcrow > dstrow:
+#                srcrow += 1
+#            del listbinds[srcrow]
+            listbinds = [ x for x in listbinds if x is not None ]
+        # Rebuild scratch from listbinds.
+        self.scratch.clear()
+#        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
+#            self.inpdescr.handler_block(h)
+        for i in range(0, len(listbinds)):
+            bind = listbinds[i]
+            n = i+1
+            inpsym = "{}{}".format(self.inpsymprefix, n)
+            self.set_bind(inpsym, bind)
+            nlayers = self.dispstate.inpdescr.get_numlayers()
+            self.scratch.append((inpsym,) + ("",)*nlayers)
+#        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
+#            self.inpdescr.handler_unblock(h)
+        return
+
+#    def pull_data (self):
+#        """Synchronize .scratch based on InpDescrModel"""
+#        nlayers = self.dispstate.inpdescr.get_numlayers()
+#        for row in self.scratch:
+#            inpsym = row[0]
+#            def visit_bindcol (i, v):
+#                bind_markup = self.resolve_bind_markup(inpsym, layer=i)
+#                row[1+i] = bind_markup
+#            self.foreach_layervis(visit_bindcol)
+
+    def update_display (self):
+        logger.info("menulist update_display")
+
+        def visit_bindcol (i, v):
+            if v:
+                self.bindcols[i].set_visible(True)
+                self.bindcols[i].set_expand(True)
+                if i == self.layer:
+                    # highlighted layer.
+                    usestyle = self.refstyle.base
+                else:
+                    # unhighlighted layer.
+                    usestyle = self.refstyle.bg
+                styleval = usestyle[gtk.STATE_NORMAL]
+                self.renderers[i].props.background = styleval
+            else:
+                self.bindcols[i].set_visible(False)
+        self.foreach_layervis(visit_bindcol)
+        self.queue_draw()
+        return
 
 
 
