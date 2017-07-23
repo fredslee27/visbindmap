@@ -838,6 +838,50 @@ Given a list of BindableTops to keep track of (watch).
 
 
 
+class BindableCluster (gtk.EventBox, Bindable):
+    """Groups together multiple BindableTops into a unit.
+Intended for use in the context of Steam Controller touchpads.
+"""
+#    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
+    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
+        Bindable.__init__(self, hiasym, labels, nlayers, initbinds)
+        # TODO: In the context of Cluster, initbinds indicates what arrangement to use per layer.
+        gtk.EventBox.__init__(self)
+        self._layoutmap = None
+
+        self.setup_states(self)
+        self.setup_widget(self)
+
+    def setup_states (self):
+        pass
+
+    def get_layoutmap (self):
+        return self._layoutmap
+    def set_layoutmap (self, val):
+        self._layoutmap = val
+        self.update_layoutmap()
+    layoutmap = property(get_layoutmap, set_layoutmap)
+
+    def setup_widget (self):
+        self.grid = gtk.Table(12,12,True)
+        # Map of hiasym to hiatop, hiatops grouped in this cluster, not
+        # necessarily visible or attached to grid.
+        # Expect "#c", "#1", "#2", ... "#20".
+        self.hiatops = dict()
+        self.listview = BindableListView()
+
+    def update_layoutmap (self):
+        """Based on .layoutmap, ensure widgets exist and are attached to grid."""
+        for hiadata in self.layoutmap:
+            hiasuffix, lbl, prototyp, x, y, w, h = hiadata
+            hiasym = "{}{}".format(self.hiasym, hiasuffix)
+            if not hiasym in self.hiatops:
+                hiatop = BindableTop(hiasym, self.nlayers, self.vis, initbinds=None)
+                self.hiatops[hiasym] = hiatops
+        return
+
+
+
 
 class InpLayer (object):
     """To be accessed as if dict.
