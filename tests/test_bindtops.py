@@ -1,0 +1,119 @@
+import unittest
+import time
+
+import hidlayout
+import kbd_desc
+import gobject
+import gtk
+
+
+class TestBindtops(unittest.TestCase):
+    def setUp (self):
+        gtk.threads_init()
+        self.bindstore = hidlayout.BindStore(8,8)
+        self.w = gtk.Window()
+        self.w.set_title(self.__class__.__name__)
+        self.w.resize(640, 480)
+
+
+    def runloop (self, script=lambda: 0, pause_scale=0.1):
+        """Run test script, coded as a coroutine.
+Coroutine yield()s number of seconds to pause; gtk event handler runs during the script pause.
+Loop ends when coroutine ends (uses return instead of yield)
+"""
+        phase = 0
+        for pauselen in script():
+            self.w.set_title("{} #{}".format(self.__class__.__name__, phase))
+            t = time.time()
+            timegate = t + (pauselen * pause_scale)
+            while t <= timegate:
+                while gtk.events_pending():
+                    gtk.main_iteration_do(block=False)
+                t = time.time()
+            phase += 1
+
+
+    def test_bindtop (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        b = hidlayout.BindableTop("K_TEST", 4)
+        b.set_layer(0)
+        layout.pack_start(b, True, True, 0)
+        #b.set_vis([True, True, True, True])
+        b.adjust_widgets()
+
+        #w.show_all()
+        self.w.show()
+        layout.show()
+        b.show()
+
+        def script ():
+            self.assertEqual(b.ui.lbl.get_text(), "K_TEST")
+            self.assertFalse(b.ui.lyr[0].get_visible())
+            self.assertFalse(b.ui.lyr[1].get_visible())
+            self.assertFalse(b.ui.lyr[2].get_visible())
+            self.assertFalse(b.ui.lyr[3].get_visible())
+            self.assertTrue(b.ui.rows[0].get_visible())
+            self.assertFalse(b.ui.rows[1].get_visible())
+            self.assertFalse(b.ui.rows[2].get_visible())
+            self.assertFalse(b.ui.rows[3].get_visible())
+            self.assertFalse(b.ui.hrules[1].get_visible())
+            self.assertFalse(b.ui.hrules[2].get_visible())
+            self.assertFalse(b.ui.hrules[3].get_visible())
+            yield 2
+            b.set_vis([True, True, True, True])
+            self.assertEqual(len(b.ui.lyr), 4)
+            self.assertEqual(b.nlayers, 4)
+            self.assertTrue(b.ui.lyr[0].get_visible())
+            self.assertTrue(b.ui.lyr[1].get_visible())
+            self.assertTrue(b.ui.lyr[2].get_visible())
+            self.assertTrue(b.ui.lyr[3].get_visible())
+            self.assertTrue(b.ui.rows[0].get_visible())
+            self.assertTrue(b.ui.rows[1].get_visible())
+            self.assertTrue(b.ui.rows[2].get_visible())
+            self.assertTrue(b.ui.rows[3].get_visible())
+            self.assertTrue(b.ui.hrules[1].get_visible())
+            self.assertTrue(b.ui.hrules[2].get_visible())
+            self.assertTrue(b.ui.hrules[3].get_visible())
+            yield 1
+            b.set_layer(1)
+            yield 1
+            b.set_layer(2)
+            yield 2
+            b.set_vis([True, False, False, False])
+            b.set_layer(0)
+            self.assertTrue(b.ui.rows[0].get_visible())
+            self.assertFalse(b.ui.lyr[0].get_visible())
+            self.assertFalse(b.ui.lyr[1].get_visible())
+            self.assertFalse(b.ui.lyr[2].get_visible())
+            self.assertFalse(b.ui.lyr[3].get_visible())
+            self.assertTrue(b.ui.rows[0].get_visible())
+            self.assertFalse(b.ui.rows[1].get_visible())
+            self.assertFalse(b.ui.rows[2].get_visible())
+            self.assertFalse(b.ui.rows[3].get_visible())
+            self.assertFalse(b.ui.hrules[1].get_visible())
+            self.assertFalse(b.ui.hrules[2].get_visible())
+            self.assertFalse(b.ui.hrules[3].get_visible())
+            yield 2
+            b.set_toplabel("K_TEST_2")
+            yield 2
+            self.assertEqual(b.ui.lbl.get_text(), "K_TEST_2")
+            yield 2
+            b.set_binds(['do_1', 'do_2', 'do_3', 'do_4'])
+            self.assertEqual([r.get_visible() for r in b.ui.rows], [ True, False, False, False ])
+            yield 2
+            b.set_vis([True, True, True, True])
+            yield 2
+            b.set_layer(6)
+            yield 4
+            return
+
+        self.runloop(script)
+        #time.sleep(4)
+        self.w.hide()
+
+
+if __name__ == '__main__':
+    unittest.main()
+

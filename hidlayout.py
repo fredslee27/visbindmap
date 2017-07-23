@@ -233,11 +233,13 @@ class DumbData (object):
 class Bindable (object):
     """Base class for widgets showing binds.
 """
-    def __init__ (self, inpsym, nlayers=None, initbinds=None):
-        self._inpsym = inpsym
+    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
+        self._hiasym = hiasym
+        self._label = label
         self._layer = 0     # Currently active layer.
         if nlayers is None:
             nlayers = 1
+        # TODO: change to tuple?
         self._vis = [False]*nlayers   # List of bool, visibility of each layer; len is total number of layers.
         self._vis[0] = True
         if initbinds is None:
@@ -247,22 +249,34 @@ class Bindable (object):
     @property
     def nlayers (self): return len(self.vis)
 
-    def get_inpsym (self):
-        return self._inpsym
-    def set_inpsym (self, val):
-        self._inpsym = val
-    inpsym = property(get_inpsym, set_inpsym)
+    def get_hiasym (self):
+        return self._hiasym
+    def set_hiasym (self, val):
+        self._hiasym = val
+        self.update_hiasym()
+    hiasym = property(get_hiasym, set_hiasym)
+
+    def get_toplabel (self):
+        return self._label
+    def set_toplabel (self, val):
+        self._label = val
+        self.update_toplabel()
+    def del_toplabel (self, val):
+        self.set_toplabel(None)
+    toplabel = property(get_toplabel, set_toplabel, del_toplabel)
 
     def get_layer (self):
         return self._layer
     def set_layer (self, val):
         self._layer = val
+        self.update_layer()
     layer = property(get_layer, set_layer)
 
     def get_vis (self):
         return self._vis
     def set_vis (self, val):
         self._vis = val
+        self.update_vis()
     vis = property(get_vis, set_vis)
 
     def get_binds (self):
@@ -275,18 +289,25 @@ class Bindable (object):
             self._binds = tuple(bindlist)[:self.nlayers]
         else:
             self._binds = tuple(bindlist)
+        self.update_binds()
     binds = property(get_binds, set_binds)
+
+    def update_hiasym (self): """Called after set_hiasym; override."""
+    def update_toplabel (self): """Called after set_toplabel; override."""
+    def update_layer (self): """Called after set_layer; override."""
+    def update_vis (self): """Called after set_vis; override."""
+    def update_binds (self): """Called after set_binds; override."""
 
 class BindableTop (gtk.Button, Bindable):
     """The bindable atom, metaphor for keyboard key top.
 
 Supports drag-and-drop.  Semantics:
- * from command set to btop - assign binding : bind-assigned(inpsym, bindval)
- * from btop to btop - swap binding : bind-swaped(src-inpsym, dst-inpsym)
- * from btop to command set - erase binding : bind-erased(src-inpsym)
+ * from command set to btop - assign binding : bind-assigned(hiasym, bindval)
+ * from btop to btop - swap binding : bind-swaped(src-hiasym, dst-hiasym)
+ * from btop to command set - erase binding : bind-erased(src-hiasym)
 """
-    def __init__ (self, inpsym, nlayers=1, vis=None, initbinds=None):
-        Bindable.__init__(self, inpsym, nlayers, initbinds)
+    def __init__ (self, hiasym, nlayers=1, vis=None, initbinds=None):
+        Bindable.__init__(self, hiasym, None, nlayers, initbinds)
         gtk.Button.__init__(self)
         self.setup_widgets()
         self.setup_signals()
@@ -304,7 +325,7 @@ Supports drag-and-drop.  Semantics:
         self.ui.top = gtk.VBox()
 
         # First row: element label; gravitate top-left.
-        self.ui.lbl = gtk.Label(str(self.inpsym))
+        self.ui.lbl = gtk.Label()
         self.ui.align0 = gtk.Alignment(0, 0, 0, 0)
         self.ui.align0.add(self.ui.lbl)
         self.ui.top.pack_start(self.ui.align0, expand=False, fill=True)
@@ -313,10 +334,10 @@ Supports drag-and-drop.  Semantics:
         self.ui.frame = gtk.Frame()
         self.ui.frame.set_shadow_type(gtk.SHADOW_IN)
         self.ui.dispbox = gtk.VBox()
-        self.ui.align1 = gtk.Alignment(0,0,1,1)  # fill/justify.
+        self.ui.align1 = gtk.Alignment(0,0,1,1)  # gravitate top+left.
         self.ui.align1.add(self.ui.dispbox)
         self.ui.frame.add(self.ui.align1)
-        self.ui.top.pack_start(self.ui.frame, expand=False, fill=False)
+        self.ui.top.pack_start(self.ui.frame, expand=False, fill=True)
 
         # Third row: expanding spacer.
         self.ui.spacer = gtk.HBox()
@@ -339,6 +360,7 @@ Supports drag-and-drop.  Semantics:
         self.show_all()
 
         # (re)adjust binds display.
+        self.update_toplabel()
         self.adjust_widgets()
 
 #        self.connect("map", self.on_map)
@@ -351,6 +373,73 @@ Supports drag-and-drop.  Semantics:
     def setup_dnd (self):
         pass
 
+    def update_hiasym (self):
+        if self.toplabel is None:
+            self.toplabel = self.hiasym
+        # chain reaction into update_toplabel.
+
+    def update_toplabel (self):
+        """Update GUI element for hiasym with stored value."""
+        toplabel = self.toplabel
+        if toplabel is None:
+            toplabel = self.hiasym
+        if toplabel is None:
+            toplabel = "(???)"
+        self.ui.lbl.set_markup(toplabel)
+
+    def update_layer (self):
+        for ofs in range(len(self.ui.bg)):
+            bg = self.ui.bg[ofs]
+            self.paint_bg(bg, ofs == self.layer)
+
+    def update_vis (self):
+        self.adjust_widgets()
+
+    def update_binds (self):
+        for ofs in range(len(self.binds)):
+            bindval = self.binds[ofs]
+            binddisp = self.ui.disp[ofs]
+            binddisp.set_markup(bindval)
+
+    def paint_bg (self, bg, activestyle):
+        usestyle = self.refstyle.bg
+        if activestyle:
+            usestyle = self.refstyle.base
+        if bg.usestyle != usestyle:
+            bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
+            bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
+            bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
+            bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
+            bg.usestyle = usestyle
+
+    def goal_binddisp (self, ofs):
+        """Ensure a complete set of binddisp for layer 'ofs'."""
+        if not self.ui.hrules[ofs]:
+            self.ui.hrules[ofs] = gtk.HSeparator() if ofs != 0 else gtk.HBox()
+            self.ui.dispbox.pack_start(self.ui.hrules[ofs], False, True, 0)
+
+        if not self.ui.lyr[ofs]:
+            self.ui.lyr[ofs] = gtk.Label("{}:".format(ofs))
+        if not self.ui.disp[ofs]:
+            self.ui.disp[ofs] = gtk.Label()
+            self.ui.disp[ofs].set_alignment(0, 0.5)
+            self.ui.disp[ofs].set_width_chars(4)
+            self.ui.disp[ofs].set_justify(gtk.JUSTIFY_LEFT)
+        if not self.ui.bg[ofs]:
+            self.ui.bg[ofs] = gtk.EventBox()
+            self.ui.bg[ofs].add(self.ui.disp[ofs])
+
+            self.ui.bg[ofs].usestyle = None
+            self.paint_bg(self.ui.bg[ofs], ofs == self.layer)
+
+        if not self.ui.rows[ofs]:
+            self.ui.rows[ofs] = gtk.HBox()
+            hbox = self.ui.rows[ofs]
+            hbox.pack_start(self.ui.lyr[ofs], False, False, 0)
+            #hbox.pack_start(self.ui.disp[ofs], True, True, 0)
+            hbox.pack_start(self.ui.bg[ofs], True, True, 0)
+            self.ui.dispbox.pack_start(hbox, False, True, 0)
+
     def adjust_widgets (self):
         # For each binding, generate: a hrule, a lyr Label, a disp Entry, encompassing HBox (row).
         nlayers = len(self.vis)
@@ -359,39 +448,14 @@ Supports drag-and-drop.  Semantics:
                 lim_checkable.extend([ None, ] * (nlayers - len(lim_checkable)))
         nvis = 0
         for lyrnum in range(nlayers):
-            if not self.ui.hrules[lyrnum]:
-                self.ui.hrules[lyrnum] = gtk.HSeparator() if lyrnum != 0 else gtk.HBox()
-                self.ui.dispbox.pack_start(self.ui.hrules[lyrnum], False, False, 0)
-
-            if not self.ui.disp[lyrnum]:
-                self.ui.disp[lyrnum] = gtk.Label()
-            if not self.ui.lyr[lyrnum]:
-                self.ui.lyr[lyrnum] = gtk.Label("{}:".format(lyrnum))
-            if not self.ui.bg[lyrnum]:
-                self.ui.bg[lyrnum] = gtk.EventBox()
-                self.ui.bg[lyrnum].add(self.ui.disp[lyrnum])
-
-                bg = self.ui.bg[lyrnum]
-                usestyle = self.refstyle.bg
-                if lyrnum == self.layer:
-                    usestyle = self.refstyle.base
-                bg.modify_bg(gtk.STATE_NORMAL, usestyle[gtk.STATE_NORMAL])
-                bg.modify_bg(gtk.STATE_ACTIVE, usestyle[gtk.STATE_ACTIVE])
-                bg.modify_bg(gtk.STATE_PRELIGHT, usestyle[gtk.STATE_PRELIGHT])
-                bg.modify_bg(gtk.STATE_SELECTED, usestyle[gtk.STATE_SELECTED])
-
-            if not self.ui.rows[lyrnum]:
-                self.ui.rows[lyrnum] = gtk.HBox()
-                hbox = self.ui.rows[lyrnum]
-                hbox.pack_start(self.ui.lyr[lyrnum], False, False, 0)
-                #hbox.pack_start(self.ui.disp[lyrnum], True, True, 0)
-                hbox.pack_start(self.ui.bg[lyrnum], True, True, 0)
-                self.ui.dispbox.pack_start(hbox, False, False, 0)
+            self.goal_binddisp(lyrnum)
+            # Juggle visibility.
             if self.vis[lyrnum]:
                 nvis += 1
                 if not self.ui.lyr[lyrnum].get_visible():
                     self.ui.rows[lyrnum].show_all()
                     if nvis == 1:
+                        # keep hidden if first hrule to be made visible.
                         self.ui.hrules[lyrnum].hide()
                     else:
                         self.ui.hrules[lyrnum].show()
@@ -399,7 +463,6 @@ Supports drag-and-drop.  Semantics:
                 if self.ui.lyr[lyrnum].get_visible():
                     self.ui.hrules[lyrnum].hide()
                     self.ui.rows[lyrnum].hide_all()
-        # TODO: determine first hrule visible.
         if nvis == 1:
             # only one, hide lyr label and all hrules.
             for lyr in self.ui.lyr:
@@ -409,6 +472,11 @@ Supports drag-and-drop.  Semantics:
                 if hrule.get_visible():
                     hrule.hide()
         return
+
+
+
+
+
 
 
 class InpLayer (object):
