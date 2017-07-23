@@ -357,7 +357,6 @@ Supports drag-and-drop.  Semantics:
         for lim_checkable in [ self.ui.disp, self.ui.lyr, self.ui.bg, self.ui.hrules, self.ui.rows ]:
             if len(lim_checkable) < nlayers:
                 lim_checkable.extend([ None, ] * (nlayers - len(lim_checkable)))
-        logger.debug("nlayers = %d" % (nlayers,))
         nvis = 0
         for lyrnum in range(nlayers):
             if not self.ui.hrules[lyrnum]:
@@ -388,12 +387,14 @@ Supports drag-and-drop.  Semantics:
                 #hbox.pack_start(self.ui.disp[lyrnum], True, True, 0)
                 hbox.pack_start(self.ui.bg[lyrnum], True, True, 0)
                 self.ui.dispbox.pack_start(hbox, False, False, 0)
-                print("vis[%d] => %r" % (lyrnum, self.vis[lyrnum]))
             if self.vis[lyrnum]:
                 nvis += 1
                 if not self.ui.lyr[lyrnum].get_visible():
                     self.ui.rows[lyrnum].show_all()
-                    self.ui.hrules[lyrnum].show()
+                    if nvis == 1:
+                        self.ui.hrules[lyrnum].hide()
+                    else:
+                        self.ui.hrules[lyrnum].show()
             else:
                 if self.ui.lyr[lyrnum].get_visible():
                     self.ui.hrules[lyrnum].hide()
