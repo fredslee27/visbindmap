@@ -117,11 +117,12 @@ Loop ends when coroutine ends (uses return instead of yield)
         layout = gtk.VBox()
         self.w.add(layout)
 
+        vis = [ True, False, False, False ]
         bb = [
-          hidlayout.BindableTop("K_TEST1", 4),
-          hidlayout.BindableTop("K_TEST2", 4),
-          hidlayout.BindableTop("K_TEST3", 4),
-          hidlayout.BindableTop("K_TEST4", 4),
+          hidlayout.BindableTop("K_TEST1", None, vis),
+          hidlayout.BindableTop("K_TEST2", None, vis),
+          hidlayout.BindableTop("K_TEST3", None, vis),
+          hidlayout.BindableTop("K_TEST4", None, vis),
           ]
         self.assertEqual(bb[0].vis, [ True, False, False, False ])
         v = hidlayout.BindableListView(bb)
@@ -148,6 +149,67 @@ Loop ends when coroutine ends (uses return instead of yield)
             v.update_vis()
             yield 2
             return
+
+        self.runloop(script, 1)
+        self.w.hide()
+
+    def test_bindcluster0 (self):
+        # Test as top-level hiacluster.
+        layout = gtk.VBox()
+        self.w.add(layout)
+        vis = (True,) + (False,)*7
+        bc = hidlayout.BindableCluster("NEOGEO#", "NEOGEO#", vis, [])
+        mdl = hidlayout.HidLayoutStore("test")
+        mdl.append(None, ("A", "A", "key", 0, 3, 3, 3))
+        mdl.append(None, ("B", "B", "key", 3, 0, 3, 3))
+        mdl.append(None, ("C", "C", "key", 6, 0, 3, 3))
+        mdl.append(None, ("D", "D", "key", 9, 0, 3, 3))
+        bc.set_layoutmap(mdl)
+
+        layout.add(bc)
+        layout.show()
+        self.w.show()
+
+        def script ():
+            yield 2
+
+        self.runloop(script, 1)
+        self.w.hide()
+
+    def test_bindcluster1 (self):
+        # Test as top-level hiacluster.
+        layout = gtk.VBox()
+        self.w.add(layout)
+        vis = (True,) + (False,)*7
+        bc = hidlayout.BindableCluster("", "", vis, [])
+#        mdl = hidlayout.HidLayoutStore("test")
+#        mdl.build_from_rowrun(kbd_desc.KBD['en_US (pc104)'])
+        mdl = hidlayout.implicit_layouts['en_US (pc104)']
+        bc.set_layoutmap(mdl)
+
+        layout.add(bc)
+        layout.show()
+        self.w.show()
+
+        def script ():
+            yield 5
+
+        self.runloop(script, 1)
+        self.w.hide()
+
+    def test_bindwidget (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        bv = hidlayout.BindableLayoutWidget(None)
+
+        layout.add(bv)
+        layout.show()
+        bv.show()
+        self.w.show()
+
+        def script ():
+            yield 5
 
         self.runloop(script, 1)
         self.w.hide()

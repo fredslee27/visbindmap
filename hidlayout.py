@@ -233,15 +233,14 @@ class DumbData (object):
 class Bindable (object):
     """Base class for widgets showing binds.
 """
-    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
+    def __init__ (self, hiasym, label=None, vis=None, initbinds=None):
         self._hiasym = hiasym
         self._label = label
         self._layer = 0     # Currently active layer.
-        if nlayers is None:
-            nlayers = 1
+        if vis is None:
+            vis = [ True ]
         # TODO: change to tuple?
-        self._vis = [False]*nlayers   # List of bool, visibility of each layer; len is total number of layers.
-        self._vis[0] = True
+        self._vis = vis  # List of bool, visibility of each layer; len is total number of layers.
         if initbinds is None:
             initbinds = (None,)*len(self._vis)
         self._binds = initbinds     # Tuple of str, one per layer.  Tuple-ness as the grouping is an intrinsic property (immutability of the sequence).
@@ -307,8 +306,8 @@ Supports drag-and-drop.  Semantics:
  * from btop to btop - swap binding : bind-swaped(src-hiasym, dst-hiasym)
  * from btop to command set - erase binding : bind-erased(src-hiasym)
 """
-    def __init__ (self, hiasym, nlayers=1, vis=None, initbinds=None):
-        Bindable.__init__(self, hiasym, None, nlayers, initbinds)
+    def __init__ (self, hiasym, label=None, vis=None, initbinds=None):
+        Bindable.__init__(self, hiasym, label, vis, initbinds)
         gtk.Button.__init__(self)
         self.setup_widgets()
         self.setup_signals()
@@ -381,7 +380,7 @@ Supports drag-and-drop.  Semantics:
             toplabel = self.hiasym
         if toplabel is None:
             toplabel = "(???)"
-        self.ui.lbl.set_markup(toplabel)
+        self.ui.lbl.set_markup(str(toplabel))
 
     def update_layer (self):
         """Layer updated; repaint highlights."""
@@ -520,16 +519,16 @@ Use style of out-of-focus Entry for all other layers."""
         if info == DndOpcodes.SWAP:
             # dragged to another BindableTop.
             logger.debug("hiatop.drag-data-get for swap")
-            val = self.inpsym
-            seldata.set(seldata.target, 8, str(self.inpsym))
+            val = self.hiasym
+            seldata.set(seldata.target, 8, str(self.hiasym))
             return True
         return False
 
     def on_drag_end (self, w, ctx, *args):
         """As DnD source, drag has finished."""
         if self.pending_drag_unbinding:  # Check if drag-to-unbind.
-            logger.debug("hiatop unbind %s" % self.inpsym)
-            self.emit("bind-erased", self.inpsym)
+            logger.debug("hiatop unbind %s" % self.hiasym)
+            self.emit("bind-erased", self.hiasym)
             self.pending_drag_unbinding = False
         return
 #
@@ -539,15 +538,15 @@ Use style of out-of-focus Entry for all other layers."""
         if info == DndOpcodes.BIND:
             # Commands dropping.
             seltext = seldata.data
-            logger.debug("hiatop Command install: %s <= %s" % (w.inpsym, seltext))
-            self.emit("bind-assigned", self.inpsym, seltext)
+            logger.debug("hiatop Command install: %s <= %s" % (w.hiasym, seltext))
+            self.emit("bind-assigned", self.hiasym, seltext)
             ctx.finish(True, False, 0)
             return True
         elif info == DndOpcodes.SWAP:
             othersym = seldata.data
-            logger.debug("hiatop Command swap: %s <=> %s" % (w.inpsym, othersym))
-            #self.swap_bind(w.inpsym, othersym)
-            self.emit("bind-swapped", w.inpsym, othersym)
+            logger.debug("hiatop Command swap: %s <=> %s" % (w.hiasym, othersym))
+            #self.swap_bind(w.hiasym, othersym)
+            self.emit("bind-swapped", w.hiasym, othersym)
             ctx.finish(True, False, 0)
             return True
 
@@ -593,7 +592,10 @@ Given a list of BindableTops to keep track of (watch).
         pass
 
     def get_nlayers (self):
-        return self._tracktops[0].nlayers
+        try:
+            return self._tracktops[0].nlayers
+        except IndexError:
+            return 1
     nlayers = property(get_nlayers)
 
     def get_layer (self):
@@ -628,13 +630,19 @@ Given a list of BindableTops to keep track of (watch).
 
     def setup_widgets (self):
         # Data model.
-        nlayers = self.tracktops[0].nlayers
+        nlayers = 1
+        try:
+            nlayers = self.tracktops[0].nlayers
+        except IndexError:
+            pass
         cols = (str,str,)  +  (str,) * nlayers
         self.mdl = gtk.ListStore(*cols)
         for hiatop in self.tracktops:
             hiasym = hiatop.hiasym
             hialbl = hiatop.toplabel
             hiabinds = hiatop.binds
+            if hialbl is None:
+                hialbl = hiasym
             rowdata = (hiasym, hialbl,) + hiabinds
             self.mdl.append(rowdata)
 
@@ -642,7 +650,7 @@ Given a list of BindableTops to keep track of (watch).
         self.treeview = gtk.TreeView(self.mdl)
         self.rendertext = gtk.CellRendererText()
         nlayers = self.nlayers
-        self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=0)
+        self.col0 = gtk.TreeViewColumn("#", self.rendertext, text=1)
         self.treeview.append_column(self.col0)
         self.bindcols = []
         self.renderers = []
@@ -650,7 +658,7 @@ Given a list of BindableTops to keep track of (watch).
             title = "bind%d" % i
             renderer = gtk.CellRendererText()
             renderer.props.background = "gray"
-            datacol = i+1
+            datacol = i+2
             bind_col = gtk.TreeViewColumn(title, renderer, markup=datacol)
             self.bindcols.append(bind_col)
             self.renderers.append(renderer)
@@ -841,19 +849,24 @@ Given a list of BindableTops to keep track of (watch).
 class BindableCluster (gtk.EventBox, Bindable):
     """Groups together multiple BindableTops into a unit.
 Intended for use in the context of Steam Controller touchpads.
+Also re-used for the top-level layout view.
+
+Composed of two parts visible at any one time:
+* Grid layout
+* List layout
 """
 #    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
-    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
-        Bindable.__init__(self, hiasym, labels, nlayers, initbinds)
+    def __init__ (self, hiasym, label=None, vis=None, initbinds=None):
+        Bindable.__init__(self, hiasym, label, vis, initbinds)
         # TODO: In the context of Cluster, initbinds indicates what arrangement to use per layer.
         gtk.EventBox.__init__(self)
         self._layoutmap = None
 
-        self.setup_states(self)
-        self.setup_widget(self)
+        self.setup_states()
+        self.setup_widget()
 
     def setup_states (self):
-        pass
+        self.hiatops = dict()
 
     def get_layoutmap (self):
         return self._layoutmap
@@ -863,22 +876,58 @@ Intended for use in the context of Steam Controller touchpads.
     layoutmap = property(get_layoutmap, set_layoutmap)
 
     def setup_widget (self):
-        self.grid = gtk.Table(12,12,True)
+        class ui:
+            pass
+        self.ui = ui
+        if self.hiasym:
+            self.ui.frame = gtk.Frame()
+            self.ui.frame.set_shadow_type(gtk.SHADOW_IN)
+            self.ui.lbl = gtk.Label(self.hiasym)
+            self.ui.row_lbl = gtk.HBox()
+            self.ui.row_lbl.pack_start(self.ui.lbl, False, False, 0)
+            self.ui.row_lbl.show_all()
+            self.ui.frame.set_label_widget(self.ui.row_lbl)
+        self.ui.top = gtk.VBox()
+        self.ui.grid = gtk.Table(12,12,True)
         # Map of hiasym to hiatop, hiatops grouped in this cluster, not
         # necessarily visible or attached to grid.
         # Expect "#c", "#1", "#2", ... "#20".
-        self.hiatops = dict()
-        self.listview = BindableListView()
+        self.ui.listview = BindableListView([])
+
+        self.ui.top.pack_start(self.ui.grid, True, True, 0)
+        if self.hiasym:
+            self.ui.frame.add(self.ui.top)
+            self.add(self.ui.frame)
+            self.ui.frame.show()
+        else:
+            self.add(self.ui.top)
+
+        self.ui.grid.show()
+        self.ui.top.show()
+        self.show()
 
     def update_layoutmap (self):
         """Based on .layoutmap, ensure widgets exist and are attached to grid."""
+        # Detach all existent hia.
+        for ch in self.ui.grid.children():
+            self.ui.grid.remove(ch)
+
+        # Attach all specified hia.
         for hiadata in self.layoutmap:
             hiasuffix, lbl, prototyp, x, y, w, h = hiadata
             hiasym = "{}{}".format(self.hiasym, hiasuffix)
             if not hiasym in self.hiatops:
-                hiatop = BindableTop(hiasym, self.nlayers, self.vis, initbinds=None)
-                self.hiatops[hiasym] = hiatops
-        return
+                hiatop = BindableTop(hiasym, lbl, self.vis, initbinds=None)
+                self.hiatops[hiasym] = hiatop
+            else:
+                hiatop = self.hiatops[hiasym]
+                hiatop.set_vis(self.vis)
+                # TODO: update bind?
+            self.ui.grid.attach(hiatop, x, x+w, y, y+h)
+            hiatop.show()
+        self.ui.grid.show()
+        self.ui.top.show()
+        self.show()
 
 
 
@@ -3309,6 +3358,252 @@ As arrangments can change during run-time, use strategies for rearranging:
 
 implicit_layouts = HidLayouts()
 implicit_layouts.build_from_legacy_store()
+
+
+
+
+class BindableLayoutWidget (gtk.VBox):
+    """Controller wrapper to BindablwLayoutView.
+"""
+    def __init__ (self, all_layouts, init_layout=None):
+        # TODO: use init_layout for initial layoutname.
+        gtk.VBox.__init__(self)
+        self.all_layouts = None
+        if self.all_layouts is None:
+            self.all_layouts = implicit_layouts
+
+        self.setup_widget()
+
+        # dumb struct, track signal handler ids.
+        class signal_handlers:
+            clicked = dict()
+            cluster_type_changed = dict()
+            bind_assigned = dict()
+            bind_swapped = dict()
+            bind_erased = dict()
+        self.signal_handlers = signal_handlers
+
+#        self.rebuild_display()
+
+        self.setup_signals()
+
+    def setup_state (self):
+        self._activename = None
+        self._activehid = None
+
+    def setup_widget (self):
+        class ui:
+            pass
+        self.ui = ui
+
+        # Primary bindables view.
+        self.ui.hidview = BindableCluster("")
+
+        # Data model for layout selector.
+        self.mdl_layout = gtk.ListStore(str)
+        hidnames = sorted(self.all_layouts.keys())
+        for k in hidnames:
+            self.mdl_layout.append((k,))
+
+        # Row with layout selector.
+        self.ui.sel_layout = self.LayoutSelectorWidget(self.mdl_layout)
+        self.ui.lbl_layout = gtk.Label("Layout:")
+        self.ui.row_layout = gtk.HBox()
+        self.ui.row_layout.pack_start(self.ui.lbl_layout, False, False, 0)
+        self.ui.row_layout.pack_start(self.ui.sel_layout, False, False, 0)
+
+        # Data model for group selector.
+        self.mdl_groups = gtk.ListStore(int, str)
+        for datum in [ (0,"Global"), (1,"Menu"), (2,"Game") ]:
+            self.mdl_groups.append(datum)
+
+        # Row with group selector.
+        self.ui.sel_group = self.GroupSelectorWidget(self.mdl_groups)
+
+        # Row with layer selector.
+        self.ui.sel_layer = self.LayerSelectorWidget()
+
+        self.pack_start(self.ui.row_layout, False, False, 0)
+        self.pack_start(self.ui.sel_group, False, False, 0)
+        self.pack_start(self.ui.sel_layer, False, False, 0)
+        self.pack_start(self.ui.hidview, False, False, 0)
+        #self.hidview.show()
+        #self.show_all()
+        self.ui.row_layout.show_all()
+        self.ui.sel_group.show_all()
+        self.ui.sel_layer.show_all()
+        self.ui.hidview.show()
+
+        # Initial layout.
+        idx = self.ui.sel_layout.get_active()
+        val = self.mdl_layout[idx][0]
+        self.activename = val  # trigger update_activehid()
+
+    def setup_signals (self):
+        self.ui.sel_layout.connect('changed', self.on_layout_changed)
+        return
+
+    def LayoutSelectorWidget (self, mdl_layouts):
+        # Combo (drop) list.
+        selector = gtk.ComboBox(mdl_layouts)
+        selector.cell_layout = gtk.CellRendererText()
+        selector.pack_start(selector.cell_layout)
+        selector.add_attribute(selector.cell_layout, 'text', 0)
+        selector.set_active(0)
+        return selector
+
+    def on_layout_changed (self, w, *args):
+        idx = w.get_active()
+        data = self.mdl_layout[idx]
+        val = data[0]
+        self.activename = val   # trigger update_activehid()
+        #self.activehid = self.all_layouts[val]
+        #self.hidview.set_layoutmap(self.activehid)
+        self.show()
+
+    def GroupSelectorWidget (self, mdl_groups):
+        selector = gtk.Frame("Group")
+        selector.mdl = mdl_groups
+        selector.row = gtk.HBox()
+        selector.btnbox = gtk.HButtonBox()
+        selector.buttons = None
+
+        def rebuild_buttons (w):
+            if w.buttons:
+                for btn in w.buttons:
+                    w.buttonbox.remove(btn)
+            w.buttons = list()
+            for grpid in range(len(w.mdl)):
+                # Radio group is first button; make leader if no buttons.
+                grp = w.buttons[0] if w.buttons else None
+                lbl = w.mdl[grpid][1]  # second column => displayed name.
+                btn = gtk.RadioButton(grp, lbl)
+                btn.groupnum = grpid
+                btn.connect('toggled', self.on_group_toggled)
+                w.buttons.append(btn)
+                w.btnbox.add(btn)
+            w.row.show_all()
+            return
+        selector.rebuild_buttons = lambda: rebuild_buttons(selector)
+        def on_data_changed (w, mdl, *args):
+            rebuild_buttons(selector)
+        selector.on_data_changed = lambda *args: on_data_changed(selector, *args)
+
+        selector.mdl.connect("row-changed", selector.on_data_changed)
+        selector.mdl.connect("row-deleted", selector.on_data_changed)
+        selector.mdl.connect("row-inserted", selector.on_data_changed)
+
+        selector.rebuild_buttons()
+        selector.row.pack_start(selector.btnbox, expand=False)
+        selector.add(selector.row)
+        return selector
+
+    def on_group_toggled (self, w, *args):
+        if w.get_active():
+            self.ui.hidview.set_group(w.groupnum)
+            pass
+
+    def LayerSelectorWidget (self):
+        selector = gtk.Frame("Layer")
+        selector.row = gtk.HBox()
+        selector.btnbox = gtk.HButtonBox()
+        selector.buttons = list()
+
+        maxshifters = 3
+        maxlayers = (1 << maxshifters)
+
+        for lyrnum in range(0, maxlayers):
+            sh = []
+            # List the shifters that are involved in activating this layer.
+            for b in range(0, maxshifters):
+                if (lyrnum & (1 << b)):
+                    sh.append("^%s" % (b+1))
+            if sh:
+                lbl = "{} ({})".format(lyrnum, " + ".join(sh))
+            else:
+                lbl = "base"
+            # Group leader is first button; use None to become group leader.
+            grp = selector.buttons[0] if selector.buttons else None
+            btn = gtk.RadioButton(grp, lbl)
+            btn.layernum = lyrnum
+            btn.connect("toggled", self.on_layer_toggled)
+            selector.buttons.append(btn)
+            selector.btnbox.add(btn)
+        selector.row.pack_start(selector.btnbox, expand=True)
+        selector.add(selector.row)
+        return selector
+
+    def on_layer_toggled (self, w, *args):
+        if w.get_active():
+            # Turn on.
+            self.ui.hidview.set_layer(w.layernum)
+
+
+    def get_activename (self):
+        return self._activename
+    def set_activename (self, val):
+        self._activename = val
+        self._activehid = self.all_layouts[self._activename]
+        self.update_activehid()
+    activename = property(get_activename, set_activename)
+
+    def get_activehid (self):
+        return self._activehid
+    def set_activehid (self, val):
+        self._activename = None
+        self._activehid = val
+        self.update_activehid()
+    activehid = property(get_activehid, set_activehid)
+
+    def update_activehid (self):
+        self.ui.hidview.set_layoutmap(self._activehid)
+
+    def get_layouts (self):
+        return self.all_layouts
+    def set_layouts (self, val):
+        self.all_layouts = val
+    layouts = property(get_layouts, set_layouts)
+
+    # Backwards-compat
+    # TODO: elide later.
+    def get_active (self):
+        return self.activename
+    def set_active (self, val):
+        self.activename = val
+        self.activehid = self.all_layouts[val]
+        # TODO: update display
+        #self.rebuild_display()
+        self.update_activehid()
+    active = property(get_active, set_active)
+
+    def get_vis (self):
+        return self._vis
+    def set_vis (self, val):
+        self._vis = val
+        self.update_vis()
+    vis = property(get_vis, set_vis)
+
+    def update_vis (self):
+        for ch in self.grid.children():
+            ch.set_vis(self.vis)
+        return
+
+#    def rebuild_display (self):
+#        # Update visuals to reflect active layout.
+#        self.hidview.set_layoutmap(self.activehid)
+#
+#    def on_active_layout_changed (self, w, *args):
+#        idx = w.get_active()
+#        data = self.mdl_layout[idx]
+#        val = data[0]
+#        self.activename = val
+#        self.activehid = self.all_layouts[val]
+#        #self.clear_board()
+#        #self.fill_board(self.activehid)
+#        #self.show_all()
+#        self.rebuild_display()
+#        self.show()
+##        self.emit("layout-changed", val)
 
 
 
