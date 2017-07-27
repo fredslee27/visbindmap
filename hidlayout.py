@@ -297,6 +297,22 @@ class Bindable (object):
     def update_vis (self): """Called after set_vis; override."""
     def update_binds (self): """Called after set_binds; override."""
 
+    def make_hiatop (self, descr, initbinds=None, parent_cluster=None):
+        hiasym, hialbl, hiatype, x, y, w, h = descr
+        hiatop = None
+        if hiatype == "cluster":
+            hiatop = BindableCluster(hiasym, hialbl, self.vis, initbinds)
+            if parent_cluster:
+                parent_cluster.hiatops[hiasym] = hiatop
+                parent_cluster.hiaclusters[hiasym] = hiatop
+        elif hiatype == "key":
+            hiatop = BindableTop(hiasym, hialbl, self.vis, initbinds)
+            if parent_cluster:
+                parent_cluster.hiatops[hiasym] = hiatop
+        else:
+            pass
+        return hiatop
+
 
 class BindableTop (gtk.Button, Bindable):
     """The bindable atom, metaphor for keyboard key top.
@@ -867,6 +883,7 @@ Composed of two parts visible at any one time:
 
     def setup_states (self):
         self.hiatops = dict()
+        self.hiaclusters = dict()
 
     def get_layoutmap (self):
         return self._layoutmap
@@ -917,8 +934,9 @@ Composed of two parts visible at any one time:
             hiasuffix, lbl, prototyp, x, y, w, h = hiadata
             hiasym = "{}{}".format(self.hiasym, hiasuffix)
             if not hiasym in self.hiatops:
-                hiatop = BindableTop(hiasym, lbl, self.vis, initbinds=None)
-                self.hiatops[hiasym] = hiatop
+                #hiatop = BindableTop(hiasym, lbl, self.vis, initbinds=None)
+                #self.hiatops[hiasym] = hiatop
+                hiatop = self.make_hiatop(hiadata, self.binds, self)
             else:
                 hiatop = self.hiatops[hiasym]
                 hiatop.set_vis(self.vis)
@@ -928,6 +946,13 @@ Composed of two parts visible at any one time:
         self.ui.grid.show()
         self.ui.top.show()
         self.show()
+
+
+
+
+class BindableLayoutView (BindableCluster):
+    def __init__ (self, vis, bind_store):
+        BindableCluster.__init__(self, "", "", vis, bind_store)
 
 
 
@@ -3397,7 +3422,8 @@ class BindableLayoutWidget (gtk.VBox):
         self.ui = ui
 
         # Primary bindables view.
-        self.ui.hidview = BindableCluster("")
+        #self.ui.hidview = BindableCluster("")
+        self.ui.hidview = BindableLayoutView([True], implicit_layouts['en_US (pc104)'])
 
         # Data model for layout selector.
         self.mdl_layout = gtk.ListStore(str)
@@ -3459,6 +3485,7 @@ class BindableLayoutWidget (gtk.VBox):
         self.activename = val   # trigger update_activehid()
         #self.activehid = self.all_layouts[val]
         #self.hidview.set_layoutmap(self.activehid)
+        # TODO: propagate binds to newly revealed clusters.
         self.show()
 
     def GroupSelectorWidget (self, mdl_groups):

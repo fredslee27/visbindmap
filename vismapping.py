@@ -573,9 +573,10 @@ Consists of:
 
         # grid/tablular layout of inpbind+bindcmd
         #inpdescr = self.models.bindstore.inpdescr
-        self.hidl = hidlayout.HidLayoutWidget(self.models.dispstate)
-        self.hidl.connect('key-selected', self.on_key_selected)
-        self.hidl.connect('layout-changed', self.on_layout_changed)
+        #self.hidl = hidlayout.HidLayoutWidget(self.models.dispstate)
+        #self.hidl.connect('key-selected', self.on_key_selected)
+        #self.hidl.connect('layout-changed', self.on_layout_changed)
+        self.hidl = hidlayout.BindableLayoutWidget(None)
 
         self.pack_start(self.hidl, expand=False, fill=False)
 
@@ -585,11 +586,11 @@ Consists of:
         logger.debug("key-selected: %s => %r" % (ksym, binding))
 
     def get_layout (self):
-        idx = self.hidl.inp_layout.get_active()
+        idx = self.hidl.ui.sel_layout.get_active()
         retval = self.hidl.mdl_layout[idx][0]
         return retval
     def set_layout (self, layoutname):
-        sel = self.hidl.inp_layout
+        sel = self.hidl.ui.sel_layout
         mdl = self.hidl.mdl_layout
         idx = -1
         for rownum in range(len(mdl)):

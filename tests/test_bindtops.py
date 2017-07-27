@@ -209,6 +209,8 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.w.show()
 
         def script ():
+            yield 1
+            bv.ui.sel_layout.set_active(2)
             yield 5
 
         self.runloop(script, 1)
