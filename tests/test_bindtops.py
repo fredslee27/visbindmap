@@ -37,7 +37,8 @@ Loop ends when coroutine ends (uses return instead of yield)
         layout = gtk.VBox()
         self.w.add(layout)
 
-        b = hidlayout.BindableTop("K_TEST", 4)
+        vis = [True] + [ False ] * 3
+        b = hidlayout.BindableTop("K_TEST", "K_TEST", vis)
         b.set_layer(0)
         layout.pack_start(b, True, True, 0)
         #b.set_vis([True, True, True, True])
@@ -171,6 +172,12 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.w.show()
 
         def script ():
+            yield 1
+            bc.set_vis([True,True,True,True,False,False,False,False])
+            #bc.set_layer(1)
+            yield 1
+            bc.set_layer(3)
+            bc.set_vis([False,False,False,True,False,False,False,False])
             yield 2
 
         self.runloop(script, 1)
@@ -211,10 +218,46 @@ Loop ends when coroutine ends (uses return instead of yield)
         def script ():
             yield 1
             bv.ui.sel_layout.set_active(2)
+            bv.ui.sel_layer.buttons[1].activate()
             yield 5
 
         self.runloop(script, 1)
         self.w.hide()
+
+    def test_changegroup (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        self.bindstore = hidlayout.BindStore(2,4)
+        for hiasym in [ "B/%d"%x for x in range(0,12) ]:
+            for gn in range(0, 2):
+                for lyr in range(0,4):
+                    hiabind = "%s_g%dl%d" % (hiasym, gn, lyr)
+                    self.bindstore[gn][lyr][hiasym] = hiabind
+        #print("bindstore = %s" % (self.bindstore,))
+
+        bv = hidlayout.BindableLayoutWidget(None, None, self.bindstore)
+
+        layout.add(bv)
+        layout.show()
+        bv.show()
+        self.w.show()
+
+        def script ():
+            yield 1
+            bv.ui.sel_layout.set_active(2)  # layout2
+            yield 2
+            bv.ui.sel_layer.buttons[1].activate()  #Layer1
+            yield 2
+            bv.ui.sel_group.buttons[1].activate()  #Group1
+            yield 2
+            bv.ui.sel_layer.buttons[2].activate()  #Layer2
+            yield 5
+
+        self.runloop(script, 1)
+        self.w.hide()
+
+
 
 
 if __name__ == '__main__':
