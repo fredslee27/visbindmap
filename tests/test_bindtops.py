@@ -246,13 +246,13 @@ Loop ends when coroutine ends (uses return instead of yield)
         def script ():
             yield 1
             bv.ui.sel_layout.set_active(2)  # layout2
-            yield 2
+            yield 1
             bv.ui.sel_layer.buttons[1].activate()  #Layer1
-            yield 2
+            yield 1
             bv.ui.sel_group.buttons[1].activate()  #Group1
-            yield 2
+            yield 1
             bv.ui.sel_layer.buttons[2].activate()  #Layer2
-            yield 5
+            yield 9
 
         self.runloop(script, 1)
         self.w.hide()

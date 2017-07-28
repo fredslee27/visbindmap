@@ -1004,6 +1004,7 @@ Composed of two parts visible at any one time:
 
 
 class BindableLayoutView (BindableCluster):
+    """Special case of BindableCluster at top-level view."""
     def __init__ (self, vis, layoutmap, bind_store):
         BindableCluster.__init__(self, "", "", vis, layoutmap)
         self.bindstore = bind_store
@@ -1018,12 +1019,6 @@ class BindableLayoutView (BindableCluster):
     group = property(get_group, set_group)
 
     def update_group (self):
-#        for ch in self.ui.grid.children():
-#            grp = self.bindstore[self._group]
-#            print("grp = %r" % (grp,))
-#            print("lyrs = %r" % ([lyr for lyr in grp],))
-#            grpbind = [ lyr.get(ch.hiasym,"") for lyr in grp ]
-#            ch.set_binds(grpbind)
         for hiasym in self.hiatops:
             hiatop = self.hiatops[hiasym]
             grp = self.bindstore[self._group]
@@ -1034,26 +1029,10 @@ class BindableLayoutView (BindableCluster):
     def update_binds (self):
         for hiasym in self.hiatops:
             hiatop = self.hiatops[hiasym]
-            #hiabinds = self.bindstore[self._group][0].get(hiasym,"")
             hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
-            #hiabinds = "XXX"
             if hiatop.get_visible():
                 hiatop.set_binds(hiabinds)
         return
-
-#    def update_layer (self):
-#        while len(self.vis) <= self._layer:
-#            self.vis.append(False)
-#        for lyr in range(0, len(self.vis)):
-#            lyrvis = False
-#            if lyr == self._layer:
-#                lyrvis = True
-#            self.vis[lyr] = lyrvis
-#        for hiasym in self.hiatops:
-#            hiatop = self.hiatops[hiasym]
-#            if hiatop.get_visible():
-#                hiatop.set_vis(self.vis)
-#                hiatop.set_layer(self._layer)
 
     def update_layoutmap (self):
         BindableCluster.update_layoutmap(self)
@@ -1061,13 +1040,24 @@ class BindableLayoutView (BindableCluster):
 
     def on_bind_assigned (self, w, hiasym, hiabind):
         print("doing on_bind_assigned(layer=%d, sym=%4, val=%r" % (self.layer, hiasym, hiabind))
-        pass
+        self.bindstore[self.group][self.layer][hiasym] = hiabind
+        self.update_binds()
+        return
     def on_bind_swapped (self, w, src_hiasym, dst_hiasym):
         print("doing on_bind_swapped(layer=%d, asym=%r, bsym=%r" % (self.layer, src_hiasym, dst_hiasym))
-        pass
+        srcbind = self.bindstore[self.group][self.layer][src_hiasym]
+        dstbind = self.bindstore[self.group][self.layer][dst_hiasym]
+        self.bindstore[self.group][self.layer][src_hiasym] = dstbind
+        self.bindstore[self.group][self.layer][dst_hiasym] = srcbind
+        self.update_binds()
+        return
     def on_bind_erased (self, w, hiasym):
         print("doing on_bind_erased(layer=%d, sym=%r" % (self.layer, hiasym))
-        pass
+        #self.bindstore[self.group][self.layer][src_hiasym] = ""
+        del self.bindstore[self.group][self.layer][src_hiasym]
+        self.update_binds()
+        return
+
 
 
 
@@ -3767,337 +3757,337 @@ class BindableLayoutWidget (gtk.VBox):
 
 
 
-class HidLayoutWidget (gtk.VBox):
-    """Controller wrapper to HidLayoutView.
-"""
-    def __init__ (self, dispstate=None, all_layouts=None):
-        gtk.VBox.__init__(self)
-        self.dispstate = dispstate
-        self.active = False
-        self.all_layouts = None
-        if self.all_layouts is None:
-            self.all_layouts = implicit_layouts
-
-        # Selector for specific layout.
-        self.build_layout_selector()   # .mdl_layout, .row_layout
-
-        # GUI for HID Layout.
-        #self.hidview = HidView2(self, "", self.dispstate)
-        self.hidview = HidPlanar("", self.dispstate)
-
-        self.layersel = self.LayerSelectorWidget()
-
-        # TODO: from outside.
-        mdl_groups = gtk.ListStore(int, str)
-        mdl_groups.append((0, "Global"))
-        mdl_groups.append((1, "Menu"))
-        mdl_groups.append((2, "Game"))
-        self.groupsel = self.GroupSelectorWidget(mdl_groups)
-
-        # Initial layout.
-        idx = self.inp_layout.get_active()
-        val = self.mdl_layout[idx][0]
-        #self.activehid = HidLayoutStore(val)
-        #self.activehid.build_from_rowrun(self.hiddesc[val])
-        self.activename = val
-        self.activehid = self.all_layouts[val]
-        #self.fill_board(self.activehid)
-
-        # Compose GUI.
-        self.pack_start(self.row_layout, expand=False, fill=False)
-        self.pack_start(self.groupsel, expand=False, fill=False)
-        self.pack_start(self.layersel, expand=False, fill=False)
-        self.pack_start(self.hidview, expand=False, fill=False)
-
-        # dumb struct, track signal handler ids.
-        class signal_handlers:
-            clicked = dict()
-            cluster_type_changed = dict()
-            bind_assigned = dict()
-            bind_swapped = dict()
-            bind_erased = dict()
-        self.signal_handlers = signal_handlers
-
-        self.dispstate.connect("layer-changed", self.on_dispstate_layer_changed)
-        self.dispstate.connect("group-changed", self.on_dispstate_group_changed)
-        self.dispstate.connect("display-adjusted", self.on_dispstate_display_adjusted)
-
-        self.rebuild_display()
-
-    def build_layout_selector (self):
-        # Data model for selector.
-        self.mdl_layout = gtk.ListStore(str)
-        hidnames = sorted(self.all_layouts.keys())
-        for k in hidnames:
-            self.mdl_layout.append((k,))
-
-        # Combo (drop) list.
-        self.inp_layout = gtk.ComboBox(self.mdl_layout)
-        self.cell_layout = gtk.CellRendererText()
-        self.inp_layout.pack_start(self.cell_layout)
-        self.inp_layout.add_attribute(self.cell_layout, 'text', 0)
-        self.inp_layout.set_active(0)
-        self.inp_layout.connect('changed', self.on_active_layout_changed)
-
-        # Label for selector.
-        self.lbl_layout = gtk.Label("Layout:")
-
-        # Compose GUI.
-        self.row_layout = gtk.HBox()
-        self.row_layout.pack_start(self.lbl_layout, expand=False, fill=False)
-        self.row_layout.pack_start(self.inp_layout, expand=False, fill=False)
-
-
-    def GroupSelectorWidget (self, mdl_groups):
-        selector = gtk.Frame("Group")
-        selector.mdl = mdl_groups
-        selector.row = gtk.HBox()
-        selector.btnbox = gtk.HButtonBox()
-        selector.buttons = None
-
-        def rebuild_buttons (w):
-            if w.buttons:
-                for btn in w.buttons:
-                    w.buttonbox.remove(btn)
-            w.buttons = list()
-            for grpid in range(len(w.mdl)):
-                # Radio group is first button; make leader if no buttons.
-                grp = w.buttons[0] if w.buttons else None
-                lbl = w.mdl[grpid][1]  # second column => displayed name.
-                btn = gtk.RadioButton(grp, lbl)
-                btn.groupnum = grpid
-                btn.connect('toggled', self.on_group_toggled)
-                w.buttons.append(btn)
-                w.btnbox.add(btn)
-            w.row.show_all()
-            return
-        selector.rebuild_buttons = lambda: rebuild_buttons(selector)
-        def on_data_changed (w, mdl, *args):
-            rebuild_buttons(selector)
-        selector.on_data_changed = lambda *args: on_data_changed(selector, *args)
-
-        selector.mdl.connect("row-changed", selector.on_data_changed)
-        selector.mdl.connect("row-deleted", selector.on_data_changed)
-        selector.mdl.connect("row-inserted", selector.on_data_changed)
-
-        selector.rebuild_buttons()
-        selector.row.pack_start(selector.btnbox, expand=False)
-        selector.add(selector.row)
-        return selector
-
-    def on_group_toggled (self, w, *args):
-        if w.get_active():
-            self.hidview.set_group(w.groupnum)
-            pass
-
-    def LayerSelectorWidget (self):
-        selector = gtk.Frame("Layer")
-        selector.row = gtk.HBox()
-        selector.btnbox = gtk.HButtonBox()
-        selector.buttons = list()
-
-        maxshifters = 3
-        maxlayers = (1 << maxshifters)
-
-        for lyrnum in range(0, maxlayers):
-            sh = []
-            # List the shifters that are involved in activating this layer.
-            for b in range(0, maxshifters):
-                if (lyrnum & (1 << b)):
-                    sh.append("^%s" % (b+1))
-            if sh:
-                lbl = "{} ({})".format(lyrnum, " + ".join(sh))
-            else:
-                lbl = "base"
-            # Group leader is first button; use None to become group leader.
-            grp = selector.buttons[0] if selector.buttons else None
-            btn = gtk.RadioButton(grp, lbl)
-            btn.layernum = lyrnum
-            btn.connect("toggled", self.on_layer_toggled)
-            selector.buttons.append(btn)
-            selector.btnbox.add(btn)
-        selector.row.pack_start(selector.btnbox, expand=True)
-        selector.add(selector.row)
-        return selector
-
-    def on_layer_toggled (self, w, *args):
-        if w.get_active():
-            # Turn on.
-            self.hidview.set_layer(w.layernum)
-        return
-
-
-    def get_dispstate (self):
-        return self.dispstate
-    def set_dispstate (self, dispstate):
-        self.dispstate = dispstate
-        self.hidview.set_dispstate(dispstate)
-
-    def get_layouts (self):
-        return self.all_layouts
-    def set_layouts (self, val):
-        self.all_layouts = val
-
-    def get_active (self):
-        return self.activename
-    def set_active (self, val):
-        self.activename = val
-        self.activehid = self.all_layouts[val]
-        # TODO: update display
-        self.rebuild_display()
-
-    def get_vislayers (self):
-        return self.dispstate.vislayers
-    def set_vislayers (self, v):
-        self.dispstate.set_vislayers(v)
-
-    def rebuild_display (self):
-        # Update visuals to reflect active layout.
-        self.hidview.set_layoutmap(self.activehid)
-        self.hidview.set_arranger(self.hidview.arrangerStored)
-#        self.hidview.build_cluster()
-#        for hidtop in self.hidview.hidtops.itervalues():
-#            hidtop.connect('clicked', self.on_hidtop_clicked)
-        def stash_signal_handler (w, handler_store, signal_name, signal_handler):
-            logger.debug('stashing signal %r.%r' % (w.inpsym, signal_name))
-            if not w.inpsym in handler_store:
-                sh = None
-                try:
-                    sh = w.connect(signal_name, signal_handler)
-                except TypeError:
-                    pass
-                if sh:
-                    handler_store[w.inpsym] = sh
-                    logger.debug("connect handler(%r,%r) = %r" % (w.inpsym, signal_name, signal_handler))
-            return
-
-        for inpsym in self.hidview.hidtops:
-            hidelt = self.hidview.hidtops.get(inpsym, None)
-            if not hidelt:
-                continue
-            if not inpsym in self.signal_handlers.clicked:
-                sh = None
-                try:
-                    # Connect 'clicked' signal for those that support it.
-
-                    sh = hidelt.connect('clicked', self.on_hidtop_clicked)
-                except TypeError:
-                    pass
-                if sh:
-                    self.signal_handlers.clicked[inpsym] = sh
-                bindgrp = self.dispstate.resolve_bind_group_markup(inpsym)
-                hidelt.set_dispbinds(bindgrp)
-
-            stash_signal_handler(hidelt, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
-            stash_signal_handler(hidelt, self.signal_handlers.bind_swapped, "bind-swapped", self.on_bind_swapped)
-            stash_signal_handler(hidelt, self.signal_handlers.bind_erased, "bind-erased", self.on_bind_erased)
-
-        for symprefix in self.hidview.clusters:
-            hidcluster = self.hidview.clusters.get(symprefix, None)
-            if not hidcluster:
-                continue
-            if not symprefix in self.signal_handlers.cluster_type_changed:
-                sh = None
-                try:
-                    sh = hidcluster.connect('cluster-type-changed', self.on_cluster_type_changed)
-                except TypeError:
-                    pass
-                if sh:
-                    self.signal_handlers.cluster_type_changed[symprefix] = sh
-
-            stash_signal_handler(hidcluster, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
-            stash_signal_handler(hidcluster, self.signal_handlers.bind_swapped, "bind-swapped", self.on_bind_swapped)
-            stash_signal_handler(hidcluster, self.signal_handlers.bind_erased, "bind-erased", self.on_bind_erased)
-        return
-
-    def on_active_layout_changed (self, w, *args):
-        idx = w.get_active()
-        data = self.mdl_layout[idx]
-        val = data[0]
-        self.activename = val
-        self.activehid = self.all_layouts[val]
-        #self.clear_board()
-        #self.fill_board(self.activehid)
-        #self.show_all()
-        self.rebuild_display()
-        self.show()
-#        self.emit("layout-changed", val)
-
-
-    def __getitem__ (self, inpsym):
-        return self.hidtops[inpsym]
-
-    def __setitem__ (self, inpsym, val):
-        self.hidtops[inpsym].bind = val
-
-    def __delitem__ (self, inpsym):
-        del self.hidtops[inpsym]
-
-
-    def on_hidtop_clicked (self, w, *args):
-        inpsym = w.inpsym
-        logger.debug("target: %s" % inpsym)
-        self.emit("key-selected", inpsym)
-
-    def on_cluster_type_changed (self, w, *args):
-        pass
-
-    def on_bind_assigned (self, w, inpsym, bindval):
-        logger.debug("bind-assign %r <- %r" % (inpsym, bindval))
-        self.dispstate.set_bind(inpsym, bindval)
-        grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
-        logger.debug("grpbind(%s) = %r" % (inpsym, grpbind))
-        hidtop = self.hidview.hidtops.get(inpsym, None)
-        if hidtop:
-            hidtop.set_dispbinds(grpbind)
-    def on_bind_swapped (self, w, srcsym, dstsym):
-        logger.debug("bind-swap %r <-> %r" % (srcsym, dstsym))
-        bindmdl = self.dispstate
-        srcbind = bindmdl.get_bind(srcsym)
-        dstbind = bindmdl.get_bind(dstsym)
-        bindmdl.set_bind(srcsym, dstbind)
-        bindmdl.set_bind(dstsym, srcbind)
-        grpbind = self.dispstate.resolve_bind_group_markup(srcsym)
-        hidtop = self.hidview.hidtops.get(srcsym, None)
-        if hidtop:
-            hidtop.set_dispbinds(grpbind)
-        grpbind = self.dispstate.resolve_bind_group_markup(dstsym)
-        hidtop = self.hidview.hidtops.get(dstsym, None)
-        if hidtop:
-            hidtop.set_dispbinds(grpbind)
-    def on_bind_erased (self, w, inpsym):
-        self.dispstate.set_bind(inpsym, "")
-        grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
-        hidtop = self.hidview.hidtops.get(inpsym, None)
-        if hidtop:
-            hidtop.set_dispbinds(grpbind)
-
-    def on_dispstate_layer_changed (self, mdl, newlayer):
-        # TODO: Update all children for new layer.
-        pass
-    def on_dispstate_group_changed (self, mdl, newgroup):
-        # TODO: update all children for new group...
-        pass
-    def on_dispstate_display_adjusted (self, mdl):
-        # TODO: redraw?...
-        pass
-
-#    def on_bind_changed (self, w, *args):
-#        #self.bindmap[w.inpsym] = w.bind
-#        self.emit("bind-changed", w)
+#class HidLayoutWidget (gtk.VBox):
+#    """Controller wrapper to HidLayoutView.
+#"""
+#    def __init__ (self, dispstate=None, all_layouts=None):
+#        gtk.VBox.__init__(self)
+#        self.dispstate = dispstate
+#        self.active = False
+#        self.all_layouts = None
+#        if self.all_layouts is None:
+#            self.all_layouts = implicit_layouts
 #
-#    def on_bindid_changed (self, w, *args):
-#        #print("HidLayoutWidget: bindid-changed")
-#        #self.bindmap[w.inpsym] = w.bind
-#        self.emit("bindid-changed", w)
-
-
-# Set up signals.
-gobject.type_register(HidLayoutWidget)
-gobject.signal_new("key-selected", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (str,))
-gobject.signal_new("bind-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
-gobject.signal_new("bindid-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
-gobject.signal_new("layout-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+#        # Selector for specific layout.
+#        self.build_layout_selector()   # .mdl_layout, .row_layout
+#
+#        # GUI for HID Layout.
+#        #self.hidview = HidView2(self, "", self.dispstate)
+#        self.hidview = HidPlanar("", self.dispstate)
+#
+#        self.layersel = self.LayerSelectorWidget()
+#
+#        # TODO: from outside.
+#        mdl_groups = gtk.ListStore(int, str)
+#        mdl_groups.append((0, "Global"))
+#        mdl_groups.append((1, "Menu"))
+#        mdl_groups.append((2, "Game"))
+#        self.groupsel = self.GroupSelectorWidget(mdl_groups)
+#
+#        # Initial layout.
+#        idx = self.inp_layout.get_active()
+#        val = self.mdl_layout[idx][0]
+#        #self.activehid = HidLayoutStore(val)
+#        #self.activehid.build_from_rowrun(self.hiddesc[val])
+#        self.activename = val
+#        self.activehid = self.all_layouts[val]
+#        #self.fill_board(self.activehid)
+#
+#        # Compose GUI.
+#        self.pack_start(self.row_layout, expand=False, fill=False)
+#        self.pack_start(self.groupsel, expand=False, fill=False)
+#        self.pack_start(self.layersel, expand=False, fill=False)
+#        self.pack_start(self.hidview, expand=False, fill=False)
+#
+#        # dumb struct, track signal handler ids.
+#        class signal_handlers:
+#            clicked = dict()
+#            cluster_type_changed = dict()
+#            bind_assigned = dict()
+#            bind_swapped = dict()
+#            bind_erased = dict()
+#        self.signal_handlers = signal_handlers
+#
+#        self.dispstate.connect("layer-changed", self.on_dispstate_layer_changed)
+#        self.dispstate.connect("group-changed", self.on_dispstate_group_changed)
+#        self.dispstate.connect("display-adjusted", self.on_dispstate_display_adjusted)
+#
+#        self.rebuild_display()
+#
+#    def build_layout_selector (self):
+#        # Data model for selector.
+#        self.mdl_layout = gtk.ListStore(str)
+#        hidnames = sorted(self.all_layouts.keys())
+#        for k in hidnames:
+#            self.mdl_layout.append((k,))
+#
+#        # Combo (drop) list.
+#        self.inp_layout = gtk.ComboBox(self.mdl_layout)
+#        self.cell_layout = gtk.CellRendererText()
+#        self.inp_layout.pack_start(self.cell_layout)
+#        self.inp_layout.add_attribute(self.cell_layout, 'text', 0)
+#        self.inp_layout.set_active(0)
+#        self.inp_layout.connect('changed', self.on_active_layout_changed)
+#
+#        # Label for selector.
+#        self.lbl_layout = gtk.Label("Layout:")
+#
+#        # Compose GUI.
+#        self.row_layout = gtk.HBox()
+#        self.row_layout.pack_start(self.lbl_layout, expand=False, fill=False)
+#        self.row_layout.pack_start(self.inp_layout, expand=False, fill=False)
+#
+#
+#    def GroupSelectorWidget (self, mdl_groups):
+#        selector = gtk.Frame("Group")
+#        selector.mdl = mdl_groups
+#        selector.row = gtk.HBox()
+#        selector.btnbox = gtk.HButtonBox()
+#        selector.buttons = None
+#
+#        def rebuild_buttons (w):
+#            if w.buttons:
+#                for btn in w.buttons:
+#                    w.buttonbox.remove(btn)
+#            w.buttons = list()
+#            for grpid in range(len(w.mdl)):
+#                # Radio group is first button; make leader if no buttons.
+#                grp = w.buttons[0] if w.buttons else None
+#                lbl = w.mdl[grpid][1]  # second column => displayed name.
+#                btn = gtk.RadioButton(grp, lbl)
+#                btn.groupnum = grpid
+#                btn.connect('toggled', self.on_group_toggled)
+#                w.buttons.append(btn)
+#                w.btnbox.add(btn)
+#            w.row.show_all()
+#            return
+#        selector.rebuild_buttons = lambda: rebuild_buttons(selector)
+#        def on_data_changed (w, mdl, *args):
+#            rebuild_buttons(selector)
+#        selector.on_data_changed = lambda *args: on_data_changed(selector, *args)
+#
+#        selector.mdl.connect("row-changed", selector.on_data_changed)
+#        selector.mdl.connect("row-deleted", selector.on_data_changed)
+#        selector.mdl.connect("row-inserted", selector.on_data_changed)
+#
+#        selector.rebuild_buttons()
+#        selector.row.pack_start(selector.btnbox, expand=False)
+#        selector.add(selector.row)
+#        return selector
+#
+#    def on_group_toggled (self, w, *args):
+#        if w.get_active():
+#            self.hidview.set_group(w.groupnum)
+#            pass
+#
+#    def LayerSelectorWidget (self):
+#        selector = gtk.Frame("Layer")
+#        selector.row = gtk.HBox()
+#        selector.btnbox = gtk.HButtonBox()
+#        selector.buttons = list()
+#
+#        maxshifters = 3
+#        maxlayers = (1 << maxshifters)
+#
+#        for lyrnum in range(0, maxlayers):
+#            sh = []
+#            # List the shifters that are involved in activating this layer.
+#            for b in range(0, maxshifters):
+#                if (lyrnum & (1 << b)):
+#                    sh.append("^%s" % (b+1))
+#            if sh:
+#                lbl = "{} ({})".format(lyrnum, " + ".join(sh))
+#            else:
+#                lbl = "base"
+#            # Group leader is first button; use None to become group leader.
+#            grp = selector.buttons[0] if selector.buttons else None
+#            btn = gtk.RadioButton(grp, lbl)
+#            btn.layernum = lyrnum
+#            btn.connect("toggled", self.on_layer_toggled)
+#            selector.buttons.append(btn)
+#            selector.btnbox.add(btn)
+#        selector.row.pack_start(selector.btnbox, expand=True)
+#        selector.add(selector.row)
+#        return selector
+#
+#    def on_layer_toggled (self, w, *args):
+#        if w.get_active():
+#            # Turn on.
+#            self.hidview.set_layer(w.layernum)
+#        return
+#
+#
+#    def get_dispstate (self):
+#        return self.dispstate
+#    def set_dispstate (self, dispstate):
+#        self.dispstate = dispstate
+#        self.hidview.set_dispstate(dispstate)
+#
+#    def get_layouts (self):
+#        return self.all_layouts
+#    def set_layouts (self, val):
+#        self.all_layouts = val
+#
+#    def get_active (self):
+#        return self.activename
+#    def set_active (self, val):
+#        self.activename = val
+#        self.activehid = self.all_layouts[val]
+#        # TODO: update display
+#        self.rebuild_display()
+#
+#    def get_vislayers (self):
+#        return self.dispstate.vislayers
+#    def set_vislayers (self, v):
+#        self.dispstate.set_vislayers(v)
+#
+#    def rebuild_display (self):
+#        # Update visuals to reflect active layout.
+#        self.hidview.set_layoutmap(self.activehid)
+#        self.hidview.set_arranger(self.hidview.arrangerStored)
+##        self.hidview.build_cluster()
+##        for hidtop in self.hidview.hidtops.itervalues():
+##            hidtop.connect('clicked', self.on_hidtop_clicked)
+#        def stash_signal_handler (w, handler_store, signal_name, signal_handler):
+#            logger.debug('stashing signal %r.%r' % (w.inpsym, signal_name))
+#            if not w.inpsym in handler_store:
+#                sh = None
+#                try:
+#                    sh = w.connect(signal_name, signal_handler)
+#                except TypeError:
+#                    pass
+#                if sh:
+#                    handler_store[w.inpsym] = sh
+#                    logger.debug("connect handler(%r,%r) = %r" % (w.inpsym, signal_name, signal_handler))
+#            return
+#
+#        for inpsym in self.hidview.hidtops:
+#            hidelt = self.hidview.hidtops.get(inpsym, None)
+#            if not hidelt:
+#                continue
+#            if not inpsym in self.signal_handlers.clicked:
+#                sh = None
+#                try:
+#                    # Connect 'clicked' signal for those that support it.
+#
+#                    sh = hidelt.connect('clicked', self.on_hidtop_clicked)
+#                except TypeError:
+#                    pass
+#                if sh:
+#                    self.signal_handlers.clicked[inpsym] = sh
+#                bindgrp = self.dispstate.resolve_bind_group_markup(inpsym)
+#                hidelt.set_dispbinds(bindgrp)
+#
+#            stash_signal_handler(hidelt, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
+#            stash_signal_handler(hidelt, self.signal_handlers.bind_swapped, "bind-swapped", self.on_bind_swapped)
+#            stash_signal_handler(hidelt, self.signal_handlers.bind_erased, "bind-erased", self.on_bind_erased)
+#
+#        for symprefix in self.hidview.clusters:
+#            hidcluster = self.hidview.clusters.get(symprefix, None)
+#            if not hidcluster:
+#                continue
+#            if not symprefix in self.signal_handlers.cluster_type_changed:
+#                sh = None
+#                try:
+#                    sh = hidcluster.connect('cluster-type-changed', self.on_cluster_type_changed)
+#                except TypeError:
+#                    pass
+#                if sh:
+#                    self.signal_handlers.cluster_type_changed[symprefix] = sh
+#
+#            stash_signal_handler(hidcluster, self.signal_handlers.bind_assigned, "bind-assigned", self.on_bind_assigned)
+#            stash_signal_handler(hidcluster, self.signal_handlers.bind_swapped, "bind-swapped", self.on_bind_swapped)
+#            stash_signal_handler(hidcluster, self.signal_handlers.bind_erased, "bind-erased", self.on_bind_erased)
+#        return
+#
+#    def on_active_layout_changed (self, w, *args):
+#        idx = w.get_active()
+#        data = self.mdl_layout[idx]
+#        val = data[0]
+#        self.activename = val
+#        self.activehid = self.all_layouts[val]
+#        #self.clear_board()
+#        #self.fill_board(self.activehid)
+#        #self.show_all()
+#        self.rebuild_display()
+#        self.show()
+##        self.emit("layout-changed", val)
+#
+#
+#    def __getitem__ (self, inpsym):
+#        return self.hidtops[inpsym]
+#
+#    def __setitem__ (self, inpsym, val):
+#        self.hidtops[inpsym].bind = val
+#
+#    def __delitem__ (self, inpsym):
+#        del self.hidtops[inpsym]
+#
+#
+#    def on_hidtop_clicked (self, w, *args):
+#        inpsym = w.inpsym
+#        logger.debug("target: %s" % inpsym)
+#        self.emit("key-selected", inpsym)
+#
+#    def on_cluster_type_changed (self, w, *args):
+#        pass
+#
+#    def on_bind_assigned (self, w, inpsym, bindval):
+#        logger.debug("bind-assign %r <- %r" % (inpsym, bindval))
+#        self.dispstate.set_bind(inpsym, bindval)
+#        grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+#        logger.debug("grpbind(%s) = %r" % (inpsym, grpbind))
+#        hidtop = self.hidview.hidtops.get(inpsym, None)
+#        if hidtop:
+#            hidtop.set_dispbinds(grpbind)
+#    def on_bind_swapped (self, w, srcsym, dstsym):
+#        logger.debug("bind-swap %r <-> %r" % (srcsym, dstsym))
+#        bindmdl = self.dispstate
+#        srcbind = bindmdl.get_bind(srcsym)
+#        dstbind = bindmdl.get_bind(dstsym)
+#        bindmdl.set_bind(srcsym, dstbind)
+#        bindmdl.set_bind(dstsym, srcbind)
+#        grpbind = self.dispstate.resolve_bind_group_markup(srcsym)
+#        hidtop = self.hidview.hidtops.get(srcsym, None)
+#        if hidtop:
+#            hidtop.set_dispbinds(grpbind)
+#        grpbind = self.dispstate.resolve_bind_group_markup(dstsym)
+#        hidtop = self.hidview.hidtops.get(dstsym, None)
+#        if hidtop:
+#            hidtop.set_dispbinds(grpbind)
+#    def on_bind_erased (self, w, inpsym):
+#        self.dispstate.set_bind(inpsym, "")
+#        grpbind = self.dispstate.resolve_bind_group_markup(inpsym)
+#        hidtop = self.hidview.hidtops.get(inpsym, None)
+#        if hidtop:
+#            hidtop.set_dispbinds(grpbind)
+#
+#    def on_dispstate_layer_changed (self, mdl, newlayer):
+#        # TODO: Update all children for new layer.
+#        pass
+#    def on_dispstate_group_changed (self, mdl, newgroup):
+#        # TODO: update all children for new group...
+#        pass
+#    def on_dispstate_display_adjusted (self, mdl):
+#        # TODO: redraw?...
+#        pass
+#
+##    def on_bind_changed (self, w, *args):
+##        #self.bindmap[w.inpsym] = w.bind
+##        self.emit("bind-changed", w)
+##
+##    def on_bindid_changed (self, w, *args):
+##        #print("HidLayoutWidget: bindid-changed")
+##        #self.bindmap[w.inpsym] = w.bind
+##        self.emit("bindid-changed", w)
+#
+#
+## Set up signals.
+#gobject.type_register(HidLayoutWidget)
+#gobject.signal_new("key-selected", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (str,))
+#gobject.signal_new("bind-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+#gobject.signal_new("bindid-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
+#gobject.signal_new("layout-changed", HidLayoutWidget, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (object,))
 
 
 
@@ -4115,12 +4105,16 @@ class HidLayoutWindow (gtk.Window):
         self.layout = gtk.VBox()
         self.add(self.layout)
 
-        inpdescr = InpDescrModel(8)
-        dispstate = InpDisplayState(inpdescr)
-        hidw = HidLayoutWidget(dispstate, implicit_layouts)
+        #inpdescr = InpDescrModel(8)
+        #dispstate = InpDisplayState(inpdescr)
+        #hidw = HidLayoutWidget(dispstate, implicit_layouts)
+        #self.layout.add(hidw)
+        #hidw.connect("key-selected", self.on_key_selected)
+        #hidw.connect("bind-changed", self.on_bind_changed)
+
+        self.bindstore = BindStore(3,2)
+        hidw = BindableLayoutWidget(implicit_layouts, None, self.bindstore)
         self.layout.add(hidw)
-        hidw.connect("key-selected", self.on_key_selected)
-        hidw.connect("bind-changed", self.on_bind_changed)
 
         self.connect('delete-event', self.on_delete)
 
