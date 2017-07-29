@@ -257,6 +257,13 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.runloop(script, 1)
         self.w.hide()
 
+    def test_bindcluster2 (self):
+        # Test clustered layouts.
+        cl = hidlayout.ClusteredLayout("TEST")
+        self.assertIn("OneButton", [ x[0] for x in cl ])
+        self.assertIsNotNone(cl[0])
+        self.assertIsNotNone(cl["OneButton"])
+
 
 
 
