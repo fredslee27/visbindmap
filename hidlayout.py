@@ -4356,6 +4356,93 @@ class BindableLayoutWidget (gtk.VBox):
 
 
 
+########################
+## Command set source ##
+########################
+
+class CommandPackView (gtk.VBox):
+    # Expected to rarely change, so model signals are ignored and instead set_model triggers refreshing view.
+    def __init__ (self, mdl):
+        gtk.VBox.__init__(self)
+        self._mdl = mdl
+        self.setup_state()
+        self.setup_widget()
+        self.setup_dnd()
+
+    def get_model (self):
+        return self._mdl
+    def set_model (self, mdl=None):
+        if mdl is not None:
+            self._mdl = mdl
+            self.ui.treeview.set_model(mdl)
+            self.update_view()
+    model = property(get_model, set_model)
+
+    def update_view (self):
+        pass
+
+    def setup_state (self):
+        return
+
+    def setup_widget (self):
+        self.ui = DumbData()
+        self.ui.sclwin = gtk.ScrolledWindow()
+
+        self.ui.treeview = gtk.TreeView(self._mdl)
+        self.ui.treecols = []
+        self.ui.treecelltxt = gtk.CellRendererText()
+        col0 = gtk.TreeViewColumn("cmd", self.ui.treecelltxt, text=2)
+        self.ui.treecols.append(col0)
+        for col in self.ui.treecols:
+            self.ui.treeview.append_column(col0)
+
+        self.ui.sclwin.add(self.ui.treeview)
+        self.add(self.ui.sclwin)
+        self.show_all()
+
+    def setup_dnd (self):
+        """One-time setup, GTK Drag-and-Drop."""
+        # self as DnD source: bind.
+        dnd_targets = [
+          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+#        self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.ui.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+        self.connect("drag-data-get", self.on_drag_data_get)
+
+        # self as DnD destination: erase.
+        dnd_targets = [
+          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+        ]
+        dnd_actions = gtk.gdk.ACTION_COPY
+        self.ui.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
+#        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # is DnD source.
+        treesel = w.get_selection()
+        mdl, pathsels = treesel.get_selected_rows()
+        firstsel = pathsels[0]
+        selrow = mdl[firstsel]
+        cmdname = selfrow[1]
+        if info == DndOpcodes.BIND:
+            # dragged from command set.
+            logger.debug("cmdpack: bind with %s" % (cmdname,))
+            seldata.set(seldata.target, 8, str(cmdname))
+            return True
+        return False
+    def on_drag_data_received (self, *args):
+        return False
+
+    @staticmethod
+    def make_model ():
+        # Data tuples = ( cmd_id_number, cmd_name, display_text, tooltip_text )
+        store = gtk.TreeStore(int, str, str, str)
+        store.append(None, (0, "", "(unbind)", None))
+        return store
+
+
 
 
 # Testing standalone window.
