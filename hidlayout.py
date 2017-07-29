@@ -338,7 +338,7 @@ Rows are tuples of (layout_name, layout_map).
         match = []
         for row in gtk.ListStore.__iter__(self):
             if row[0] == key:
-                match.append(row[0])
+                match.append(row[1])
         if match:
             return match[0]
         return gtk.ListStore.__getitem__(self, key)
