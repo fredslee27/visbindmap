@@ -239,7 +239,9 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.w.add(layout)
 
         self.mdl = self.sample_models[0]
-        v = hidlayout.CommandPackView(self.mdl)
+        #v = hidlayout.CommandPackView(self.mdl)
+        v = hidlayout.CommandPackView(None)
+        v.set_model(self.mdl)
 
         def on_bind_assigned (w, sym, val):
             print("T: assign %s <- %s" % (sym, val))

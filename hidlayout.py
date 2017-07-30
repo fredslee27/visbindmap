@@ -4362,6 +4362,10 @@ class BindableLayoutWidget (gtk.VBox):
 ########################
 
 class CommandPackView (gtk.VBox):
+    """View of the command pack.
+
+static method 'make_model()' for generating a suitable TreeStore expected by this widget.
+"""
     # Expected to rarely change, so model signals are ignored and instead set_model triggers refreshing view.
     def __init__ (self, mdl):
         gtk.VBox.__init__(self)
