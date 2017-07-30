@@ -754,7 +754,12 @@ Given a list of BindableTops to keep track of (watch).
         self._tracktops = tracktops
         self.mdl = None
 
-        self.refstyle = gtk.Button().get_style().copy()
+        #self.refstyle = gtk.Button().get_style().copy()
+        temp = gtk.Button().get_style().copy()
+        self.refstyle = DumbData()
+        self.refstyle.bg = temp.bg
+        self.refstyle.base = temp.base
+        del temp
 
         self.setup_states()
         self.setup_widgets()
@@ -3996,7 +4001,6 @@ class BindableLayoutWidget (gtk.VBox):
         vlayers = self._nvislayers       # Visible layers.
         # the layer corresponding to the alignment point.
         baselayer = int(alayer / vlayers) * vlayers
-        print("baselayer=%r" % baselayer)
         temp = list(self.vis)
         for ofs in range(len(temp)):
             # Make visible within the range baselayer:baselayer+n

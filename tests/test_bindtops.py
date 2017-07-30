@@ -279,27 +279,51 @@ Loop ends when coroutine ends (uses return instead of yield)
 
         def script ():
             yield 1
+
             bv.set_vis([True,True,True,True, False,False,False,False])
             hiatop = bv.ui.hidview.hiatops['B/8']
             bg0 = hiatop.ui.bg[0]
-
             yield 1
-
             self.assertEqual(bg0.usestyle, hiatop.refstyle.base)
+            self.assertTrue(hiatop.ui.lyr[0].get_visible())
+            self.assertTrue(hiatop.ui.lyr[1].get_visible())
+            self.assertTrue(hiatop.ui.lyr[2].get_visible())
+            self.assertTrue(hiatop.ui.lyr[3].get_visible())
+            self.assertFalse(hiatop.ui.lyr[4].get_visible())
+            self.assertFalse(hiatop.ui.lyr[5].get_visible())
+            self.assertFalse(hiatop.ui.lyr[6].get_visible())
+            self.assertFalse(hiatop.ui.lyr[7].get_visible())
 
             bv.set_layer(2)
             yield 1
-
             self.assertEqual(bg0.usestyle, hiatop.refstyle.bg)
             bg2 = hiatop.ui.bg[2]
             self.assertEqual(bg2.usestyle, hiatop.refstyle.base)
 
             bv.set_nvislayers(2)
             yield 1
+            self.assertEqual(bg2.usestyle, hiatop.refstyle.base)
+            self.assertFalse(hiatop.ui.lyr[0].get_visible())
+            self.assertFalse(hiatop.ui.lyr[1].get_visible())
+            self.assertTrue(hiatop.ui.lyr[2].get_visible())
+            self.assertTrue(hiatop.ui.lyr[3].get_visible())
+            self.assertFalse(hiatop.ui.lyr[4].get_visible())
+            self.assertFalse(hiatop.ui.lyr[5].get_visible())
+            self.assertFalse(hiatop.ui.lyr[6].get_visible())
+            self.assertFalse(hiatop.ui.lyr[7].get_visible())
 
             bv.set_layer(7)
-
             yield 1
+            bg7 = hiatop.ui.bg[7]
+            self.assertEqual(bg7.usestyle, hiatop.refstyle.base)
+            self.assertFalse(hiatop.ui.lyr[0].get_visible())
+            self.assertFalse(hiatop.ui.lyr[1].get_visible())
+            self.assertFalse(hiatop.ui.lyr[2].get_visible())
+            self.assertFalse(hiatop.ui.lyr[3].get_visible())
+            self.assertFalse(hiatop.ui.lyr[4].get_visible())
+            self.assertFalse(hiatop.ui.lyr[5].get_visible())
+            self.assertTrue(hiatop.ui.lyr[6].get_visible())
+            self.assertTrue(hiatop.ui.lyr[7].get_visible())
 
             yield 5
 
