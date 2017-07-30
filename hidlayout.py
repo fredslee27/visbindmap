@@ -666,7 +666,7 @@ Use style of out-of-focus Entry for all other layers."""
         dnd_actions = gtk.gdk.ACTION_COPY
         self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
         self.connect("drag-data-get", self.on_drag_data_get)
-        #self.connect("drag-end", self.on_drag_end)
+        self.connect("drag-end", self.on_drag_end)
 
         # self as DnD destination: bind, swap.
         dnd_targets = [
@@ -684,8 +684,8 @@ Use style of out-of-focus Entry for all other layers."""
         logger.debug("hiatop.drag-data-get: %d" % info)
         if info == DndOpcodes.UNBIND:
             # dragged to command set.
-            logger.debug("hiatop: try unbind  %s" % self.inpsym)
-            seldata.set(seldata.target, 8, str(self.inpsym))
+            logger.debug("hiatop: try unbind  %s" % self.hiasym)
+            seldata.set(seldata.target, 8, str(self.hiasym))
             self.pending_drag_unbinding = True
             return True
         if info == DndOpcodes.SWAP:
@@ -698,6 +698,7 @@ Use style of out-of-focus Entry for all other layers."""
 
     def on_drag_end (self, w, ctx, *args):
         """As DnD source, drag has finished."""
+        logger.debug("hiatop.drag-end")
         if self.pending_drag_unbinding:  # Check if drag-to-unbind.
             logger.debug("hiatop unbind %s" % self.hiasym)
             self.emit("bind-erased", self.hiasym)
@@ -869,7 +870,7 @@ Given a list of BindableTops to keep track of (watch).
     def on_drag_end (self, w, ctx, *args):
         logger.debug("hidmenulist drag-end")
         if self.dropunbind:
-            logger.debug("drop-unbind inpsym %s" % self.dropunbind)
+            logger.debug("drop-unbind hiasym %s" % self.dropunbind)
             self.set_bind(self.dropunbind, "")
             self.dropunbind = None
         return True
@@ -938,7 +939,7 @@ Given a list of BindableTops to keep track of (watch).
             ctx.finish(True, False, time)
             return True
         elif info == DndOpcodes.SWAP:
-            # swap with a hidtop, seldata.data is inpsym.
+            # swap with a hidtop, seldata.data is hiasym.
             logger.debug("hidmenulist swap")
             othersym = seldata.data
             destsym = self.scratch[destpath][0]
@@ -978,10 +979,10 @@ Given a list of BindableTops to keep track of (watch).
         for i in range(0, len(listbinds)):
             bind = listbinds[i]
             n = i+1
-            inpsym = "{}{}".format(self.inpsymprefix, n)
-            self.set_bind(inpsym, bind)
+            hiasym = "{}{}".format(self.hiasymprefix, n)
+            self.set_bind(hiasym, bind)
             nlayers = self.dispstate.inpdescr.get_numlayers()
-            self.scratch.append((inpsym,) + ("",)*nlayers)
+            self.scratch.append((hiasym,) + ("",)*nlayers)
 #        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
 #            self.inpdescr.handler_unblock(h)
         return
@@ -4403,36 +4404,41 @@ class CommandPackView (gtk.VBox):
     def setup_dnd (self):
         """One-time setup, GTK Drag-and-Drop."""
         # self as DnD source: bind.
-        dnd_targets = [
+        drag_targets = [
           (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
         ]
-        dnd_actions = gtk.gdk.ACTION_COPY
-#        self.drag_source_set(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
-        self.ui.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
-        self.connect("drag-data-get", self.on_drag_data_get)
+        drag_actions = gtk.gdk.ACTION_COPY
+#        self.drag_source_set(gtk.gdk.BUTTON1_MASK, drag_targets, drag_actions)
+        self.ui.treeview.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, drag_targets, drag_actions)
+        self.ui.treeview.connect("drag-data-get", self.on_drag_data_get)
 
         # self as DnD destination: erase.
-        dnd_targets = [
+        drop_targets = [
           (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
         ]
-        dnd_actions = gtk.gdk.ACTION_COPY
-        self.ui.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
-#        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
-        self.connect("drag-data-received", self.on_drag_data_received)
+        drop_actions = gtk.gdk.ACTION_COPY
+        self.ui.treeview.enable_model_drag_dest(drop_targets, drop_actions)
+#        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, drop_targets, drop_actions)
+        self.ui.treeview.connect("drag-data-received", self.on_drag_data_received)
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         # is DnD source.
         treesel = w.get_selection()
         mdl, pathsels = treesel.get_selected_rows()
         firstsel = pathsels[0]
         selrow = mdl[firstsel]
-        cmdname = selfrow[1]
+        cmdname = selrow[1]
         if info == DndOpcodes.BIND:
             # dragged from command set.
             logger.debug("cmdpack: bind with %s" % (cmdname,))
             seldata.set(seldata.target, 8, str(cmdname))
             return True
         return False
-    def on_drag_data_received (self, *args):
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        print("cmdpack on_drag_data_received")
+        if info == DndOpcodes.UNBIND:
+            hiasym = seldata.data
+            logger.debug("cmdpack: unbind %s" % (hiasym,))
+            return True
         return False
 
     @staticmethod
