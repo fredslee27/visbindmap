@@ -264,6 +264,48 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.assertIsNotNone(cl[0])
         self.assertIsNotNone(cl["OneButton"])
 
+    def test_nvislayers (self):
+        # Test layer-visibility auto-calculation.
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        bindstore = hidlayout.BindStore(8,8)
+        bv = hidlayout.BindableLayoutWidget(None, bindstore=bindstore)
+
+        layout.add(bv)
+        layout.show()
+        bv.show()
+        self.w.show()
+
+        def script ():
+            yield 1
+            bv.set_vis([True,True,True,True, False,False,False,False])
+            hiatop = bv.ui.hidview.hiatops['B/8']
+            bg0 = hiatop.ui.bg[0]
+
+            yield 1
+
+            self.assertEqual(bg0.usestyle, hiatop.refstyle.base)
+
+            bv.set_layer(2)
+            yield 1
+
+            self.assertEqual(bg0.usestyle, hiatop.refstyle.bg)
+            bg2 = hiatop.ui.bg[2]
+            self.assertEqual(bg2.usestyle, hiatop.refstyle.base)
+
+            bv.set_nvislayers(2)
+            yield 1
+
+            bv.set_layer(7)
+
+            yield 1
+
+            yield 5
+
+        self.runloop(script, 1)
+        self.w.hide()
+
 
 
 

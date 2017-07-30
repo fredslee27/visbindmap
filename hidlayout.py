@@ -516,7 +516,11 @@ Supports drag-and-drop.  Semantics:
 
         # Reference widget for styling display labels.
         temp = gtk.Entry()
-        self.refstyle = temp.get_style().copy()
+        #self.refstyle = temp.get_style().copy()
+        refstyle = temp.get_style().copy()
+        self.refstyle = DumbData()
+        self.refstyle.bg = refstyle.bg
+        self.refstyle.base = refstyle.base
         del temp
 
         # Multiple/variable number of layers to display; all in .dispbox.
@@ -1373,12 +1377,24 @@ Composed of two parts visible at any one time:
 
 
 class BindableLayoutView (BindableCluster):
-    """Special case of BindableCluster at top-level view."""
+    """Special case of BindableCluster at top-level view.
+    
+Controller interface:
+ * set_layoutmap(HidLayoutStore) : set of hiatops and their spatial locations.
+ * set_layer(int) : set active layer
+ * set_group(int) : set active group (mode)
+ * set_vis(list(bool)) : set visibilities of all layers
+"""
     def __init__ (self, vis, layoutmap, bind_store):
         BindableCluster.__init__(self, "", "", vis, layoutmap)
         self.bindstore = bind_store
         self._group = 0
+        self._nvislayers = None
         self.update_binds()
+
+    # inherits property 'vis' from BindableCluster
+    # inherits property 'layer' from BindableCluster
+    # inherits property 'layoutmap' from BindableCluster
 
     def get_group (self):
         return self._group
@@ -1386,6 +1402,11 @@ class BindableLayoutView (BindableCluster):
         self._group = val
         self.update_group()
     group = property(get_group, set_group)
+
+    def update_vis (self):
+        # Explicitly setting visibility, disable nvislayers auto-calculation.
+        self._nvislayers = None
+        BindableCluster.update_vis(self)
 
     def update_group (self):
         for hiasym in self.hiatops:
@@ -3757,11 +3778,14 @@ implicit_layouts.build_from_legacy_store()
 
 class BindableLayoutWidget (gtk.VBox):
     """Controller wrapper to BindablwLayoutView.
+
+ * set_nvislayers(int) : convenience function to automatically determine layer visibilties based on active layers and nearest power-of-two layer.
 """
     def __init__ (self, all_layouts, init_layout=None, bindstore=None):
         # TODO: use init_layout for initial layoutname.
         gtk.VBox.__init__(self)
         self._bindstore = bindstore
+        self._layer = 0
         self._vis = [ False ] * len(bindstore[0])
         self._vis[0] = True
         self.all_layouts = None
@@ -3933,14 +3957,52 @@ class BindableLayoutWidget (gtk.VBox):
 
     def on_layer_toggled (self, w, *args):
         # Effective visibility <- current layer and number of visible layers.
+#        if w.get_active():
+#            effvis = [ False ] * len(self.vis)
+#            effvis[w.layernum] = True
+#            self.set_vis(effvis)
+#            if w.get_active():
+#                # Turn on.
+#                self.ui.hidview.set_layer(w.layernum)
         if w.get_active():
-            effvis = [ False ] * len(self.vis)
-            effvis[w.layernum] = True
-            self.set_vis(effvis)
-            if w.get_active():
-                # Turn on.
-                self.ui.hidview.set_layer(w.layernum)
+            self.set_layer(w.layernum)
 
+    def get_layer (self):
+        return self._layer
+    def set_layer (self, val):
+        self._layer = val
+        self.update_layer()
+    layer = property(get_layer, set_layer)
+
+    def update_layer (self):
+        self.ui.hidview.set_layer(self._layer)
+        self.update_nvislayers()
+
+
+    def get_nvislayers (self):
+        return self._nvislayers
+    def set_nvislayers (self, val):
+        self._nvislayers = val
+        self.update_nvislayers()
+    nvislayers = property(get_nvislayers, set_nvislayers)
+
+    def update_nvislayers (self):
+        if not self._nvislayers:
+            effvis = [ (x==self._layer) for x in range(len(self.vis)) ]
+            self.set_vis(effvis)
+            return
+        nlayers = len(self.bindstore[0]) if self.bindstore else 1
+        alayer = self.ui.hidview.layer   # Currectly active layer.
+        vlayers = self._nvislayers       # Visible layers.
+        # the layer corresponding to the alignment point.
+        baselayer = int(alayer / vlayers) * vlayers
+        print("baselayer=%r" % baselayer)
+        temp = list(self.vis)
+        for ofs in range(len(temp)):
+            # Make visible within the range baselayer:baselayer+n
+            temp[ofs] = (ofs >= baselayer and ofs < baselayer+vlayers)
+        #BindableCluster.set_vis(self, temp)
+        self.ui.hidview.set_vis(temp)
 
     def get_bindstore (self):
         return self._bindstore
@@ -3994,6 +4056,7 @@ class BindableLayoutWidget (gtk.VBox):
         return self._vis
     def set_vis (self, val):
         self._vis = val
+        self._nvislayers = None
         self.update_vis()
     vis = property(get_vis, set_vis)
 
