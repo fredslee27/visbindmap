@@ -114,22 +114,23 @@ class AppData (object):
 class ObjectReinstantiater(ast.NodeTransformer):
     """Traverse Abstract Syntax Tree to filter allowed object instantiation."""
     # Classes allowed to be instantiated.  Otherwise becomes None.
-    REINSTANCERS = {
-        "hidlayout.InpDescrModel": hidlayout.InpDescrModel,
-        "hidlayout.InpLayer": hidlayout.InpLayer,
-        "hidlayout.InpGroup": hidlayout.InpGroup,
-        }
-    def nop (self, node):
+#    REINSTANCERS = {
+#        "hidlayout.InpDescrModel": hidlayout.InpDescrModel,
+#        "hidlayout.InpLayer": hidlayout.InpLayer,
+#        "hidlayout.InpGroup": hidlayout.InpGroup,
+#        }
+    def nop (self, node=None):
         return ast.parse("None", mode='eval')
     def visit_Call (self, node):
-        cmodule = node.func.value.id
-        cclass = node.func.attr
-        ckey = "%s.%s" % (cmodule, cclass)
-        if ckey in self.REINSTANCERS:
-            #logger.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
-            return node
-        else:
-            return ast.parse("None", mode='eval')
+#        cmodule = node.func.value.id
+#        cclass = node.func.attr
+#        ckey = "%s.%s" % (cmodule, cclass)
+#        if ckey in self.REINSTANCERS:
+#            #logger.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
+#            return node
+#        else:
+#            return ast.parse("None", mode='eval')
+        return ast.parse("None", mode='eval')
     def visit_Yield (self, node): return self.nop()
     def visit_Lambda (self, node): return self.nop()
     def visit_IfExp (self, node): return self.nop()
@@ -141,10 +142,10 @@ class Store (object):
 
     def reset (self):
         try:
-            self.inpdescr
+            self.bindstore
         except AttributeError:
-            self.inpdescr = hidlayout.InpDescrModel(self._nummodes, self._numlevels)
-        self.inpdescr.clear()
+            self.bindstore = hidlayout.BindStore(self._nummodes, self._numlevels)
+        self.bindstore.clear()
         self.fname = None
         self.cmdsuri = None
 
@@ -167,8 +168,9 @@ class Store (object):
         astree = ast.parse(s, mode='eval')
         transformed = ObjectReinstantiater().visit(astree)
         storedict = eval(compile(transformed, '', 'eval'))
-        self.inpdescr.restore(storedict.get('inpdescr',None))
-        self.inpdescr.refresh()
+#        self.inpdescr.restore(storedict.get('inpdescr',None))
+#        self.inpdescr.refresh()
+        # TODO: load BindStore from file.
         self.cmdsuri = storedict.get("cmdsuri", None)
         self.active_layout = storedict.get('layout', None)
 
@@ -178,7 +180,7 @@ class Store (object):
             fileobj.write(self.modes)
         storedict = {
             'layout': self.active_layout,
-            'inpdescr': self.inpdescr,
+            'bindstore': self.bindstore,
             'cmdsuri': self.cmdsuri,
             }
         pprint.pprint(storedict, fileobj, indent=2, width=132)
@@ -582,7 +584,7 @@ Consists of:
 
     def on_key_selected (self, w, ksym, *args):
         #binding = self.models.bindstore.inpdescr.get_bind(ksym)
-        binding = self.models.dispstate.get_bind(ksym)
+        #binding = self.models.dispstate.get_bind(ksym)
         logger.debug("key-selected: %s => %r" % (ksym, binding))
 
     def get_layout (self):
@@ -717,7 +719,7 @@ class VisMapperWindow (gtk.Window):
 
     def reset (self):
         """Reset window contents."""
-        self.bindpad.reset()
+        self.bindview.reset()
 
     def __init__ (self, parent=None, menubar=None, models=None):
         self.app = parent
@@ -750,15 +752,24 @@ class VisMapperWindow (gtk.Window):
 
         self.connect("delete-event", self.on_delete_event)
 
-        self.cmdcol = VisCmds(self.models.cmdstore)
+#        self.cmdcol = VisCmds(self.models.cmdstore)
+#
+#        self.bindrow = gtk.VBox()
+#        self.bindpad = VisBind(self.models)
+#        self.bindrow.pack_start(self.bindpad)
+#        self.padpane.pack_start(self.bindrow)
 
+        placeholder = hidlayout.CommandPackView.make_model()
+
+        self.cmdcol = hidlayout.CommandPackView(placeholder)
         self.bindrow = gtk.VBox()
-        self.bindpad = VisBind(self.models)
-        self.bindrow.pack_start(self.bindpad)
+        self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
+        self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
 
         self.spans = gtk.HPaned()
         self.spans.add(self.cmdcol)
+        self.cmdcol.set_size_request(180, -1)
         self.spans.add(self.padpane)
 
         if self.menubar is None:
@@ -987,7 +998,7 @@ class VisMapperApp (object):
         self.models.cmdstore = CmdStore(self.cmdsrc)
         self.models.bindstore = Store(8)
         self.models.modestore = ModeStore(self.cmdsrc)
-        self.models.dispstate = hidlayout.InpDisplayState(self.models.bindstore.inpdescr)
+        #self.models.dispstate = hidlayout.InpDisplayState(self.models.bindstore.inpdescr)
         self.models.accelgroup = gtk.AccelGroup()
 
         menubar = MainMenubar(self, self.models.accelgroup)
@@ -1001,11 +1012,12 @@ class VisMapperApp (object):
 
     def uibuild (self):
         """Setup and connect UI elements."""
-        hidl = self.ui.bindpad.hidl
+        #hidl = self.ui.bindview.hidl
+        hidl = self.ui.bindview.ui.hidview
         cmdview = self.ui.cmdcol
-        visbind = self.ui.bindpad
-        visbind.connect('mode-changed', self.on_kbmode_changed)
-        visbind.connect('level-changed', self.on_kblevel_changed)
+        visbind = self.ui.bindview
+        #visbind.connect('mode-changed', self.on_kbmode_changed)
+        #visbind.connect('level-changed', self.on_kblevel_changed)
 
     def update_main_title (self):
         cmdname = self.cmdsrc and self.cmdsrc.get_name() or None
@@ -1021,7 +1033,7 @@ class VisMapperApp (object):
         self.modenum = modenum
         #mdl = self.models.bindstore.inpdescr
         #mdl.set_group(modenum)
-        self.models.dispstate.set_group(modenum)
+        #self.models.dispstate.set_group(modenum)
         logger.debug(" ? changing to mode %d" % modenum)
         return
 
@@ -1029,7 +1041,7 @@ class VisMapperApp (object):
         self.levelnum = levelnum
         #mdl = self.models.bindstore.inpdescr
         #mdl.set_layer(levelnum)
-        self.models.dispstate.set_layer(levelnum)
+        #self.models.dispstate.set_layer(levelnum)
         logger.debug("changing to shift level %d" % levelnum)
         return
 
@@ -1062,7 +1074,7 @@ class VisMapperApp (object):
             self.load(loadfile)
             loadfile.close()
             if self.models.bindstore.active_layout:
-                self.ui.bindpad.set_layout(self.models.bindstore.active_layout)
+                self.ui.bindview.set_layout(self.models.bindstore.active_layout)
             return True
         return False
 
@@ -1087,10 +1099,10 @@ class VisMapperApp (object):
         return
 
     def get_vislayers (self):
-        hidl = self.ui.bindpad.hidl
+        hidl = self.ui.bindview.hidl
         return hidl.get_vislayers()
     def set_vislayers (self, v):
-        hidl = self.ui.bindpad.hidl
+        hidl = self.ui.bindview.hidl
         hidl.set_vislayers(v)
     def display_about (self):
         self.ui.display_about()
@@ -1115,7 +1127,7 @@ class VisMapperApp (object):
 
     def reset (self):
         self.models.bindstore.reset()
-        self.models.dispstate.cluster_defaults()
+        #self.models.dispstate.cluster_defaults()
         self.ui.reset()
         self.update_main_title()
 
