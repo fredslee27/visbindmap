@@ -469,6 +469,8 @@ class CommandSource:  # old-style.
         rows = cursor.execute(stmt)
         for row in rows:
             cmdid, lyr, grp, cmd, lbl, hint = row
+            if lbl is None:
+                lbl = cmd
             datum = (cmdid, cmd, lbl, hint)
             # Find group, attach to group.
             grpiter = grploc.get(grp, None)
@@ -1077,7 +1079,7 @@ class MainMenubar (gtk.MenuBar):
         srcname = app.ask_cmds_uri()
         if srcname:
             app.set_cmdsuri(srcname)
-            app.cmds_in_place()
+            #app.cmds_in_place()
         return
     def on_quit (self, w, *args):
         app = self.app
@@ -1104,7 +1106,7 @@ class MainMenubar (gtk.MenuBar):
     def on_debug_2 (self, w, *args):
         app = self.app
         app.set_cmdsuri("/home/fredslee/devel/vismapping/cmdset/KerbalSpaceProgram.sqlite3")
-        app.cmds_in_place()
+        #app.cmds_in_place()
         return
     def on_debug_3 (self, w, *args):
         app = self.app
@@ -1197,7 +1199,7 @@ class VisMapperApp (object):
         self.build_ui()
 
         self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
-        self.cmds_in_place()
+        #self.cmds_in_place()
 
     def build_ui (self):
         """Setup and connect UI elements."""
@@ -1278,20 +1280,31 @@ class VisMapperApp (object):
     def set_cmdsuri (self, val):
         #self.models.bindstore.cmdsuri = val
         self.session.uri_cmdpack = val
+        self.update_cmdsuri()
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
-    def cmds_in_place (self):
+#    def cmds_in_place (self):
+#        if self.session.uri_cmdpack:
+#            try:
+#                self.cmdsrc = Commands(self.session.uri_cmdpack)
+#            except sqlite3.OperationalError:
+#                self.cmdsrc = CommandsFallback()
+#            #self.models.cmdstore.clear()
+#            #self.models.cmdstore.import_commands(self.cmdsrc)
+#            #self.models.modestore.clear()
+#            #self.models.modestore.import_commands(self.cmdsrc)
+#            self.update_main_title()
+#        return
+    def update_cmdsuri (self):
         if self.session.uri_cmdpack:
+            cmdsrc = None
             try:
-                self.cmdsrc = Commands(self.session.uri_cmdpack)
+                cmdsrc = CommandSource.sqlite3(self.session.uri_cmdpack)
             except sqlite3.OperationalError:
-                self.cmdsrc = CommandsFallback()
-            #self.models.cmdstore.clear()
-            #self.models.cmdstore.import_commands(self.cmdsrc)
-            #self.models.modestore.clear()
-            #self.models.modestore.import_commands(self.cmdsrc)
-            self.update_main_title()
-        return
+                pass
+            if cmdsrc:
+                self.cmdsrc = cmdsrc
+                self.ui.cmdcol.set_model(self.cmdsrc)
 
     def get_vislayers (self):
         hidv = self.ui.bindview
@@ -1313,7 +1326,8 @@ class VisMapperApp (object):
         logger.debug("LOADING %r" % srcfile)
         #self.models.bindstore.load(srcfile)
         self.session.bindstore.load(srcfile)
-        self.cmds_in_place()
+        #self.cmds_in_place()
+        # TODO: restore commandpack
         return 0
 
     def save (self, destfile):
