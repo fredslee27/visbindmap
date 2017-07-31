@@ -140,13 +140,22 @@ Also the save file.
         #self.undostack = AppUndo()
         self.ui_snapshot = None
 
-    def snapshot (self):
+    def snapshot (self, destfileobj):
         """Write session to persistent storage; usable as Save."""
-        pass
+        enc = {
+            "bindstore": self.bindstore,
+            "cmdpack": self.cmdpack,
+            "uri_bindstore": self.uri_bindstore,
+            "uri_cmdpack": self.uri_cmdpack,
+            "uri_undostack": self.undostack,
+            "uri_snapshot": None,
+            }
+        destfileobj.write(repr(enc))
+        return
 
     def resume (self):
         """Restore session from persistent storage; usable as Load."""
-        pass
+        return
 
     def export_bindstore (self):
         """Save just BindStore in an interchange format."""
@@ -1333,7 +1342,10 @@ class VisMapperApp (object):
     def save (self, destfile):
         """Save configuration to file-like object."""
         #self.models.bindstore.save(destfile)
-        self.session.bindstore.save(destfile)
+        #self.session.bindstore.save(destfile)
+        f = open(destfile, "wt")
+        self.session.snapshot(f)
+        f.close()
         logger.debug("SAVING %r" % destfile)
         return 0
 

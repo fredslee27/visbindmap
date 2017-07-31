@@ -138,7 +138,7 @@ class BindGroup (object):
  value = BindLayer
 
 """
-    def __init__ (self, nlayers=1, fallthrough=None):
+    def __init__ (self, nlayers=1, fallthrough=None, raw_data=None):
         """
  nlayers: int = number of layers to start with.
  fallthrough: BindGroup = another BindGroup to use if resolution fails.
@@ -146,6 +146,8 @@ class BindGroup (object):
         self.layers = list()
         self.fallthrough = fallthrough
         self.resize_layers(nlayers)
+        if raw_data is not None:
+            self.decode(raw_data)
         
     def clear (self):
         for lyr in self.layers:
@@ -182,17 +184,33 @@ class BindGroup (object):
     def __setslice__ (self, i, j, seq): self.layers.__setslice__(i,j,seq)
     def __delslice__ (self, i, j):      self.layers.__delslice__(i,j)
 
+    def decode (self, raw_data):
+        self.layers = []
+        for enclyr in raw_data:
+            lyr = BindLayer(enclyr)
+            self.layers.append(lyr)
+
+    def encode (self):
+        enc = dict()
+        enc['.class'] = self.__class__.__name__
+        enc['nlayers'] = self.nlayers
+        enc['fallthrough'] = self.fallthrough
+        enc['raw_data'] = self.layers
+        return enc
+
 class BindStore (object):
     """list of BindGroup, one per group available.
  index = group number
  value = BindGroup
 """
-    def __init__ (self, ngroups=1, nlayers=1):
+    def __init__ (self, ngroups=1, nlayers=1, raw_data=None):
         self.groups = []
         self.ngroups = ngroups
         self.nlayers = nlayers
         self.resize_layers(self.nlayers)
         self.resize_groups(self.ngroups)
+        if raw_data is not None:
+            self.decode(raw_data)
     def clear (self):
         # Erase all binds.
         for grp in self.groups:
@@ -244,6 +262,28 @@ class BindStore (object):
             parts.append("  ] # G%d\n" % gn)
         parts.append(" ]")
         return "".join(parts)
+
+    def decode (self, raw_data):
+        self.groups = []
+        for encgrp in raw_data:
+            if encgrp['.class'] != BindGroup.__name__:
+                raise TypeError("Did not find expected BindGroup")
+            temp = dict(encgrp)
+            del temp['.class']
+            grp = BindGroup(**temp)
+            self.groups.append(grp)
+
+    def encode (self):
+        enc = dict()
+        enc['.class'] = self.__class__.__name__
+        enc['ngroups'] = self.ngroups
+        enc['nlayers'] = self.nlayers
+        ser = []
+        for grp in self.groups:
+            encgrp = grp.encode()
+            ser.append(encgrp)
+        enc['raw_data'] = ser
+        return enc
 
 
 
@@ -4564,12 +4604,16 @@ class BindableLayoutWidget (gtk.VBox):
 ########################
 
 class CommandPackStore (gtk.TreeStore):
-    def __init__ (self, packname=None):
+    def __init__ (self, packname=None, raw_data=None):
         # Data tuples = ( cmd_id_number, cmd_name, display_text, tooltip_text )
         gtk.TreeStore.__init__(self, int, str, str, str)
-        gtk.TreeStore.append(self, None, (0, "", "(unbind)", ""))
         self._cursor = None
         self.packname = packname
+        if raw_data is None:
+            # Default initial entry for unbind.
+            gtk.TreeStore.append(self, None, (0, "", "(unbind)", ""))
+        else:
+            self.decode(raw_data)
 
     def begin_group (self, entry):
         rowdata = entry
@@ -4588,6 +4632,61 @@ class CommandPackStore (gtk.TreeStore):
             return gtk.TreeStore.append(self, self._cursor, entry)
         else:
             return gtk.TreeStore.append(self, entry, *more)
+
+    def decode (self, raw_data):
+        tupleiter = raw_data.__iter__()
+        treeiter = self.get_iter_root()
+        stack = []
+        while stack or tupleiter:
+            try:
+                entry = tupleiter.next()
+            except StopIteration:
+                if stack:
+                    tupleiter, treeiter = stack[-1]
+                    del stack[-1]
+                    continue
+                else:
+                    break
+            rowtuple, subtree = entry
+            rowiter = self.append(treeiter, rowtuple)
+            if subtree:
+                stack.append( (tupleiter, treeiter) )
+                treeiter = rowiter
+                tupleiter = subtree.__iter__()
+
+    def encode (self):
+        enc = dict()
+        enc['.class'] = self.__class__.__name__
+        enc['packname'] = self.packname
+
+        ser = []
+        stack = []
+        treeiter = self.get_iter_root()
+        while stack or treeiter:
+            #ser.append( tuple(self[self.get_path(treeiter)]) )
+            subtree = None
+            if not treeiter:
+                # resume from stack.
+                subtree = ser
+                treeiter, ser = stack[-1]
+                del stack[-1]
+            elif self.iter_has_child(treeiter):
+                # save state, recurse.
+                stack.append( (treeiter, ser) )
+                ser = []
+                treeiter = self.iter_children(treeiter)
+                continue
+
+            rowtuple = tuple(self[self.get_path(treeiter)])
+            entry = (rowtuple, subtree)
+            ser.append(entry)
+            treeiter = self.iter_next(treeiter)
+        enc['raw_data'] = ser
+        return enc
+
+    def __repr__ (self):
+        return repr(self.encode())
+
 
 class CommandPackView (gtk.VBox):
     """View of the command pack.
