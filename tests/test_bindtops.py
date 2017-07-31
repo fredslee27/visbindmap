@@ -419,9 +419,107 @@ Loop ends when coroutine ends (uses return instead of yield)
             bv.ui.hidview.update_binds()
             yield 1
 
-#            bindstore[0][0]['LP#'] = "RadialMenu08"
-#            bv.ui.hidview.update_binds()
-#            yield 1
+            yield 5
+
+        self.runloop(script, 1)
+        self.w.hide()
+
+    def test_radialmenu (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        bindstore = hidlayout.BindStore(8,8)
+        bv = hidlayout.BindableLayoutWidget(None, bindstore=bindstore)
+
+        layout.add(bv)
+        layout.show()
+        bv.show()
+        self.w.show()
+
+        def script ():
+            bv.ui.selectors.frob_layout(9)
+            bv.ui.selectors.frob_layer(0)
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu01"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu02"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu03"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu04"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu05"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu06"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu07"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu08"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu09"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu10"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu11"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu12"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu13"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu14"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu15"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu16"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu17"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu18"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu19"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "RadialMenu20"
+            bv.ui.hidview.update_binds()
+            yield 1
 
             yield 5
 

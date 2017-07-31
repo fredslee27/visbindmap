@@ -998,7 +998,7 @@ class VisMapperWindow (gtk.Window):
         self.cmdcol = hidlayout.CommandPackView(placeholder)
         self.bindrow = gtk.VBox()
         #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
-        self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts, "PS3", self.session.bindstore)
+        self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts, "SteamController", self.session.bindstore)
         self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
 

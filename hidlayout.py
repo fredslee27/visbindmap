@@ -435,7 +435,7 @@ class DumbData (object):
 class Bindable (object):
     """Base class for widgets showing binds.
 """
-    def __init__ (self, hiasym, label=None, vis=None, initbinds=None):
+    def __init__ (self, hiasym, label=None, vis=None, init_binds=None):
         self._hiasym = hiasym
         self._label = label
         self._layer = 0     # Currently active layer.
@@ -443,9 +443,9 @@ class Bindable (object):
             vis = [ True ]
         # TODO: change to tuple?
         self._vis = vis  # List of bool, visibility of each layer; len is total number of layers.
-        if initbinds is None:
-            initbinds = (None,)*len(self._vis)
-        self._binds = initbinds     # Tuple of str, one per layer.  Tuple-ness as the grouping is an intrinsic property (immutability of the sequence).
+        if init_binds is None:
+            init_binds = (None,)*len(self._vis)
+        self._binds = init_binds     # Tuple of str, one per layer.  Tuple-ness as the grouping is an intrinsic property (immutability of the sequence).
 
     @property
     def nlayers (self): return len(self.vis)
@@ -499,16 +499,16 @@ class Bindable (object):
     def update_vis (self): """Called after set_vis; override."""
     def update_binds (self): """Called after set_binds; override."""
 
-    def make_hiatop (self, descr, initbinds=None, parent_cluster=None):
+    def make_hiatop (self, descr, init_binds=None, parent_cluster=None):
         hiasym, hialbl, hiatype, x, y, w, h = descr
         hiatop = None
         if hiatype == "cluster":
-            hiatop = BindableCluster(hiasym, hialbl, self.vis, initbinds)
+            hiatop = BindableCluster(hiasym, hialbl, self.vis, init_binds)
             if parent_cluster:
                 parent_cluster.hiatops[hiasym] = hiatop
                 parent_cluster.hiaclusters[hiasym] = hiatop
         elif hiatype == "key":
-            hiatop = BindableTop(hiasym, hialbl, self.vis, initbinds)
+            hiatop = BindableTop(hiasym, hialbl, self.vis, init_binds)
             if parent_cluster:
                 parent_cluster.hiatops[hiasym] = hiatop
         else:
@@ -534,8 +534,8 @@ Supports drag-and-drop.  Semantics:
  * from btop to btop - swap binding : bind-swaped(src-hiasym, dst-hiasym)
  * from btop to command set - erase binding : bind-erased(src-hiasym)
 """
-    def __init__ (self, hiasym, label=None, vis=None, initbinds=None):
-        Bindable.__init__(self, hiasym, label, vis, initbinds)
+    def __init__ (self, hiasym, label=None, vis=None, init_binds=None):
+        Bindable.__init__(self, hiasym, label, vis, init_binds)
         gtk.Button.__init__(self)
         self.setup_widgets()
         self.setup_signals()
@@ -804,7 +804,6 @@ Heavily reliant on clusters acting as proxy (hiatop to hiacluster to hiaview, an
 Given a list of BindableTops to keep track of (watch).
 
 """
-#    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
     def __init__ (self, tracktops):
         # Based on ScrollWindowed, containing a TreeView
         gtk.ScrolledWindow.__init__(self)
@@ -1098,6 +1097,7 @@ class ClusteredLayouts (HidLayouts):
     # onebutton, scroll, dpad, bquad, mouse, trackpad, js, gyro, touchmenu, radialmenu
 
     def build_layouts (self):
+        self._build_layout_empty()
         self._build_layout_one()
         self._build_layout_scrl()
         self._build_layout_dpad()
@@ -1119,12 +1119,17 @@ class ClusteredLayouts (HidLayouts):
     def make_gridded_layoutstore (self, suffix, w, h, simple_placements):
         layout = self.make_layoutstore(suffix)
         for datum in simple_placements:
-            hiasym, x, y = datum
+            suffix, x, y = datum
             row = y * h
             col = x * w
+            hiasym = "{}{}".format(self.symprefix, suffix)
             cooked = (hiasym, hiasym, "key", col, row, w, h)
             layout.append(None, cooked)
         return layout
+
+    def _build_layout_empty (self):
+        layout = self.make_layoutstore("Empty")
+        self.append( (layout.name, layout) )
 
     def _build_layout_one (self):
         layout = self.make_gridded_layoutstore("OneButton",
@@ -1170,7 +1175,7 @@ class ClusteredLayouts (HidLayouts):
         self.append( (layout.name, layout) )
 
     def _build_layout_track (self):
-        layout = self.make_gridded_layoutstore("TrackPad",
+        layout = self.make_gridded_layoutstore("MousePad",
           4, 4,
           [
             ("c", 1, 1),
@@ -1315,10 +1320,11 @@ class ClusteredLayouts (HidLayouts):
             return "{}{}".format(self.symprefix, suffix)
         def radialize (n, r=6):
             for step in range(n):
-                angle = 2*math.pi / float(n)
-                theta = math.pi / 2. - angle
-                x = float(r) * math.cos(theta)
-                y = float(r) * math.sin(theta)
+                angle = step * 2*math.pi / float(n)
+                theta = - math.pi / 2. + angle
+                x = r + (float(r) * math.cos(theta)) - .5
+                y = r + (float(r) * math.sin(theta)) + .5
+                print("radialize %d/%d => %d,%d" % (step, n, x, y))
                 yield (SYM(n), SYM(n), "key", x, y, 1, 1)
         for variant in range(1,21):
             layout = self.make_layoutstore("{}{:02d}".format("RadialMenu", variant))
@@ -1333,13 +1339,13 @@ class ClusteredLayouts (HidLayouts):
 class BindableArrangerContextMenu (gtk.Menu):
     MENU_DESC = [
         # Tuples of (item_label, layout_name)
-        ( "_None", "None"),
-        ( "_Fixed", "Fixed"),
+        ( "_None", "Empty"),
+#        ( "_Fixed", "Fixed"),
         ( "_SingleButton", "OneButton"),
         ( "Scroll_Wheel", "ScrollWheel"),
         ( "_DPad", "DirectionPad"),
         ( "_ButtonQuad", "ButtonQuad"),
-        ( "_Mouse", "Mouse"),
+        ( "_MousePad", "MousePad"),
         ( "_Joystick", "Joystick"),
         ( "_GyroTilt", "GyroTilt"),
         ( "_Touch Menu", [
@@ -1465,6 +1471,8 @@ gobject.type_register(BindableArrangerContextMenu)
 
 
 
+# TODO: factor out base class to avoid that long "if" in the UI builder.
+
 class BindableCluster (gtk.EventBox, Bindable):
     """Groups together multiple BindableTops into a unit.
 Intended for use in the context of Steam Controller touchpads.
@@ -1474,10 +1482,9 @@ Composed of two parts visible at any one time:
 * Grid layout
 * List layout
 """
-#    def __init__ (self, hiasym, label=None, nlayers=None, initbinds=None):
-    def __init__ (self, hiasym, label=None, vis=None, initbinds=None):
-        Bindable.__init__(self, hiasym, label, vis, initbinds)
-        # TODO: In the context of Cluster, initbinds indicates what arrangement to use per layer.
+    def __init__ (self, hiasym, label=None, vis=None, init_binds=None):
+        Bindable.__init__(self, hiasym, label, vis, init_binds)
+        # TODO: In the context of Cluster, init_binds indicates what arrangement to use per layer.
         gtk.EventBox.__init__(self)
         self._layoutmap = None
         self.clustered_layouts = ClusteredLayouts(self.hiasym)
@@ -1559,22 +1566,30 @@ Composed of two parts visible at any one time:
         for ch in self.ui.grid.children():
             self.ui.grid.remove(ch)
 
-        # Resize to (1,1)
-        self.ui.grid.resize(1,1)
+        # Resize to initial grid size.
+        if self.hiasym:
+            # nested cluster.
+            self.ui.grid.resize(12,12)
+        else:
+            # top-level cluster.
+            self.ui.grid.resize(1,1)
 
         # Attach all specified hia.
         for hiadata in self.layoutmap:
             hiasuffix, lbl, prototyp, x, y, w, h = hiadata
             hiasym = "{}{}".format(self.hiasym, hiasuffix)
             if not hiasym in self.hiatops:
-                #hiatop = BindableTop(hiasym, lbl, self.vis, initbinds=None)
+                #hiatop = BindableTop(hiasym, lbl, self.vis, init_binds=None)
                 #self.hiatops[hiasym] = hiatop
                 hiatop = self.make_hiatop(hiadata, self.binds, self)
             else:
                 hiatop = self.hiatops[hiasym]
                 hiatop.set_vis(self.vis)
                 # TODO: update bind?
-            self.ui.grid.attach(hiatop, x, x+w, y, y+h)
+            if isinstance(hiatop, BindableCluster):
+                self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=4, ypadding=4)
+            else:
+                self.ui.grid.attach(hiatop, x, x+w, y, y+h)
             hiatop.show()
         self.ui.grid.show()
         self.ui.top.show()
