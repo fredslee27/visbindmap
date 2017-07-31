@@ -7,6 +7,8 @@ import kbd_desc
 import gobject
 import gtk
 
+import StringIO
+
 
 class TestSerialize(unittest.TestCase):
     def setUp (self):
@@ -29,32 +31,57 @@ Loop ends when coroutine ends (uses return instead of yield)
             phase += 1
 
     def test_cmdpack (self):
-        print()
+#        print()
         cmdpack = vismapping.CommandSource.builtin()
-        enc = repr(cmdpack)
-        print(enc)
+        enc1 = cmdpack.encode()
+#        print(repr(cmdpack))
 
         encdict = cmdpack.encode()
         del encdict['.class']
         cmdpack2 = hidlayout.CommandPackStore(**encdict)
-        print("\npack2\n")
-        print(repr(cmdpack2))
+#        print("\npack2\n")
+#        print(repr(cmdpack2))
+
+        self.assertEqual(repr(cmdpack), repr(cmdpack2))
 
     def test_bindstore (self):
         bindstore = hidlayout.BindStore(8,8)
         bindstore[0][0]['K_TEST1'] = 'test1'
         enc1 = bindstore.encode()
-        print()
-        print("bindstore  %r" % enc1)
+        #print()
+        #print("bindstore  %r" % enc1)
 
         temp = dict(enc1)
         del temp['.class']
         bindstore2 = hidlayout.BindStore(**temp)
         enc2 = bindstore2.encode()
-        print("bindstore2 %r" % (enc2,))
+        #print("bindstore2 %r" % (enc2,))
 
         self.assertEqual(repr(enc1), repr(enc2))
 
+    def test_appsession (self):
+        session = vismapping.AppSession()
+        session.cmdpack = vismapping.CommandSource.builtin()
+        session.uri_bindstore = "(stdin)"
+        session.uri_cmdpack = "(builtin)"
+        sio = StringIO.StringIO()
+        session.snapshot(sio)
+        enc1 = sio.getvalue()
+        #print("\n\n1: " + enc1)
+
+        sio2 = StringIO.StringIO(enc1)
+        session2 = vismapping.AppSession()
+        session2.resume(sio2)
+        sio2o = StringIO.StringIO()
+        session2.snapshot(sio2o)
+        enc2 = sio2o.getvalue()
+        #print("\n\n2: " + enc2)
+
+        self.assertEqual(repr(enc1), repr(enc2))
+        self.assertIsNotNone(session2.bindstore)
+        self.assertIsNotNone(session2.cmdpack)
+        self.assertEqual(session2.uri_bindstore, "(stdin)")
+        self.assertEqual(session2.uri_cmdpack, "(builtin)")
 
 
 

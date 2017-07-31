@@ -147,14 +147,39 @@ Also the save file.
             "cmdpack": self.cmdpack,
             "uri_bindstore": self.uri_bindstore,
             "uri_cmdpack": self.uri_cmdpack,
-            "uri_undostack": self.undostack,
-            "uri_snapshot": None,
+            "undostack": self.undostack,
+            "ui_snapshot": None,
             }
-        destfileobj.write(repr(enc))
-        return
+        if destfileobj:
+            destfileobj.write(repr(enc))
+        return enc
 
-    def resume (self):
+    @staticmethod
+    def reinstantiate (object_desc):
+        if object_desc is None:
+            return None
+        try:
+            classname = object_desc['.class']
+        except (KeyError, TypeError):
+            return object_desc
+        temp = dict(object_desc)
+        del temp['.class']
+        if classname == hidlayout.BindStore.__name__:
+            inst = hidlayout.BindStore(**temp)
+        elif classname == hidlayout.CommandPackStore.__name__:
+            inst = hidlayout.CommandPackStore(**temp)
+        return inst
+
+    def resume (self, srcfileobj):
         """Restore session from persistent storage; usable as Load."""
+        enc = ast.literal_eval(srcfileobj.read())
+
+        self.bindstore = self.reinstantiate(enc['bindstore'])
+        self.cmdpack = self.reinstantiate(enc['cmdpack'])
+        self.uri_bindstore = self.reinstantiate(enc['uri_bindstore'])
+        self.uri_cmdpack = self.reinstantiate(enc['uri_cmdpack'])
+        self.undostack = self.reinstantiate(enc['undostack'])
+        self.ui_snapshot = self.reinstantiate(enc['ui_snapshot'])
         return
 
     def export_bindstore (self):

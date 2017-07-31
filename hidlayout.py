@@ -198,6 +198,9 @@ class BindGroup (object):
         enc['raw_data'] = self.layers
         return enc
 
+    def __repr__ (self):
+        return repr(self.encode)
+
 class BindStore (object):
     """list of BindGroup, one per group available.
  index = group number
@@ -284,6 +287,9 @@ class BindStore (object):
             ser.append(encgrp)
         enc['raw_data'] = ser
         return enc
+
+    def __repr__ (self):
+        return repr(self.encode())
 
 
 
