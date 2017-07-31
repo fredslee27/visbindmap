@@ -554,6 +554,8 @@ Supports drag-and-drop.  Semantics:
 #        self.setup_dnd()
 #        self.update_display()
 
+        self.set_no_show_all(True)
+
     def update_hiasym (self):
         """HIA symbol changed; may update label."""
         if self.toplabel is None:
@@ -1446,12 +1448,12 @@ Controller interface:
         self.update_binds()
 
     def on_bind_assigned (self, w, hiasym, hiabind):
-        print("doing on_bind_assigned(layer=%d, sym=%4, val=%r" % (self.layer, hiasym, hiabind))
+        logger.debug("doing on_bind_assigned(layer=%d, sym=%r, val=%r)" % (self.layer, hiasym, hiabind))
         self.bindstore[self.group][self.layer][hiasym] = hiabind
         self.update_binds()
         return
     def on_bind_swapped (self, w, src_hiasym, dst_hiasym):
-        print("doing on_bind_swapped(layer=%d, asym=%r, bsym=%r" % (self.layer, src_hiasym, dst_hiasym))
+        logger.debug("doing on_bind_swapped(layer=%d, asym=%r, bsym=%r" % (self.layer, src_hiasym, dst_hiasym))
         srcbind = self.bindstore[self.group][self.layer][src_hiasym]
         dstbind = self.bindstore[self.group][self.layer][dst_hiasym]
         self.bindstore[self.group][self.layer][src_hiasym] = dstbind
@@ -1459,7 +1461,7 @@ Controller interface:
         self.update_binds()
         return
     def on_bind_erased (self, w, hiasym):
-        print("doing on_bind_erased(layer=%d, sym=%r" % (self.layer, hiasym))
+        logger.debug("doing on_bind_erased(layer=%d, sym=%r" % (self.layer, hiasym))
         #self.bindstore[self.group][self.layer][src_hiasym] = ""
         del self.bindstore[self.group][self.layer][src_hiasym]
         self.update_binds()
@@ -4033,6 +4035,9 @@ class BindableLayoutWidget (gtk.VBox):
         self.setup_widget()
         self.setup_signals()
 
+        if init_layout is not None:
+            self.ui.selectors.frob_layout(init_layout)
+
     def setup_state (self):
         self._activename = None
         self._activehid = None
@@ -4077,13 +4082,10 @@ class BindableLayoutWidget (gtk.VBox):
 
     def on_layout_changed (self, w, layoutname):
         self.set_active(layoutname)
-        pass
     def on_group_changed (self, w, groupnum):
         self.set_group(groupnum)
-        pass
     def on_layer_changed (self, w, layernum):
         self.set_layer(layernum)
-        pass
 
     def setup_signals (self):
         self.ui.selectors.connect("layout-changed", self.on_layout_changed)
@@ -4624,7 +4626,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
             return True
         return False
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
-        print("cmdpack on_drag_data_received")
+        logger.debug("cmdpack on_drag_data_received")
         if info == DndOpcodes.UNBIND:
             hiasym = seldata.data
             logger.debug("cmdpack: unbind %s" % (hiasym,))
