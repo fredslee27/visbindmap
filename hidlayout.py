@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # vim: expandtab shiftwidth=4 :
 
+# TODO: adopt __gproperties__ pattern.
+
 from __future__ import print_function
 
 import sys
@@ -3781,67 +3783,72 @@ implicit_layouts.build_from_legacy_store()
 
 
 
-class BindableLayoutWidget (gtk.VBox):
-    """Controller wrapper to BindablwLayoutView.
+class BindableLayoutSelectors (gtk.VBox):
+    """Selectors (controls) for BindableLayoutView in a single widget.
 
- * set_nvislayers(int) : convenience function to automatically determine layer visibilties based on active layers and nearest power-of-two layer.
+External controls:
+ * frob_layout(str)
+ * frob_group(int)
+ * frob_layer(int)
 """
-    def __init__ (self, all_layouts, init_layout=None, bindstore=None):
-        # TODO: use init_layout for initial layoutname.
+    def __init__ (self, model_layouts, model_groups, model_layers):
         gtk.VBox.__init__(self)
-        self._bindstore = bindstore
-        self._layer = 0
-        self._vis = [ False ] * len(bindstore[0])
-        self._vis[0] = True
-        self.all_layouts = None
-        if self.all_layouts is None:
-            self.all_layouts = implicit_layouts
-
+        self.mdl_layouts = model_layouts
+        self.mdl_groups = model_groups
+        self.mdl_layers  = model_layers
         self.setup_widget()
 
-        # dumb struct, track signal handler ids.
-        class signal_handlers:
-            clicked = dict()
-            cluster_type_changed = dict()
-            bind_assigned = dict()
-            bind_swapped = dict()
-            bind_erased = dict()
-        self.signal_handlers = signal_handlers
+    def get_layouts_model (self):
+        return self.mdl_layouts
+    def set_layouts_model (self, val):
+        self.mdl_layouts = val
+    layouts_model = property(get_layouts_model, set_layouts_model)
 
-#        self.rebuild_display()
+    def get_groups_model (self):
+        return self.mdl_group
+    def set_groups_model (self, val):
+        self.mdl_groups = val
+    groups_model = property(get_groups_model, set_groups_model)
 
-        self.setup_signals()
+    def get_layers_model (self):
+        return self.mdl_layers
+    def set_layers_model (self, val):
+        self.mdl_layers = val
+    layers_model = property(get_layers_model, set_layers_model)
 
-    def setup_state (self):
-        self._activename = None
-        self._activehid = None
+    def frob_layout (self, val):
+        n = None
+        for i in range(len(self.mdl_layouts)):
+            if (self.mdl_layouts[i][0] == val) or (i == val):
+                n = i
+        if n is not None:
+            self.ui.sel_layout.set_active(n)
+    def frob_group (self, val):
+        # TODO: if val isa str
+        self.ui.sel_group.btns[val].activate()
+    def frob_layer (self, val):
+        self.ui.sel_layer.btns[val].activate()
 
     def setup_widget (self):
-        class ui:
-            pass
-        self.ui = ui
+        self.ui = DumbData()
 
-        # Primary bindables view.
-        #self.ui.hidview = BindableCluster("")
-        self.ui.hidview = BindableLayoutView(self.vis, implicit_layouts['en_US (pc104)'], self._bindstore)
-
-        # Data model for layout selector.
-        self.mdl_layout = gtk.ListStore(str)
-        hidnames = sorted(self.all_layouts.keys())
-        for k in hidnames:
-            self.mdl_layout.append((k,))
+#        # Data model for layout selector.
+#        self.mdl_layouts = gtk.ListStore(str)
+#        hidnames = sorted(self.all_layouts.keys())
+#        for k in hidnames:
+#            self.mdl_layouts.append((k,))
 
         # Row with layout selector.
-        self.ui.sel_layout = self.LayoutSelectorWidget(self.mdl_layout)
+        self.ui.sel_layout = self.LayoutSelectorWidget(self.mdl_layouts)
         self.ui.lbl_layout = gtk.Label("Layout:")
         self.ui.row_layout = gtk.HBox()
         self.ui.row_layout.pack_start(self.ui.lbl_layout, False, False, 0)
         self.ui.row_layout.pack_start(self.ui.sel_layout, False, False, 0)
 
-        # Data model for group selector.
-        self.mdl_groups = gtk.ListStore(int, str)
-        for datum in [ (0,"Global"), (1,"Menu"), (2,"Game") ]:
-            self.mdl_groups.append(datum)
+#        # Data model for group selector.
+#        self.mdl_groups = gtk.ListStore(int, str)
+#        for datum in [ (0,"Global"), (1,"Menu"), (2,"Game") ]:
+#            self.mdl_groups.append(datum)
 
         # Row with group selector.
         self.ui.sel_group = self.GroupSelectorWidget(self.mdl_groups)
@@ -3852,22 +3859,15 @@ class BindableLayoutWidget (gtk.VBox):
         self.pack_start(self.ui.row_layout, False, False, 0)
         self.pack_start(self.ui.sel_group, False, False, 0)
         self.pack_start(self.ui.sel_layer, False, False, 0)
-        self.pack_start(self.ui.hidview, False, False, 0)
-        #self.hidview.show()
-        #self.show_all()
+
         self.ui.row_layout.show_all()
         self.ui.sel_group.show_all()
         self.ui.sel_layer.show_all()
-        self.ui.hidview.show()
 
         # Initial layout.
-        idx = self.ui.sel_layout.get_active()
-        val = self.mdl_layout[idx][0]
-        self.activename = val  # trigger update_activehid()
-
-    def setup_signals (self):
-        self.ui.sel_layout.connect('changed', self.on_layout_changed)
-        return
+        self.ui.sel_layout.set_active(0)
+        #idx = self.ui.sel_layout.get_active()
+        #val = self.mdl_layouts[idx][0]
 
     def LayoutSelectorWidget (self, mdl_layouts):
         # Combo (drop) list.
@@ -3876,17 +3876,19 @@ class BindableLayoutWidget (gtk.VBox):
         selector.pack_start(selector.cell_layout)
         selector.add_attribute(selector.cell_layout, 'text', 0)
         selector.set_active(0)
+        selector.connect("changed", self.on_layout_changed)
         return selector
 
     def on_layout_changed (self, w, *args):
         idx = w.get_active()
-        data = self.mdl_layout[idx]
+        data = self.mdl_layouts[idx]
         val = data[0]
-        self.activename = val   # trigger update_activehid()
+        #self.activename = val   # trigger update_activehid()
         #self.activehid = self.all_layouts[val]
         #self.hidview.set_layoutmap(self.activehid)
         # TODO: propagate binds to newly revealed clusters.
-        self.show()
+        #self.show()
+        self.emit("layout-changed", val)
 
     def GroupSelectorWidget (self, mdl_groups):
         selector = gtk.Frame("Group")
@@ -3927,8 +3929,8 @@ class BindableLayoutWidget (gtk.VBox):
 
     def on_group_toggled (self, w, *args):
         if w.get_active():
-            self.ui.hidview.set_group(w.groupnum)
-            pass
+            groupnum = w.groupnum
+            self.emit("group-changed", groupnum)
 
     def LayerSelectorWidget (self):
         selector = gtk.Frame("Layer")
@@ -3971,6 +3973,95 @@ class BindableLayoutWidget (gtk.VBox):
 #                self.ui.hidview.set_layer(w.layernum)
         if w.get_active():
             self.set_layer(w.layernum)
+    __gsignals__ = {
+        "layout-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
+        "layer-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
+        "group-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
+        }
+
+gobject.type_register(BindableLayoutSelectors)
+
+
+
+
+class BindableLayoutWidget (gtk.VBox):
+    """Controller wrapper to BindablwLayoutView.
+
+ * set_nvislayers(int) : convenience function to automatically determine layer visibilties based on active layers and nearest power-of-two layer.
+"""
+    def __init__ (self, all_layouts, init_layout=None, bindstore=None):
+        # TODO: use init_layout for initial layoutname.
+        gtk.VBox.__init__(self)
+        self._bindstore = bindstore
+        self._layer = 0
+        self._vis = [ False ] * len(bindstore[0])
+        self._vis[0] = True
+        self.all_layouts = None
+        if self.all_layouts is None:
+            self.all_layouts = implicit_layouts
+
+        self.setup_widget()
+        self.setup_signals()
+
+    def setup_state (self):
+        self._activename = None
+        self._activehid = None
+
+    def setup_widget (self):
+        class ui:
+            pass
+        self.ui = ui
+
+        # Primary bindables view.
+        #self.ui.hidview = BindableCluster("")
+        self.ui.hidview = BindableLayoutView(self.vis, implicit_layouts['en_US (pc104)'], self._bindstore)
+
+#        # Data model for layout selector.
+#        self.mdl_layout = gtk.ListStore(str)
+#        hidnames = sorted(self.all_layouts.keys())
+#        for k in hidnames:
+#            self.mdl_layout.append((k,))
+
+        self.all_groups = gtk.ListStore(int, str)
+        self.all_groups.append((0, "Global"))
+        self.all_groups.append((1, "Menu"))
+        self.all_groups.append((2, "Game"))
+
+        self.all_layers = gtk.ListStore(int, str)
+        self.all_layers.append((0, "base"))
+        self.all_layers.append((1, "1"))
+        self.all_layers.append((2, "2"))
+        self.all_layers.append((3, "3"))
+        self.all_layers.append((4, "4"))
+        self.all_layers.append((5, "5"))
+        self.all_layers.append((6, "6"))
+        self.all_layers.append((7, "7"))
+
+        self.ui.selectors = BindableLayoutSelectors(self.all_layouts, self.all_groups, self.all_layers)
+        self.ui.selectors.show_all()
+
+        self.ui.hidview.show()
+
+        self.ui.selectors.connect("layout-changed", self.on_layout_changed)
+        self.ui.selectors.connect("group-changed", self.on_group_changed)
+        self.ui.selectors.connect("layer-changed", self.on_layer_changed)
+
+        self.pack_start(self.ui.selectors, False, False, 0)
+        self.pack_start(self.ui.hidview, False, False, 0)
+
+    def on_layout_changed (self, w, layoutname):
+        self.set_active(layoutname)
+        pass
+    def on_group_changed (self, w, groupnum):
+        self.set_group(groupnum)
+        pass
+    def on_layer_changed (self, w, layernum):
+        self.set_layer(layernum)
+        pass
+
+    def setup_signals (self):
+        # TODO
+        return
 
     def get_layer (self):
         return self._layer

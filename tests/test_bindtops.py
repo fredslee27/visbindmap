@@ -278,6 +278,7 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.w.show()
 
         def script ():
+            bv.ui.selectors.frob_layout("PS3")
             yield 1
 
             bv.set_vis([True,True,True,True, False,False,False,False])
@@ -286,7 +287,7 @@ Loop ends when coroutine ends (uses return instead of yield)
             yield 1
             self.assertEqual(bg0.usestyle, hiatop.refstyle.base)
             self.assertTrue(hiatop.ui.lyr[0].get_visible())
-            self.assertTrue(hiatop.ui.lyr[1].get_visible())
+            self.assertTrue(hiatop.ui.lyr[0].get_visible())
             self.assertTrue(hiatop.ui.lyr[2].get_visible())
             self.assertTrue(hiatop.ui.lyr[3].get_visible())
             self.assertFalse(hiatop.ui.lyr[4].get_visible())
