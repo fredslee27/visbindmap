@@ -1327,7 +1327,8 @@ Composed of two parts visible at any one time:
             self.ui.row_lbl.show_all()
             self.ui.frame.set_label_widget(self.ui.row_lbl)
         self.ui.top = gtk.VBox()
-        self.ui.grid = gtk.Table(12,12,True)
+        #self.ui.grid = gtk.Table(12,12,True)
+        self.ui.grid = gtk.Table(1,1,True)
         # Map of hiasym to hiatop, hiatops grouped in this cluster, not
         # necessarily visible or attached to grid.
         # Expect "#c", "#1", "#2", ... "#20".
@@ -1364,6 +1365,9 @@ Composed of two parts visible at any one time:
         # Detach all existent hia.
         for ch in self.ui.grid.children():
             self.ui.grid.remove(ch)
+
+        # Resize to (1,1)
+        self.ui.grid.resize(1,1)
 
         # Attach all specified hia.
         for hiadata in self.layoutmap:
@@ -4093,6 +4097,16 @@ class BindableLayoutWidget (gtk.VBox):
         self.ui.selectors.connect("layer-changed", self.on_layer_changed)
         return
 
+    def get_group (self):
+        return self_group
+    def set_group (self, val):
+        self._group = val
+        self.update_group()
+    group = property(get_group, set_group)
+
+    def update_group (self):
+        self.ui.hidview.set_group(self._group)
+
     def get_layer (self):
         return self._layer
     def set_layer (self, val):
@@ -4549,6 +4563,32 @@ class BindableLayoutWidget (gtk.VBox):
 ## Command set source ##
 ########################
 
+class CommandPackStore (gtk.TreeStore):
+    def __init__ (self, packname=None):
+        # Data tuples = ( cmd_id_number, cmd_name, display_text, tooltip_text )
+        gtk.TreeStore.__init__(self, int, str, str, str)
+        gtk.TreeStore.append(self, None, (0, "", "(unbind)", ""))
+        self._cursor = None
+        self.packname = packname
+
+    def begin_group (self, entry):
+        rowdata = entry
+        if not isinstance(entry, tuple):
+            rowdata = (-1, "", entry, "")
+        cursor = gtk.TreeStore.append(self, self._cursor, rowdata)
+        self._cursor = cursor
+
+    def end_group (self):
+        if self._cursor:
+            self._cursor = self.iter_parent(self._cursor)
+        return
+
+    def append (self, entry, *more):
+        if isinstance(entry, tuple):
+            return gtk.TreeStore.append(self, self._cursor, entry)
+        else:
+            return gtk.TreeStore.append(self, entry, *more)
+
 class CommandPackView (gtk.VBox):
     """View of the command pack.
 
@@ -4636,7 +4676,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
     @staticmethod
     def make_model ():
         # Data tuples = ( cmd_id_number, cmd_name, display_text, tooltip_text )
-        store = gtk.TreeStore(int, str, str, str)
+        store = CommandPackStore()
         store.append(None, (0, "", "(unbind)", None))
         return store
 

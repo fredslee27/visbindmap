@@ -87,28 +87,99 @@ List of menu description contains elements made of tuples, each tuple is:
     return BuildMenu(menubardesc, menubar, accelgroup)
 
 
+"""Application states:
 
-# Checkpointable app data.
-class AppData (object):
+BindStore:
+ Central data, maps actions onto an input element for a given group and layer.
+ Expected to be usable by other applications in a toolchain.
+ Most notable as "Export".
+
+Run:
+ Run-time state information not expected to last beyond application termination.
+ Nominally corresponds to one session, but a session can outlast a run.
+ These states are embedded into the GUI widgets, but explicitly specified here for distinction.
+
+Session:
+ One user's interaction with a BindStore.
+ Encompasses command pack, visual states, and Undo history.
+ Intended to be checkpointable.
+ Most notable as auto-save, save/load.
+
+Preferences:
+ State information that persists across sessions ("New", "Load", etc.).
+ Most notable in determining initial visual state on "New".
+
+"""
+
+
+class AppPreferences (object):
+    """Persists across sssions."""
     def __init__ (self):
-        self.filename = None
-        self.active = None  # active bind layer.
-        self.binds = []  # List of dicts, bindings per layer.
-
-    def get_active (self):
-        return self.active
-    def set_active (self, val):
-        self.active = val
-
-    def get_filename (self):
-        return self.filename
-    def set_filename (self, val):
-        self.filename = val
-
-    def load (self):
         pass
-    def save (self):
+
+class AppSession (object):
+    """User's interaction with a particular BindStore, checkpointable.
+Also the save file.
+"""
+    def __init__ (self):
+        self.bindstore = None   # BindStore.
+        self.cmdpack = None     # entire CommandPack.
+        self.uri_bindstore = None  # path to last saved/loaded BindStore
+        self.uri_cmdpack = None    # path to last saved/loaded CommandPack
+        self.undostack = None   # undo stack.
+        self.ui_snapshot = None
+        self.reset()
+
+    def reset (self):
+        """Re-initialize states to new session."""
+        # TODO: determine ngroups and nlayers
+        self.bindstore = hidlayout.BindStore(8,8)
+        #self.cmdpack = CommandPack()
+        self.uri_bindstore = None
+        self.uri_cmdpack = None
+        #self.undostack = AppUndo()
+        self.ui_snapshot = None
+
+    def snapshot (self):
+        """Write session to persistent storage; usable as Save."""
         pass
+
+    def resume (self):
+        """Restore session from persistent storage; usable as Load."""
+        pass
+
+    def export_bindstore (self):
+        """Save just BindStore in an interchange format."""
+        return
+
+    def import_bindstore (self):
+        """Load BindStore from an interchange format."""
+        return
+
+
+
+
+## Checkpointable app data.
+#class AppData (object):
+#    def __init__ (self):
+#        self.filename = None
+#        self.active = None  # active bind layer.
+#        self.binds = []  # List of dicts, bindings per layer.
+#
+#    def get_active (self):
+#        return self.active
+#    def set_active (self, val):
+#        self.active = val
+#
+#    def get_filename (self):
+#        return self.filename
+#    def set_filename (self, val):
+#        self.filename = val
+#
+#    def load (self):
+#        pass
+#    def save (self):
+#        pass
 
 
 class ObjectReinstantiater(ast.NodeTransformer):
@@ -294,6 +365,117 @@ class ModeStore (gtk.ListStore):
         return True
 
 
+class CommandSource:  # old-style.
+    """Container for command pack sources."""
+
+#    class CmdSourceBase (object):  # new-style.
+#        """Base class for command pack resource."""
+#        def __init__ (self, uri, packname=None):
+#            self.uri = uri
+#            self.packname = "__base__"
+#            self.cmdpack = None
+#
+#        def get_command_pack (self):
+#            if self.cmdpack is None:
+#                self.cmdpack = self.build_command_pack()
+#            return self.cmdpack
+#        command_pack = property(get_command_pack)
+#
+#        def build_command_pack (self):
+#            raise NotImplementedError("{}.build_command_pack() not overridden.".format(self.__class__.__name__))
+
+    @staticmethod
+    def builtin ():
+        """Hard-coded builtin command pack."""
+        MODES = [ "Menu", "Game" ]
+        COMMANDS = [
+            # Layer: [ tuples... ]
+            ("Shifter", [ ("^1",), ("^2",), ("^3",), ("^4",), ("^5",) ] ),
+            ("Menu", [
+                # Tuples (command_codename, displayed_name, hint)
+                ("Pause", None, None),
+                ("Minimize", None, None),
+                ]),
+            ("Game", [
+                ("Up",), ("Down",), ("Left",), ("Right",),
+                ("Jump",), ("Action",),
+                ]),
+            ]
+        cmdpack = hidlayout.CommandPackStore("(builtin)")
+        cmdid, grpid = 1, 0
+        for grp in COMMANDS:
+            grpname, grpdata = grp
+            cmdpack.begin_group(grpname)
+            for cmdentry in grpdata:
+                cmd, lbl, hint = None, None, None
+                try:
+                    cmd = cmdentry[0]
+                    lbl = cmdentry[1]
+                    hint = cmdentry[2]
+                except IndexError:
+                    lbl = cmd
+                if lbl is None:
+                    lbl = cmd
+                #row = (cmdid, grpid, grpname, cmd, lbl, hint)
+                row = (cmdid, cmd, lbl, hint)
+                cmdpack.append(row)
+                cmdid += 1
+            cmdpack.end_group()
+            grpid += 1
+        return cmdpack
+
+    @staticmethod
+    def sqlite3 (dbname):
+        conn = sqlite3.connect(dbname)
+        cursor = conn.cursor()
+
+        # Get pack name.
+        packname = os.path.basename(dbname)
+        try:
+            rows = cursor.execute('''SELECT packname FROM packname LIMIT 1;''')
+            row = rows.fetchone()
+            packname = row[0]
+        except sqlite3.OperationalError:
+            pass
+        cmdpack = hidlayout.CommandPackStore(packname)
+
+        # Get groups.
+        rows = cursor.execute('''SELECT grp FROM cmd GROUP BY grp ORDER BY id;''')
+        grpnames = [ row[0] for row in rows ]
+
+        grploc = {}
+        grptree = {}
+        for grpname in grpnames:
+            grpiter = None
+            grpnode = grptree
+            parts = grpname.split('/')
+            prefix = []
+            for k in parts:
+                prefix.append(k)
+                ancestorkey = '/'.join(prefix)
+                if not k in grpnode:
+                    # Create ancestor.
+                    grpiter = cmdpack.append(grpiter, (-1, "", k, ""))
+                    grploc[ancestorkey] = grpiter
+                    grpnode[k] = dict()
+                else:
+                    # Lookup ancestor.
+                    grpiter = grploc[ancestorkey]
+                # Keep drilling.
+                grpnode = grpnode[k]
+
+        # Iterate all rows.
+        stmt = '''SELECT id,layer,grp,cmd,label,hint FROM cmd;'''
+        rows = cursor.execute(stmt)
+        for row in rows:
+            cmdid, lyr, grp, cmd, lbl, hint = row
+            datum = (cmdid, cmd, lbl, hint)
+            # Find group, attach to group.
+            grpiter = grploc.get(grp, None)
+            cmdpack.append(grpiter, datum)
+
+        return cmdpack
+
 class Commands (object):
     """Database of game commands."""
     def __init__ (self, dbname):
@@ -468,241 +650,241 @@ class CommandsFallback (Commands):
 
 
 
-class VisCmds (gtk.VBox):
-    """Visual presentation of commands: a tree of group and the commands."""
-    def __init__ (self, cmdstore=None):
-        gtk.VBox.__init__(self)
-
-        if not cmdstore:
-            cmdstore = CmdStore()
-        self.cmdstore = cmdstore
-
-        self.entry = gtk.TreeView(self.cmdstore)
-        self.cell0 = gtk.CellRendererText()
-        self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
-        self.entry.append_column(self.col0)
-#        self.add(gtk.Label("VisCmds"))
-
-        self.entrywin = gtk.ScrolledWindow()
-        self.entrywin.add(self.entry)
-        self.add(self.entrywin)
-        self.set_size_request(160, 100)
-
-        self.setup_dnd()
-
-    def get_cmdstore (self):
-        return self.cmdstore
-    def set_cmdstore (self, cmdstore):
-        self.cmdstore = cmdstore
-        self.entry.set_model(self.cmdstore)
-
-    def setup_dnd (self):
-        """Set up drag-and-drop."""
-        # DnD Source.
-        dnd_targets = [
-          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
-        ]
-        dnd_actions = gtk.gdk.ACTION_COPY
-        self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
-        self.entry.connect("drag-data-get", self.on_drag_data_get)
-
-        # DnD Destination.
-        dnd_targets = [
-          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
-        ]
-        dnd_actions = gtk.gdk.ACTION_COPY
-        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
-        self.connect("drag-data-received", self.on_drag_data_received)
-
-    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
-        logger.debug("cmdset drag-data-received %r" % info)
-        if info == DndOpcodes.UNBIND:
-            ctx.finish(True, False, time)
-            return True
-        return False
-
-    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
-        logger.debug("cmdset drag-data-get: %d" % info)
-        srcw = ctx.get_source_widget()
-        treesel = srcw.get_selection()
-        (treemdl, treeiter) = treesel.get_selected()
-        if info == DndOpcodes.BIND:
-            # Commands dragging.
-            logger.debug("info is %d => Commands dragging" % info)
-            if treemdl.iter_has_child(treeiter):
-                # non-terminal item; fail.
-                sel.set_text("", 0)
-                return False
-            # Get the command to bind.
-            val = treemdl.get_value(treeiter, 1)
-            seldata.set(seldata.target, 8, str(val))
-            chk = seldata.data
-            logger.debug("set seldata.data to %r, %r" % (val, chk))
-            return True
+#class VisCmds (gtk.VBox):
+#    """Visual presentation of commands: a tree of group and the commands."""
+#    def __init__ (self, cmdstore=None):
+#        gtk.VBox.__init__(self)
+#
+#        if not cmdstore:
+#            cmdstore = CmdStore()
+#        self.cmdstore = cmdstore
+#
+#        self.entry = gtk.TreeView(self.cmdstore)
+#        self.cell0 = gtk.CellRendererText()
+#        self.col0 = gtk.TreeViewColumn("command", self.cell0, text=2)
+#        self.entry.append_column(self.col0)
+##        self.add(gtk.Label("VisCmds"))
+#
+#        self.entrywin = gtk.ScrolledWindow()
+#        self.entrywin.add(self.entry)
+#        self.add(self.entrywin)
+#        self.set_size_request(160, 100)
+#
+#        self.setup_dnd()
+#
+#    def get_cmdstore (self):
+#        return self.cmdstore
+#    def set_cmdstore (self, cmdstore):
+#        self.cmdstore = cmdstore
+#        self.entry.set_model(self.cmdstore)
+#
+#    def setup_dnd (self):
+#        """Set up drag-and-drop."""
+#        # DnD Source.
+#        dnd_targets = [
+#          (str(DndOpcodes.BIND), gtk.TARGET_SAME_APP, DndOpcodes.BIND),
+#        ]
+#        dnd_actions = gtk.gdk.ACTION_COPY
+#        self.entry.enable_model_drag_source(gtk.gdk.BUTTON1_MASK, dnd_targets, dnd_actions)
+#        self.entry.connect("drag-data-get", self.on_drag_data_get)
+#
+#        # DnD Destination.
+#        dnd_targets = [
+#          (str(DndOpcodes.UNBIND), gtk.TARGET_SAME_APP, DndOpcodes.UNBIND),
+#        ]
+#        dnd_actions = gtk.gdk.ACTION_COPY
+#        self.drag_dest_set(gtk.DEST_DEFAULT_ALL, dnd_targets, dnd_actions)
+#        self.connect("drag-data-received", self.on_drag_data_received)
+#
+#    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+#        logger.debug("cmdset drag-data-received %r" % info)
+#        if info == DndOpcodes.UNBIND:
+#            ctx.finish(True, False, time)
+#            return True
+#        return False
+#
+#    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+#        logger.debug("cmdset drag-data-get: %d" % info)
+#        srcw = ctx.get_source_widget()
+#        treesel = srcw.get_selection()
+#        (treemdl, treeiter) = treesel.get_selected()
+#        if info == DndOpcodes.BIND:
+#            # Commands dragging.
+#            logger.debug("info is %d => Commands dragging" % info)
+#            if treemdl.iter_has_child(treeiter):
+#                # non-terminal item; fail.
+#                sel.set_text("", 0)
+#                return False
+#            # Get the command to bind.
+#            val = treemdl.get_value(treeiter, 1)
+#            seldata.set(seldata.target, 8, str(val))
+#            chk = seldata.data
+#            logger.debug("set seldata.data to %r, %r" % (val, chk))
+#            return True
 
 
 # Graphically lay out bindings meanings.
-class VisBind (gtk.VBox):
-    """Graphical layout of bindings; "central pane" of main window.
-Consists of:
- * layout selector
- * layer selector
-( group selector? )
- * the keytops
-"""
-
-    def reset (self):
-        pass
-
-
-    def __init__ (self, models=None):
-        gtk.VBox.__init__(self)
-
-        self.models = models
-
-        self.uibuild()
-
-        self.set_layout("SteamController")
-
-        self.reset()
-
-    def uibuild (self):
-        self.moderow = self.InpSelectMode()
-        self.pack_start(self.moderow)
-
-        self.shiftrow = self.InpSelectLevel()
-        self.pack_start(self.shiftrow)
-
-        # grid/tablular layout of inpbind+bindcmd
-        #inpdescr = self.models.bindstore.inpdescr
-        #self.hidl = hidlayout.HidLayoutWidget(self.models.dispstate)
-        #self.hidl.connect('key-selected', self.on_key_selected)
-        #self.hidl.connect('layout-changed', self.on_layout_changed)
-        self.hidl = hidlayout.BindableLayoutWidget(None)
-
-        self.pack_start(self.hidl, expand=False, fill=False)
-
-    def on_key_selected (self, w, ksym, *args):
-        #binding = self.models.bindstore.inpdescr.get_bind(ksym)
-        #binding = self.models.dispstate.get_bind(ksym)
-        logger.debug("key-selected: %s => %r" % (ksym, binding))
-
-    def get_layout (self):
-        idx = self.hidl.ui.sel_layout.get_active()
-        retval = self.hidl.mdl_layout[idx][0]
-        return retval
-    def set_layout (self, layoutname):
-        sel = self.hidl.ui.sel_layout
-        mdl = self.hidl.mdl_layout
-        idx = -1
-        for rownum in range(len(mdl)):
-            if mdl[rownum][0] == layoutname:
-                idx = rownum
-        if idx > -1:
-            sel.set_active(idx)
-
-    def on_layout_changed (self, w, layoutname, *args):
-        # Record chagne.
-        self.models.bindstore.active_layout = layoutname
-
-    def InpSelectMode (self):
-        """Generate GUI Widget for selecting mode (layer)."""
-        moderow = gtk.HBox()
-        modebtns = gtk.HButtonBox()
-
-        moderow.lbl = gtk.Label("MODE:")
-        moderow.btns = []
-        # "Select Layer" radio buttons.
-        modestore = self.models.modestore
-
-        def rebuild_buttons (modestore):
-            if moderow.btns:
-                for btn in moderow.btns:
-                    modebtns.remove(btn)
-            moderow.btns = []  # private data.
-            for modeid in range(len(modestore)):
-                grp = moderow.btns and moderow.btns[0] or None    # is group member or is group leader.
-                lbl = modestore[modeid][1]  # List row, second column => name.
-                btn = gtk.RadioButton(grp, lbl)  # create element.
-                btn.layernum = modeid  # private data
-                btn.connect('toggled', self.on_mode_toggle)  # react
-                modebtns.add(btn)  # GUI
-                moderow.btns.append(btn)  # internal storage.
-            moderow.show_all()
-            return
-        def on_data_changed (m, *args):
-            rebuild_buttons(m)
-            
-        rebuild_buttons(modestore)
-        moderow.pack_start(modebtns, expand=False)
-        # Rebuilds all buttons on any change.  This is very expensive.
-        modestore.connect('row-changed', on_data_changed)
-        modestore.connect('row-deleted', on_data_changed)
-        modestore.connect('row-inserted', on_data_changed)
-
-        #return moderow
-        modebox = gtk.Frame("MODE")
-        modebox.add(moderow)
-        return modebox
-
-    def InpSelectLevel (self):
-        """Generate GUI Widget for selecting level (shifted)."""
-        shiftbox = gtk.Frame("LEVEL")
-        shiftrow = gtk.HBox()
-        shiftbtns = gtk.HButtonBox()
-        MAX_SHIFTER = 3
-        btns = []
-        #shiftrow.lbl = gtk.Label("LEVEL")
-        #shiftrow.pack_start(shiftrow.lbl, expand=False)
-        for lvlnum in xrange(0, 8):
-            sh = []
-            for b in xrange(0, 8):
-                if (lvlnum & (1 << b)):
-                    sh.append("^%s" % (b+1))
-            if sh:
-                lbl = "%d " % lvlnum + ("(" + " + ".join(sh) + ")")
-            else:
-                lbl = "base"
-            grp = btns and btns[0] or None
-            btn = gtk.RadioButton(grp, lbl)
-            btn.levelnum = lvlnum
-            btn.connect('toggled', self.on_shifter_toggle)  # react
-            btns.append(btn)
-            shiftbtns.add(btn)
-        shiftrow.btns = btns
-        shiftrow.pack_start(shiftbtns, expand=True)
-        #return shiftrow
-        shiftbox.add(shiftrow)
-        return shiftbox
-
-    def on_mode_toggle (self, w, *args):
-        """Load bindings for mode."""
-        if w.get_active():
-          self.emit("mode-changed", w.layernum)
-        return
-
-    def on_shifter_toggle (self, w, *args):
-        """Load bindings for shift level."""
-        if not w.get_active():
-          # turning off.
-          return
-        if w.get_active():
-          # turning on.
-          self.emit("level-changed", w.levelnum)
-        return
-
-    def bind_cmd (self, ksym, cmdinfo):
-        logger.debug("bind");
-        pass
-
-    def unbind_cmd (self, ksym):
-        logger.debug("unbind");
-        pass
-
-gobject.type_register(VisBind)
-gobject.signal_new("mode-changed", VisBind, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
-gobject.signal_new("level-changed", VisBind, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
-
+#class VisBind (gtk.VBox):
+#    """Graphical layout of bindings; "central pane" of main window.
+#Consists of:
+# * layout selector
+# * layer selector
+#( group selector? )
+# * the keytops
+#"""
+#
+#    def reset (self):
+#        pass
+#
+#
+#    def __init__ (self, models=None):
+#        gtk.VBox.__init__(self)
+#
+#        self.models = models
+#
+#        self.uibuild()
+#
+#        self.set_layout("SteamController")
+#
+#        self.reset()
+#
+#    def uibuild (self):
+#        self.moderow = self.InpSelectMode()
+#        self.pack_start(self.moderow)
+#
+#        self.shiftrow = self.InpSelectLevel()
+#        self.pack_start(self.shiftrow)
+#
+#        # grid/tablular layout of inpbind+bindcmd
+#        #inpdescr = self.models.bindstore.inpdescr
+#        #self.hidl = hidlayout.HidLayoutWidget(self.models.dispstate)
+#        #self.hidl.connect('key-selected', self.on_key_selected)
+#        #self.hidl.connect('layout-changed', self.on_layout_changed)
+#        self.hidl = hidlayout.BindableLayoutWidget(None)
+#
+#        self.pack_start(self.hidl, expand=False, fill=False)
+#
+#    def on_key_selected (self, w, ksym, *args):
+#        #binding = self.models.bindstore.inpdescr.get_bind(ksym)
+#        #binding = self.models.dispstate.get_bind(ksym)
+#        logger.debug("key-selected: %s => %r" % (ksym, binding))
+#
+#    def get_layout (self):
+#        idx = self.hidl.ui.sel_layout.get_active()
+#        retval = self.hidl.mdl_layout[idx][0]
+#        return retval
+#    def set_layout (self, layoutname):
+#        sel = self.hidl.ui.sel_layout
+#        mdl = self.hidl.mdl_layout
+#        idx = -1
+#        for rownum in range(len(mdl)):
+#            if mdl[rownum][0] == layoutname:
+#                idx = rownum
+#        if idx > -1:
+#            sel.set_active(idx)
+#
+#    def on_layout_changed (self, w, layoutname, *args):
+#        # Record chagne.
+#        self.models.bindstore.active_layout = layoutname
+#
+#    def InpSelectMode (self):
+#        """Generate GUI Widget for selecting mode (layer)."""
+#        moderow = gtk.HBox()
+#        modebtns = gtk.HButtonBox()
+#
+#        moderow.lbl = gtk.Label("MODE:")
+#        moderow.btns = []
+#        # "Select Layer" radio buttons.
+#        modestore = self.models.modestore
+#
+#        def rebuild_buttons (modestore):
+#            if moderow.btns:
+#                for btn in moderow.btns:
+#                    modebtns.remove(btn)
+#            moderow.btns = []  # private data.
+#            for modeid in range(len(modestore)):
+#                grp = moderow.btns and moderow.btns[0] or None    # is group member or is group leader.
+#                lbl = modestore[modeid][1]  # List row, second column => name.
+#                btn = gtk.RadioButton(grp, lbl)  # create element.
+#                btn.layernum = modeid  # private data
+#                btn.connect('toggled', self.on_mode_toggle)  # react
+#                modebtns.add(btn)  # GUI
+#                moderow.btns.append(btn)  # internal storage.
+#            moderow.show_all()
+#            return
+#        def on_data_changed (m, *args):
+#            rebuild_buttons(m)
+#            
+#        rebuild_buttons(modestore)
+#        moderow.pack_start(modebtns, expand=False)
+#        # Rebuilds all buttons on any change.  This is very expensive.
+#        modestore.connect('row-changed', on_data_changed)
+#        modestore.connect('row-deleted', on_data_changed)
+#        modestore.connect('row-inserted', on_data_changed)
+#
+#        #return moderow
+#        modebox = gtk.Frame("MODE")
+#        modebox.add(moderow)
+#        return modebox
+#
+#    def InpSelectLevel (self):
+#        """Generate GUI Widget for selecting level (shifted)."""
+#        shiftbox = gtk.Frame("LEVEL")
+#        shiftrow = gtk.HBox()
+#        shiftbtns = gtk.HButtonBox()
+#        MAX_SHIFTER = 3
+#        btns = []
+#        #shiftrow.lbl = gtk.Label("LEVEL")
+#        #shiftrow.pack_start(shiftrow.lbl, expand=False)
+#        for lvlnum in xrange(0, 8):
+#            sh = []
+#            for b in xrange(0, 8):
+#                if (lvlnum & (1 << b)):
+#                    sh.append("^%s" % (b+1))
+#            if sh:
+#                lbl = "%d " % lvlnum + ("(" + " + ".join(sh) + ")")
+#            else:
+#                lbl = "base"
+#            grp = btns and btns[0] or None
+#            btn = gtk.RadioButton(grp, lbl)
+#            btn.levelnum = lvlnum
+#            btn.connect('toggled', self.on_shifter_toggle)  # react
+#            btns.append(btn)
+#            shiftbtns.add(btn)
+#        shiftrow.btns = btns
+#        shiftrow.pack_start(shiftbtns, expand=True)
+#        #return shiftrow
+#        shiftbox.add(shiftrow)
+#        return shiftbox
+#
+#    def on_mode_toggle (self, w, *args):
+#        """Load bindings for mode."""
+#        if w.get_active():
+#          self.emit("mode-changed", w.layernum)
+#        return
+#
+#    def on_shifter_toggle (self, w, *args):
+#        """Load bindings for shift level."""
+#        if not w.get_active():
+#          # turning off.
+#          return
+#        if w.get_active():
+#          # turning on.
+#          self.emit("level-changed", w.levelnum)
+#        return
+#
+#    def bind_cmd (self, ksym, cmdinfo):
+#        logger.debug("bind");
+#        pass
+#
+#    def unbind_cmd (self, ksym):
+#        logger.debug("unbind");
+#        pass
+#
+#gobject.type_register(VisBind)
+#gobject.signal_new("mode-changed", VisBind, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+#gobject.signal_new("level-changed", VisBind, gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,))
+#
 
 class DlgAbout (gtk.AboutDialog):
     def __init__ (self):
@@ -721,14 +903,15 @@ class VisMapperWindow (gtk.Window):
         """Reset window contents."""
         self.bindview.reset()
 
-    def __init__ (self, parent=None, menubar=None, models=None):
+    def __init__ (self, parent=None, menubar=None, session=None):
         self.app = parent
 
         gtk.Window.__init__(self)
         self.set_title("%s" % self.BASE_TITLE)
         self.subtitle = ""
 
-        self.models = models
+        #self.models = models
+        self.session = session
         self.menubar = menubar
         self.uibuild()
 
@@ -759,16 +942,20 @@ class VisMapperWindow (gtk.Window):
 #        self.bindrow.pack_start(self.bindpad)
 #        self.padpane.pack_start(self.bindrow)
 
-        placeholder = hidlayout.CommandPackView.make_model()
+        # TODO: from outside.
+        #placeholder = hidlayout.CommandPackView.make_model()
+        placeholder = CommandSource.builtin()
 
         self.cmdcol = hidlayout.CommandPackView(placeholder)
         self.bindrow = gtk.VBox()
-        self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
+        #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
+        self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts, "PS3", self.session.bindstore)
         self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
 
         self.spans = gtk.HPaned()
         self.spans.add(self.cmdcol)
+        # TODO: proportional to font.
         self.cmdcol.set_size_request(180, -1)
         self.spans.add(self.padpane)
 
@@ -994,26 +1181,28 @@ class VisMapperApp (object):
         self.modenum = 0
         self.levelnum = 0
 
-        self.models = VisMapperModels()
-        self.models.cmdstore = CmdStore(self.cmdsrc)
-        self.models.bindstore = Store(8)
-        self.models.modestore = ModeStore(self.cmdsrc)
+        #self.models = VisMapperModels()
+        #self.models.cmdstore = CmdStore(self.cmdsrc)
+        #self.models.bindstore = Store(8)
+        #self.models.modestore = ModeStore(self.cmdsrc)
         #self.models.dispstate = hidlayout.InpDisplayState(self.models.bindstore.inpdescr)
-        self.models.accelgroup = gtk.AccelGroup()
+        #self.models.accelgroup = gtk.AccelGroup()
 
-        menubar = MainMenubar(self, self.models.accelgroup)
-        self.ui = VisMapperWindow(self, menubar=menubar, models=self.models)
-        self.ui.add_accel_group(self.models.accelgroup)
-        # Commands Pack file name.
-        self.uibuild()
+        self.session = AppSession()
+        self.accelgroup = gtk.AccelGroup()
+
+        menubar = MainMenubar(self, self.accelgroup)
+        self.ui = VisMapperWindow(self, menubar=menubar, session=self.session)
+        self.ui.add_accel_group(self.accelgroup)
+        self.build_ui()
 
         self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
         self.cmds_in_place()
 
-    def uibuild (self):
+    def build_ui (self):
         """Setup and connect UI elements."""
         #hidl = self.ui.bindview.hidl
-        hidl = self.ui.bindview.ui.hidview
+        hidview = self.ui.bindview.ui.hidview
         cmdview = self.ui.cmdcol
         visbind = self.ui.bindview
         #visbind.connect('mode-changed', self.on_kbmode_changed)
@@ -1021,9 +1210,9 @@ class VisMapperApp (object):
 
     def update_main_title (self):
         cmdname = self.cmdsrc and self.cmdsrc.get_name() or None
-        bindname = self.models.bindstore.fname or None
-        if bindname:
-            basename = os.path.basename(bindname)
+        storepath = self.session.uri_bindstore or None
+        if storepath:
+            basename = os.path.basename(storepath)
         else:
             basename = None
         self.ui.update_title(cmdname, basename)
@@ -1048,9 +1237,11 @@ class VisMapperApp (object):
     # Operations re: File
     def get_saveuri (self):
         #return self.saveuri
-        return self.models.bindstore.fname
+        #return self.models.bindstore.fname
+        return self.session.bindstore.uri_bindstore
     def set_saveuri (self, val):
-        self.models.bindstore.fname = val
+        #self.models.bindstore.fname = val
+        self.session.bindstore.uri_bindstore = val
         #basename = os.path.basename(val)
         self.update_main_title()
     def ask_save_uri (self):
@@ -1059,7 +1250,8 @@ class VisMapperApp (object):
     def save_in_place (self):
         """Save to file specified by internal state 'saveuri'."""
         if self.get_saveuri():
-            savefile = open(self.models.bindstore.fname, "wb")
+            #savefile = open(self.models.bindstore.fname, "wb")
+            savefile = open(self.session.uri_bindstore, "wb")
             self.save(savefile)
             savefile.close()
             return True
@@ -1070,40 +1262,44 @@ class VisMapperApp (object):
     def load_in_place (self):
         """Load from file specified by internal state 'saveuri'."""
         if self.get_saveuri():
-            loadfile = open(self.models.bindstore.fname, "rb")
+            loadfile = open(self.session.uri_bindstore, "rb")
             self.load(loadfile)
             loadfile.close()
-            if self.models.bindstore.active_layout:
-                self.ui.bindview.set_layout(self.models.bindstore.active_layout)
+            # TODO: restore GUI states?
+#            if self.models.bindstore.active_layout:
+#                self.ui.bindview.set_layout(self.models.bindstore.active_layout)
             return True
         return False
 
     # Operations re: CommandPack
     def get_cmdsuri (self):
-        return self.models.bindstore.cmdsuri
+        #return self.models.bindstore.cmdsuri
+        return self.session.uri_cmdpack
     def set_cmdsuri (self, val):
-        self.models.bindstore.cmdsuri = val
+        #self.models.bindstore.cmdsuri = val
+        self.session.uri_cmdpack = val
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
     def cmds_in_place (self):
-        if self.models.bindstore.cmdsuri:
+        if self.session.uri_cmdpack:
             try:
-                self.cmdsrc = Commands(self.models.bindstore.cmdsuri)
+                self.cmdsrc = Commands(self.session.uri_cmdpack)
             except sqlite3.OperationalError:
                 self.cmdsrc = CommandsFallback()
-            self.models.cmdstore.clear()
-            self.models.cmdstore.import_commands(self.cmdsrc)
-            self.models.modestore.clear()
-            self.models.modestore.import_commands(self.cmdsrc)
+            #self.models.cmdstore.clear()
+            #self.models.cmdstore.import_commands(self.cmdsrc)
+            #self.models.modestore.clear()
+            #self.models.modestore.import_commands(self.cmdsrc)
             self.update_main_title()
         return
 
     def get_vislayers (self):
-        hidl = self.ui.bindview.hidl
-        return hidl.get_vislayers()
+        hidv = self.ui.bindview
+        return hivl.get_nvislayers()
     def set_vislayers (self, v):
-        hidl = self.ui.bindview.hidl
-        hidl.set_vislayers(v)
+        hidv = self.ui.bindview
+        hidv.set_nvislayers(v)
+
     def display_about (self):
         self.ui.display_about()
 
@@ -1115,18 +1311,21 @@ class VisMapperApp (object):
     def load (self, srcfile):
         """Load configuration from file-like object."""
         logger.debug("LOADING %r" % srcfile)
-        self.models.bindstore.load(srcfile)
+        #self.models.bindstore.load(srcfile)
+        self.session.bindstore.load(srcfile)
         self.cmds_in_place()
         return 0
 
     def save (self, destfile):
         """Save configuration to file-like object."""
-        self.models.bindstore.save(destfile)
+        #self.models.bindstore.save(destfile)
+        self.session.bindstore.save(destfile)
         logger.debug("SAVING %r" % destfile)
         return 0
 
     def reset (self):
-        self.models.bindstore.reset()
+        #self.models.bindstore.reset()
+        self.session.bindstore.reset()
         #self.models.dispstate.cluster_defaults()
         self.ui.reset()
         self.update_main_title()
