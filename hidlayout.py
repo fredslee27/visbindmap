@@ -614,6 +614,7 @@ Supports drag-and-drop.  Semantics:
             toplabel = self.hiasym
         if toplabel is None:
             toplabel = "(???)"
+        toplabel = glib.markup_escape_text(toplabel)
         self.ui.lbl.set_markup(str(toplabel))
 
     def update_layer (self):
@@ -4897,6 +4898,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
     def __init__ (self, mdl):
         gtk.VBox.__init__(self)
         self._mdl = mdl
+        self._packname = None
         self.setup_state()
         self.setup_widget()
         self.setup_dnd()
@@ -4907,11 +4909,19 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         if mdl is not None:
             self._mdl = mdl
             self.ui.treeview.set_model(mdl)
+            try:
+                self._packname = self._mdl.packname
+            except AttributeError:
+                self._packname = None
             self.update_view()
     model = property(get_model, set_model)
 
     def update_view (self):
-        pass
+        if self._packname:
+            self.ui.treecols[0].set_title(self._packname)
+        else:
+            self.ui.treecols[0].set_title("cmd")
+        return
 
     def setup_state (self):
         return
