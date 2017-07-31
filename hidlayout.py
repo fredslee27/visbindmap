@@ -125,7 +125,9 @@ class BindLayer (dict):
  key = hiasym
  value = binding
 """
-    pass
+    def clear (self):
+        for k in self.keys():
+            del self[k]
     def __copy__ (self):
         retval = dict(self)
         return retval
@@ -145,6 +147,9 @@ class BindGroup (object):
         self.fallthrough = fallthrough
         self.resize_layers(nlayers)
         
+    def clear (self):
+        for lyr in self.layers:
+            lyr.clear()
     def resize_layers (self, nlayers=1):
         self.nlayers = nlayers
         # Try grow to/past count.
@@ -188,6 +193,10 @@ class BindStore (object):
         self.nlayers = nlayers
         self.resize_layers(self.nlayers)
         self.resize_groups(self.ngroups)
+    def clear (self):
+        # Erase all binds.
+        for grp in self.groups:
+            grp.clear()
     def resize_groups (self, ngroups):
         self.ngroups = ngroups
         while len(self.groups) < self.ngroups:
@@ -204,6 +213,7 @@ class BindStore (object):
         retval = BindStore(self.ngroups, self.nlayers)
         copymap = dict()    # map fallthrough links.
         for grpidx in range(len(self.groups)):
+            # TODO: handle mismatched layers.
             retval.groups[grpidx] = self.groups[grpidx].__copy__()
             copymap[self.groups[grpidx]] = retval[grpidx]
         # Redirect remapped fallthroughs.
@@ -3990,7 +4000,8 @@ instance.sel_layer.buttons[2].activate()
 #                # Turn on.
 #                self.ui.hidview.set_layer(w.layernum)
         if w.get_active():
-            self.set_layer(w.layernum)
+            layernum = w.layernum
+            self.emit("layer-changed", layernum)
     __gsignals__ = {
         "layout-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
         "layer-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
@@ -4014,6 +4025,7 @@ class BindableLayoutWidget (gtk.VBox):
         self._layer = 0
         self._vis = [ False ] * len(bindstore[0])
         self._vis[0] = True
+        self._nvislayers = None
         self.all_layouts = None
         if self.all_layouts is None:
             self.all_layouts = implicit_layouts
