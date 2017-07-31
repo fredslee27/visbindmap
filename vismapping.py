@@ -14,6 +14,9 @@ from hidlayout import Logger
 from hidlayout import DndOpcodes
 
 
+PACKAGE="VisMapper"
+VERSION="0.0.1"
+
 BASENAME="generic_game"
 DEFAULT_DBNAME="cmds"
 
@@ -121,6 +124,7 @@ class AppSession (object):
     """User's interaction with a particular BindStore, checkpointable.
 Also the save file.
 """
+    FORMAT_VERSION = 1
     def __init__ (self):
         self.bindstore = None   # BindStore.
         self.cmdpack = None     # entire CommandPack.
@@ -133,7 +137,11 @@ Also the save file.
     def reset (self):
         """Re-initialize states to new session."""
         # TODO: determine ngroups and nlayers
-        self.bindstore = hidlayout.BindStore(8,8)
+        #self.bindstore.clear()
+        if self.bindstore is None:
+            self.bindstore = hidlayout.BindStore(8,8)
+        else:
+            self.bindstore.clear()
         #self.cmdpack = CommandPack()
         self.uri_bindstore = None
         self.uri_cmdpack = None
@@ -151,6 +159,7 @@ Also the save file.
             "ui_snapshot": None,
             }
         if destfileobj:
+            destfileobj.write("# {} {} ast.literal_eval\n".format(PACKAGE, self.FORMAT_VERSION))
             destfileobj.write(repr(enc))
         return enc
 
@@ -937,7 +946,11 @@ class VisMapperWindow (gtk.Window):
 
     def reset (self):
         """Reset window contents."""
-        self.bindview.reset()
+        #self.bindview.reset()
+        self.bindview.set_bindstore(self.session.bindstore)
+        self.bindview.ui.selectors.frob_group(0)
+        self.bindview.ui.selectors.frob_layer(0)
+        #self.bindview.update_bindstore()
 
     def __init__ (self, parent=None, menubar=None, session=None):
         self.app = parent
@@ -1135,7 +1148,7 @@ class MainMenubar (gtk.MenuBar):
         app = self.app
         logger.debug("DEBUG 1")
         app.set_saveuri("/home/fredslee/devel/vismapping/testout.cfg")
-        app.load_in_place()
+        #app.load_in_place()
         return
     def on_debug_2 (self, w, *args):
         app = self.app
@@ -1274,10 +1287,10 @@ class VisMapperApp (object):
     def get_saveuri (self):
         #return self.saveuri
         #return self.models.bindstore.fname
-        return self.session.bindstore.uri_bindstore
+        return self.session.uri_bindstore
     def set_saveuri (self, val):
         #self.models.bindstore.fname = val
-        self.session.bindstore.uri_bindstore = val
+        self.session.uri_bindstore = val
         #basename = os.path.basename(val)
         self.update_main_title()
     def ask_save_uri (self):
@@ -1285,9 +1298,12 @@ class VisMapperApp (object):
         return self.ui.ask_save()
     def save_in_place (self):
         """Save to file specified by internal state 'saveuri'."""
+        print("saving?")
         if self.get_saveuri():
             #savefile = open(self.models.bindstore.fname, "wb")
-            savefile = open(self.session.uri_bindstore, "wb")
+            #savefile = open(self.session.uri_bindstore, "wb")
+            fname = self.get_saveuri()
+            savefile = open(fname, "wb")
             self.save(savefile)
             savefile.close()
             return True
@@ -1359,24 +1375,23 @@ class VisMapperApp (object):
         """Load configuration from file-like object."""
         logger.debug("LOADING %r" % srcfile)
         #self.models.bindstore.load(srcfile)
-        self.session.bindstore.load(srcfile)
+        #self.session.bindstore.load(srcfile)
         #self.cmds_in_place()
-        # TODO: restore commandpack
+        self.session.resume(srcfile)
+        self.ui.reset()  # TODO: appropriate?
         return 0
 
     def save (self, destfile):
         """Save configuration to file-like object."""
         #self.models.bindstore.save(destfile)
         #self.session.bindstore.save(destfile)
-        f = open(destfile, "wt")
-        self.session.snapshot(f)
-        f.close()
+        self.session.snapshot(destfile)
         logger.debug("SAVING %r" % destfile)
         return 0
 
     def reset (self):
         #self.models.bindstore.reset()
-        self.session.bindstore.reset()
+        self.session.reset()
         #self.models.dispstate.cluster_defaults()
         self.ui.reset()
         self.update_main_title()

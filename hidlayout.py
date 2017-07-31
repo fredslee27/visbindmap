@@ -1472,6 +1472,15 @@ Controller interface:
         self.update_group()
     group = property(get_group, set_group)
 
+    def get_bindstore (self):
+        return self.bindstore
+    def set_bindstore (self, val):
+        self.bindstore = val
+        self.update_bindstore()
+
+    def update_bindstore (self):
+        self.update_binds()
+
     def update_vis (self):
         # Explicitly setting visibility, disable nvislayers auto-calculation.
         self._nvislayers = None
@@ -3903,11 +3912,11 @@ instance.sel_layer.buttons[2].activate()
             if (i == val):
                 n = i
         if n is not None:
-            self.ui.sel_group.btns[n].activate()
+            self.ui.sel_group.buttons[n].activate()
     def frob_layer (self, val):
         """Adjust layer with a single primitive type."""
         n = int(val)
-        self.ui.sel_layer.btns[n].activate()
+        self.ui.sel_layer.buttons[n].activate()
 
     def setup_widget (self):
         self.ui = DumbData()
@@ -4066,7 +4075,7 @@ gobject.type_register(BindableLayoutSelectors)
 
 
 class BindableLayoutWidget (gtk.VBox):
-    """Controller wrapper to BindablwLayoutView.
+    """Controller wrapper to BindableLayoutView.
 
  * set_nvislayers(int) : convenience function to automatically determine layer visibilties based on active layers and nearest power-of-two layer.
 """
@@ -4197,8 +4206,8 @@ class BindableLayoutWidget (gtk.VBox):
     bindstore = property(get_bindstore, set_bindstore)
 
     def update_bindstore (self):
-        # TODO: propagate to children.
-        pass
+        self.ui.hidview.set_bindstore(self._bindstore)
+        self.ui.hidview.update_binds()
 
     def get_activename (self):
         return self._activename

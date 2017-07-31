@@ -331,6 +331,32 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.runloop(script, 1)
         self.w.hide()
 
+    def test_bindrestore (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        bindstore = hidlayout.BindStore(8,8)
+        bv = hidlayout.BindableLayoutWidget(None, bindstore=bindstore)
+
+        bindstore2 = hidlayout.BindStore(8,8)
+        bindstore2[0][0]['B/4'] = "Test1"
+
+        layout.add(bv)
+        layout.show()
+        bv.show()
+        self.w.show()
+
+        def script ():
+            bv.ui.selectors.frob_layout("PS3")
+            yield 1
+
+            bv.set_bindstore(bindstore2)
+
+            yield 2
+
+        print("bindstore=%r" % bindstore2)
+        self.runloop(script, 1)
+        self.w.hide()
 
 
 
