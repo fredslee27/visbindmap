@@ -3785,11 +3785,20 @@ implicit_layouts.build_from_legacy_store()
 
 class BindableLayoutSelectors (gtk.VBox):
     """Selectors (controls) for BindableLayoutView in a single widget.
+Default selector, is separate so a custom control may be used instead.
 
-External controls:
+Signals:
+ * layout-changed(str) : when layout has been chosen, name of layout.
+ * group-changed(int) : when group has been chosen, index of group.
+ * layer-changed(int) : when layer has been chosen, index of layer.
+
+External controls, to trigger selection controls with a single primitive:
  * frob_layout(str)
  * frob_group(int)
  * frob_layer(int)
+
+N.B. without the frob_*(), changing selectors would involve something like
+instance.sel_layer.buttons[2].activate()
 """
     def __init__ (self, model_layouts, model_groups, model_layers):
         gtk.VBox.__init__(self)
@@ -3817,6 +3826,7 @@ External controls:
     layers_model = property(get_layers_model, set_layers_model)
 
     def frob_layout (self, val):
+        """Adjust layout with a single primitive type."""
         n = None
         for i in range(len(self.mdl_layouts)):
             if (self.mdl_layouts[i][0] == val) or (i == val):
@@ -3824,10 +3834,18 @@ External controls:
         if n is not None:
             self.ui.sel_layout.set_active(n)
     def frob_group (self, val):
+        """Adjust group with a single primitive type."""
         # TODO: if val isa str
-        self.ui.sel_group.btns[val].activate()
+        n = None
+        for i in range(len(self.mdl_groups)):
+            if (i == val):
+                n = i
+        if n is not None:
+            self.ui.sel_group.btns[n].activate()
     def frob_layer (self, val):
-        self.ui.sel_layer.btns[val].activate()
+        """Adjust layer with a single primitive type."""
+        n = int(val)
+        self.ui.sel_layer.btns[n].activate()
 
     def setup_widget (self):
         self.ui = DumbData()
@@ -4042,10 +4060,6 @@ class BindableLayoutWidget (gtk.VBox):
 
         self.ui.hidview.show()
 
-        self.ui.selectors.connect("layout-changed", self.on_layout_changed)
-        self.ui.selectors.connect("group-changed", self.on_group_changed)
-        self.ui.selectors.connect("layer-changed", self.on_layer_changed)
-
         self.pack_start(self.ui.selectors, False, False, 0)
         self.pack_start(self.ui.hidview, False, False, 0)
 
@@ -4060,7 +4074,9 @@ class BindableLayoutWidget (gtk.VBox):
         pass
 
     def setup_signals (self):
-        # TODO
+        self.ui.selectors.connect("layout-changed", self.on_layout_changed)
+        self.ui.selectors.connect("group-changed", self.on_group_changed)
+        self.ui.selectors.connect("layer-changed", self.on_layer_changed)
         return
 
     def get_layer (self):
