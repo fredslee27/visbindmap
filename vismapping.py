@@ -142,11 +142,22 @@ Also the save file.
             self.bindstore = hidlayout.BindStore(8,8)
         else:
             self.bindstore.clear()
+        self.initial_clustertypes()
         #self.cmdpack = CommandPack()
         self.uri_bindstore = None
         self.uri_cmdpack = None
         #self.undostack = AppUndo()
         self.ui_snapshot = None
+
+    def initial_clustertypes (self):
+        self.bindstore[0][0]['LP#'] = "DirectionPad"
+        self.bindstore[0][0]['RP#'] = "MousePad"
+        self.bindstore[0][0]['L#'] = "Joystick"
+        self.bindstore[0][0]['R#'] = "Joystick"
+        self.bindstore[0][0]['B#'] = "ButtonQuad"
+        self.bindstore[0][0]['DP#'] = "DirectionPad"
+        self.bindstore[0][0]['GY#'] = "GyroTilt"
+        return
 
     def snapshot (self, destfileobj):
         """Write session to persistent storage; usable as Save."""

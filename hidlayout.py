@@ -1324,7 +1324,6 @@ class ClusteredLayouts (HidLayouts):
                 theta = - math.pi / 2. + angle
                 x = r + (float(r) * math.cos(theta)) - .5
                 y = r + (float(r) * math.sin(theta)) + .5
-                print("radialize %d/%d => %d,%d" % (step, n, x, y))
                 yield (SYM(n), SYM(n), "key", x, y, 1, 1)
         for variant in range(1,21):
             layout = self.make_layoutstore("{}{:02d}".format("RadialMenu", variant))
