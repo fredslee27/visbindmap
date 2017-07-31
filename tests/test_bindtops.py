@@ -208,7 +208,8 @@ Loop ends when coroutine ends (uses return instead of yield)
         layout = gtk.VBox()
         self.w.add(layout)
 
-        bv = hidlayout.BindableLayoutWidget(None)
+        bindstore = hidlayout.BindStore(8,8)
+        bv = hidlayout.BindableLayoutWidget(None, bindstore=bindstore)
 
         layout.add(bv)
         layout.show()
@@ -216,9 +217,8 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.w.show()
 
         def script ():
-            yield 1
-            bv.ui.sel_layout.set_active(2)
-            bv.ui.sel_layer.buttons[1].activate()
+            bv.ui.selectors.frob_layout(9)
+            bv.ui.selectors.frob_layer(0)
             yield 5
 
         self.runloop(script, 1)
@@ -355,6 +355,76 @@ Loop ends when coroutine ends (uses return instead of yield)
             yield 2
 
         print("bindstore=%r" % bindstore2)
+        self.runloop(script, 1)
+        self.w.hide()
+
+    def test_bindarranger (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        bindstore = hidlayout.BindStore(8,8)
+        bv = hidlayout.BindableLayoutWidget(None, bindstore=bindstore)
+
+        layout.add(bv)
+        layout.show()
+        bv.show()
+        self.w.show()
+
+        def script ():
+            bv.ui.selectors.frob_layout(9)
+            bv.ui.selectors.frob_layer(0)
+            yield 1
+
+            bindstore[0][0]['LP#'] = "OneButton"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "ScrollWheel"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "DirectionPad"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "ButtonQuad"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TrackPad"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TouchMenu02"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TouchMenu04"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TouchMenu07"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TouchMenu12"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TouchMenu13"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+            bindstore[0][0]['LP#'] = "TouchMenu16"
+            bv.ui.hidview.update_binds()
+            yield 1
+
+#            bindstore[0][0]['LP#'] = "RadialMenu08"
+#            bv.ui.hidview.update_binds()
+#            yield 1
+
+            yield 5
+
         self.runloop(script, 1)
         self.w.hide()
 

@@ -1089,7 +1089,7 @@ Given a list of BindableTops to keep track of (watch).
 
 
 
-class ClusteredLayout (HidLayouts):
+class ClusteredLayouts (HidLayouts):
     def __init__ (self, symprefix):
         HidLayouts.__init__(self)
         self.symprefix = symprefix
@@ -1244,7 +1244,7 @@ class ClusteredLayout (HidLayouts):
             ("3", 0, 1), ("4", 1, 1),
             ]
         )
-        layout12 = self.make_gridded_layoutstore("TouchMenu16",
+        layout12 = self.make_gridded_layoutstore("TouchMenu12",
           3, 4,
           [
             ("1", 0, 0),  ("2", 1, 0),  ("3", 2, 0),  ("4", 3, 0),
@@ -1330,6 +1330,141 @@ class ClusteredLayout (HidLayouts):
 
 
 
+class BindableArrangerContextMenu (gtk.Menu):
+    MENU_DESC = [
+        # Tuples of (item_label, layout_name)
+        ( "_None", "None"),
+        ( "_Fixed", "Fixed"),
+        ( "_SingleButton", "OneButton"),
+        ( "Scroll_Wheel", "ScrollWheel"),
+        ( "_DPad", "DirectionPad"),
+        ( "_ButtonQuad", "ButtonQuad"),
+        ( "_Mouse", "Mouse"),
+        ( "_Joystick", "Joystick"),
+        ( "_GyroTilt", "GyroTilt"),
+        ( "_Touch Menu", [
+            ( "_2 items", "TouchMenu02"),
+            ( "_4 items", "TouchMenu04"),
+            ( "_7 items", "TouchMenu07"),
+            ( "_9 items", "TouchMenu09"),
+            ( "_12 items", "TouchMenu12"),
+            ( "_13 items", "TouchMenu13"),
+            ( "_16 items", "TouchMenu16"),
+            ]),
+        ( "_Radial Menu", [
+            ( "_01..09 items", [
+                ("_1 item", "RadialMenu01"),
+                ("_2 items", "RadialMenu02"),
+                ("_3 items", "RadialMenu03"),
+                ("_4 items", "RadialMenu04"),
+                ("_5 items", "RadialMenu05"),
+                ("_6 items", "RadialMenu06"),
+                ("_7 items", "RadialMenu07"),
+                ("_8 items", "RadialMenu08"),
+                ("_9 items", "RadialMenu09"),
+                ]),
+            ( "_10..19 items", [
+                ("1_0 items", "RadialMenu10"),
+                ("1_1 items", "RadialMenu11"),
+                ("1_2 items", "RadialMenu12"),
+                ("1_3 items", "RadialMenu13"),
+                ("1_4 items", "RadialMenu14"),
+                ("1_5 items", "RadialMenu15"),
+                ("1_6 items", "RadialMenu16"),
+                ("1_7 items", "RadialMenu17"),
+                ("1_8 items", "RadialMenu18"),
+                ("1_9 items", "RadialMenu19"),
+                ]),
+            ( "_20.._29 items", [
+                ("2_0 items", "RadialMenu20"),
+                ]),
+            ]),
+        ( "_List Menu", "ListMenu" ),
+        ]
+
+    def __init__ (self, menu_title=None):
+        gtk.Menu.__init__(self)
+
+        self.build_menu(self, self.MENU_DESC)
+
+        if menu_title is not None:
+            title = gtk.MenuItem(str(menu_title), False)
+            title.set_sensitive(False)
+            self.prepend(title)
+
+        self.connect_menuitems()
+#        self.connect_ctxmenu()
+
+        self.show_all()
+
+    @staticmethod
+    def build_menu (menuobj, menudesc):
+        if menuobj is None:
+            menuobj = gtk.Menu()
+        for itemdesc in menudesc:
+            menuitem = gtk.MenuItem(itemdesc[0], True)
+            if type(itemdesc[1]) == list:
+                # submenu
+                submenu = BindableArrangerContextMenu.build_menu(None, itemdesc[1])
+                menuitem.set_submenu(submenu)
+            else:
+                # leaf
+                menuitem.userdata = itemdesc[1]
+            menuobj.append(menuitem)
+        menuobj.show_all()
+        return menuobj
+
+    def connect_menuitems (self, submenu=None):
+        if not submenu:
+            submenu = self
+        for menuitem in submenu.get_children()[:]:
+            userdata = None
+            try:
+                userdata = menuitem.userdata
+            except AttributeError:
+                pass
+            if userdata:
+                menuitem.connect("activate", self.on_context_menuitem, userdata)
+            submenu = menuitem.get_submenu()
+            if submenu:
+                self.connect_menuitems(submenu)
+
+#    def connect_ctxmenu (self):
+#        if 0:  # TODO: right-click - conditional guard, based on Preferences?
+#            self.connect("button-press-event", self.on_button_press)
+#        self.frame_btn.connect("clicked", self.on_cluster_menu)
+
+    def on_button_press (self, w, ev):
+        if ev.button == 3:
+            self.ctxmenu.popup(None,None,None,ev.button,ev.time)
+            return True
+        elif ev.button == 1:
+            try:
+                self.clicked()
+            except AttributeError:
+                pass
+        return False
+
+#    def on_cluster_menu (self, w, *args):
+#        self.ctxmenu.popup(None,None,None,1,0)
+#        return True
+
+    def on_context_menuitem (self, w, userdata):
+        arranger = userdata
+#        if arranger:
+#            self.set_arranger(arranger)
+        self.emit("arrangement-activated", userdata)
+        return True
+
+    __gsignals__ = {
+        "arrangement-activated": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
+    }
+
+gobject.type_register(BindableArrangerContextMenu)
+
+
+
+
 class BindableCluster (gtk.EventBox, Bindable):
     """Groups together multiple BindableTops into a unit.
 Intended for use in the context of Steam Controller touchpads.
@@ -1345,9 +1480,11 @@ Composed of two parts visible at any one time:
         # TODO: In the context of Cluster, initbinds indicates what arrangement to use per layer.
         gtk.EventBox.__init__(self)
         self._layoutmap = None
+        self.clustered_layouts = ClusteredLayouts(self.hiasym)
 
         self.setup_states()
         self.setup_widget()
+        self.setup_signals()
 
     def setup_states (self):
         self.hiatops = dict()
@@ -1364,11 +1501,15 @@ Composed of two parts visible at any one time:
         class ui:
             pass
         self.ui = ui
+        self.ui.ctxmenu = None
         if self.hiasym:
             self.ui.frame = gtk.Frame()
             self.ui.frame.set_shadow_type(gtk.SHADOW_IN)
             self.ui.lbl = gtk.Label(self.hiasym)
+            self.ui.btn_popup = gtk.Button("...")
+            self.ui.ctxmenu = BindableArrangerContextMenu()
             self.ui.row_lbl = gtk.HBox()
+            self.ui.row_lbl.pack_start(self.ui.btn_popup, False, False, 0)
             self.ui.row_lbl.pack_start(self.ui.lbl, False, False, 0)
             self.ui.row_lbl.show_all()
             self.ui.frame.set_label_widget(self.ui.row_lbl)
@@ -1391,6 +1532,12 @@ Composed of two parts visible at any one time:
         self.ui.grid.show()
         self.ui.top.show()
         self.show()
+
+    def setup_signals (self):
+        if self.ui.ctxmenu:
+            self.ui.btn_popup.connect('clicked', self.on_btn_popup_clicked)
+            self.ui.ctxmenu.connect("arrangement-activated", self.on_arrangement_activated)
+        return
 
     def update_vis (self):
         for hiasym in self.hiatops:
@@ -1432,6 +1579,24 @@ Composed of two parts visible at any one time:
         self.ui.grid.show()
         self.ui.top.show()
         self.show()
+
+    def update_binds (self):
+        activelayout = None
+        bindval = self._binds[self._layer]
+        for row in self.clustered_layouts:
+            name = row[0]
+            if name == bindval:
+                activelayout = row[1]
+        if activelayout:
+            self.set_layoutmap(activelayout)
+
+    def on_btn_popup_clicked (self, w, *args):
+        if self.ui.ctxmenu:
+            self.ui.ctxmenu.popup(None,None,None,1,0)
+
+    def on_arrangement_activated (self, w, arranger, *args):
+        logger.debug("arranger = %r" % (arranger,))
+        self.emit("bind-assigned", self.hiasym, arranger)
 
     def on_bind_assigned (self, w, hiasym, hiabind):
         pass
@@ -1500,6 +1665,12 @@ Controller interface:
             hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
             if hiatop.get_visible():
                 hiatop.set_binds(hiabinds)
+        for hiasym in self.hiaclusters:
+            hiacluster = self.hiaclusters[hiasym]
+            hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
+            if hiacluster.get_visible():
+                hiacluster.set_binds(hiabinds)
+            pass
         return
 
     def update_layoutmap (self):
