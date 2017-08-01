@@ -544,17 +544,9 @@ Loop ends when coroutine ends (uses return instead of yield)
         self.w.hide()
 
     def test_bindlist0 (self):
-        layout = gtk.VBox()
+        layout = gtk.HBox()
         self.w.add(layout)
 
-        hiatops = dict()
-        BindableTop = hidlayout.BindableTop
-        vis = [True,True]
-        hiatops['K_TEST1'] = BindableTop('K_TEST1', None, vis, ['test1', 'testA'])
-        hiatops['K_TEST2'] = BindableTop('K_TEST2', None, vis, ['test2', 'testB'])
-        hiatops['K_TEST3'] = BindableTop('K_TEST3', None, vis, ['test3', 'testC'])
-        hiatops['K_TEST4'] = BindableTop('K_TEST4', None, vis, ['test4', 'testD'])
-        #bl = hidlayout.BindableListView(hiatops.values())
         mdl_listmenu = gtk.ListStore(str,str,  str,str,str,str)
         mdl_listmenu.append(("K_TEST1", "K_TEST1", "test1", "testA", "t1", "tA"))
         mdl_listmenu.append(("K_TEST2", "K_TEST2", "test2", "testB", "t2", "tB"))
@@ -572,6 +564,76 @@ Loop ends when coroutine ends (uses return instead of yield)
             yield 1
             bl.set_layer(1)
             yield 5
+
+        self.runloop(script, 1)
+        #time.sleep(4)
+        self.w.hide()
+
+    def test_bindlistdnd0 (self):
+        layout = gtk.HBox()
+        self.w.add(layout)
+
+        mdl_cmds = hidlayout.CommandPackStore()
+        mdl_cmds.append(None, (1, "Action", "Action", ""))
+        mdl_cmds.append(None, (2, "Jump", "Jump", ""))
+
+        cmdview = hidlayout.CommandPackView(mdl_cmds)
+        cmdview.show_all()
+
+        b = hidlayout.BindableTop("K_TEST1", "K_TEST1", [True], ["test1"])
+        b.show()
+
+        mdl_listmenu = gtk.ListStore(str,str,  str,str,str,str)
+        lu_listmenu = dict()
+        lu_listmenu["K_TEST1"] = mdl_listmenu.append(("K_TEST1", "K_TEST1", "test1", "testA", "t1", "tA"))
+        lu_listmenu["K_TEST2"] = mdl_listmenu.append(("K_TEST2", "K_TEST2", "test2", "testB", "t2", "tB"))
+        lu_listmenu["K_TEST3"] = mdl_listmenu.append(("K_TEST3", "K_TEST3", "test3", "testC", "t3", "tC"))
+        lu_listmenu["K_TEST4"] = mdl_listmenu.append(("K_TEST4", "K_TEST4", "test4", "testD", "t4", "tD"))
+        bl = hidlayout.BindableListView(mdl_listmenu)
+
+        vb = gtk.VBox()
+        vb.add(cmdview)
+        vb.add(b)
+        vb.show()
+
+        pane = gtk.HPaned()
+        pane.add(vb)
+        pane.add(bl)
+        pane.show()
+#        layout.pack_start(cmdview, False, False, 0)
+        vb.set_size_request(150, -1)
+#        layout.pack_start(bl, True, True, 0)
+        layout.pack_start(pane, True, True, 0)
+
+        #w.show_all()
+        self.w.show()
+        layout.show()
+        bl.show()
+
+        def on_bind_assigned (w, hiasym, bindval, *args):
+            mdl_listmenu[lu_listmenu[hiasym]][2+w._layer] = bindval
+            b.set_binds(tuple(mdl_listmenu[lu_listmenu[b.hiasym]])[2:])
+        def on_bind_swapped (w, srcsym, dstsym, *args):
+            colnum = 2+w._layer
+            srcbind = mdl_listmenu[lu_listmenu[srcsym]][colnum]
+            dstbind = mdl_listmenu[lu_listmenu[dstsym]][colnum]
+            mdl_listmenu[lu_listmenu[srcsym]][colnum] = dstbind
+            mdl_listmenu[lu_listmenu[dstsym]][colnum] = srcbind
+            b.set_binds(tuple(mdl_listmenu[lu_listmenu[b.hiasym]])[2:])
+        def on_bind_erased (w, hiasym, *args):
+            mdl_listmenu[lu_listmenu[hiasym]][2+w._layer] = ""
+            b.set_binds(tuple(mdl_listmenu[lu_listmenu[b.hiasym]])[2:])
+        bl.connect("bind-assigned", on_bind_assigned)
+        bl.connect("bind-swapped", on_bind_swapped)
+        bl.connect("bind-erased", on_bind_erased)
+        b.connect("bind-assigned", on_bind_assigned)
+        b.connect("bind-swapped", on_bind_swapped)
+        b.connect("bind-erased", on_bind_erased)
+
+        def script ():
+            yield 1
+            #bl.set_layer(1)
+            yield 8
 
         self.runloop(script, 1)
         #time.sleep(4)

@@ -916,16 +916,8 @@ Parent BindableCluster manipulates bound model (BindableListStore).
         self.ui.treeview.enable_model_drag_dest(dnd_targets, dnd_actions)
         self.ui.treeview.connect("drag-data-received", self.on_drag_data_received)
 
-        self.droppath = None
+#        self.droppath = None
         self.dropunbind = None
-
-    def on_drag_end (self, w, ctx, *args):
-        logger.debug("hidmenulist drag-end")
-        if self.dropunbind:
-            logger.debug("drop-unbind hiasym %s" % self.dropunbind)
-            self.set_bind(self.dropunbind, "")
-            self.dropunbind = None
-        return True
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         # As DnD source, determine what was dragged away.
@@ -938,8 +930,7 @@ Parent BindableCluster manipulates bound model (BindableListStore).
         if info == DndOpcodes.REORDER:
             # Reordering.  Encoding source path into string.
             #logger.debug("hialistview drag-data-get reorder")
-            #data = repr(firstpath)
-            pass
+            data = repr(firstpath)
         elif info == DndOpcodes.UNBIND:
             logger.debug("hidmenulist drag-data-get unbind")
             data = hiasym
@@ -950,10 +941,19 @@ Parent BindableCluster manipulates bound model (BindableListStore).
         if data is not None:
             seldata.set(seldata.target, 8, data)
 
+    def on_drag_end (self, w, ctx, *args):
+        logger.debug("hidmenulist drag-end")
+        if self.dropunbind:
+            logger.debug("list-bind-erasing %s" % self.dropunbind)
+            #self.set_bind(self.dropunbind, "")
+            self.emit("bind-erased", self.dropunbind)
+            self.dropunbind = None
+        return True
+
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         # As DnD destination, determine what was dragged in.
         srcw = ctx.get_source_widget()
-        droppath = self.droppath
+#        droppath = self.droppath
         dropinfo = w.get_dest_row_at_pos(x,y)
         destpath, destpos = None, None
         if dropinfo:
@@ -963,57 +963,59 @@ Parent BindableCluster manipulates bound model (BindableListStore).
             return False
 
         if info == DndOpcodes.REORDER:
-#            logger.debug("hidmenulist reorder")
-#            # Reordering internally, seldata.data is tree path.
-#            encoded = seldata.data
-#            srcpath = ast.literal_eval(encoded)
-#            func, bias = {
-#                gtk.TREE_VIEW_DROP_INTO_OR_BEFORE: (self.drag_bind, 0),
-#                gtk.TREE_VIEW_DROP_INTO_OR_AFTER: (self.drag_bind, 0),
-#                gtk.TREE_VIEW_DROP_BEFORE: (self.drag_bind, -1),
-#                gtk.TREE_VIEW_DROP_AFTER: (self.drag_bind, +1),
-#            }.get(destpos, (None,None))
-#            logger.debug("reordering internally: %r vs %r" % (srcpath, destpath))
-#            if callable(func):
-#                func(*(bias, srcpath, destpath))
-#            if ctx.action == gtk.gdk.ACTION_MOVE:
-#                ctx.finish(True, True, time)
-#            return True
-            pass
+            #logger.debug("hidmenulist reorder")
+            # Reordering internally, seldata.data is tree path.
+            encoded = seldata.data
+            srcpath = ast.literal_eval(encoded)
+            func, bias = {
+                gtk.TREE_VIEW_DROP_INTO_OR_BEFORE: (self.reorder_bindlist, 0),
+                gtk.TREE_VIEW_DROP_INTO_OR_AFTER: (self.reorder_bindlist, 0),
+                gtk.TREE_VIEW_DROP_BEFORE: (self.reorder_bindlist, -1),
+                gtk.TREE_VIEW_DROP_AFTER: (self.reorder_bindlist, +1),
+            }.get(destpos, (None,None))
+            logger.debug("reordering internally: %r vs %r" % (srcpath, destpath))
+            if callable(func):
+                func(*(bias, srcpath, destpath))
+            if ctx.action == gtk.gdk.ACTION_MOVE:
+                ctx.finish(True, True, time)
+            return True
         elif info == DndOpcodes.BIND:
             # bind-drop from commands set, seldata.data is bind (str).
-            logger.debug("hialistview bind-drop")
+            #logger.debug("hialistview bind-drop")
             dropinfo = w.get_dest_row_at_pos(x,y)
             bindval = seldata.data
-            logger.debug("command-dropping: %r" % seltext)
-            hiasym = self.mdl[destpath][0]
+            logger.debug("list-bind-assigning: %r" % bindval)
+            hiasym = self.model[destpath][0]
             self.emit("bind-assigned", hiasym, bindval)
             ctx.finish(True, False, time)
             return True
         elif info == DndOpcodes.SWAP:
             # swap with a hidtop, seldata.data is hiasym.
-            logger.debug("hidmenulist swap")
+            #logger.debug("hidmenulist swap")
             othersym = seldata.data
-            destsym = self.scratch[destpath][0]
-            logger.debug("command-swapping: %r,%r" % (destsym, othersym))
+            destsym = self.model[destpath][0]
+            logger.debug("list-bind-swapping: %r,%r" % (destsym, othersym))
             self.emit("bind-swapped", destsym, othersym)
             ctx.finish(True, False, time)
             return True
         return False
 
 
-    def drag_bind (self, bias, srcpath, dstpath):
-        # mass pull.
-        #listbinds = [ b for s,b in self.scratch ]
-        listbinds = [ r[1+self.layer] for r in self.scratch ]
+    def reorder_bindlist (self, bias, srcpath, dstpath):
+        # Pull binds for the current layer.
+        listbinds = [ r[2+self.layer] for r in self.model ]
         srcrow = srcpath[0]
         dstrow = dstpath[0]
         srcbind = listbinds[srcrow]
+        # Re-order binds list.
         if bias == 0:
+            # swap.
             listbinds[srcrow] = listbinds[dstrow]
             listbinds[dstrow] = srcbind
         else:
-            listbinds[srcrow] = None  # Flag for removal.
+            # insert before a row, or append at end if no "before".
+            REMOVAL = object()  # nonce value to identify removals.
+            listbinds[srcrow] = REMOVAL  # Flag for removal.
             if bias < 0:
                 listbinds.insert(dstrow, srcbind)
             elif dstrow < len(listbinds):
@@ -1023,24 +1025,23 @@ Parent BindableCluster manipulates bound model (BindableListStore).
 #            if srcrow > dstrow:
 #                srcrow += 1
 #            del listbinds[srcrow]
-            listbinds = [ x for x in listbinds if x is not None ]
-        # Rebuild scratch from listbinds.
-        self.scratch.clear()
-#        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
-#            self.inpdescr.handler_block(h)
+            listbinds = [ x for x in listbinds if x is not REMOVAL ]
+
+        # Identify binds to be changed.
         for i in range(0, len(listbinds)):
-            bind = listbinds[i]
-            n = i+1
-            hiasym = "{}{}".format(self.hiasymprefix, n)
-            self.set_bind(hiasym, bind)
-            nlayers = self.dispstate.inpdescr.get_numlayers()
-            self.scratch.append((hiasym,) + ("",)*nlayers)
-#        for h in [ self.conn_bind_changed, self.conn_label_changed, self.conn_layer_changed, self.conn_group_changed ]:
-#            self.inpdescr.handler_unblock(h)
+            reordered_bind = listbinds[i]    # new bind for this row.
+            hiasym = self.model[i][0]        # hiasym for this row.
+            oldbind = self.model[i][2+self.layer]  # old bind for this row.
+            if oldbind != reordered_bind:
+                # Change detected, notify listeners.
+                logger.debug("change for %r" % hiasym)
+                self.emit("bind-assigned", hiasym, reordered_bind)
         return
 
     __gsignals__ = {
+        "bind-assigned": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
         "bind-swapped": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
+        "bind-erased": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
     }
 
 gobject.type_register(BindableListView)
