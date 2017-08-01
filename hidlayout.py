@@ -1724,8 +1724,8 @@ Controller interface:
         return
     def on_bind_swapped (self, w, src_hiasym, dst_hiasym):
         logger.debug("doing on_bind_swapped(layer=%d, asym=%r, bsym=%r" % (self.layer, src_hiasym, dst_hiasym))
-        srcbind = self.bindstore[self.group][self.layer][src_hiasym]
-        dstbind = self.bindstore[self.group][self.layer][dst_hiasym]
+        srcbind = self.bindstore[self.group][self.layer].get(src_hiasym,None)
+        dstbind = self.bindstore[self.group][self.layer].get(dst_hiasym,None)
         self.bindstore[self.group][self.layer][src_hiasym] = dstbind
         self.bindstore[self.group][self.layer][dst_hiasym] = srcbind
         self.update_binds()
