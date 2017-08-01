@@ -1490,8 +1490,9 @@ Composed of two parts visible at any one time:
         Bindable.__init__(self, hiasym, label, vis, init_binds)
         # TODO: In the context of Cluster, init_binds indicates what arrangement to use per layer.
         gtk.EventBox.__init__(self)
-        self._layoutmap = None
+        #self._layoutmap = None
         self.clustered_layouts = ClusteredLayouts(self.hiasym)
+        self._layoutmap = self.clustered_layouts[0][1]
 
         self.setup_states()
         self.setup_widget()
@@ -1516,12 +1517,12 @@ Composed of two parts visible at any one time:
         if self.hiasym:
             self.ui.frame = gtk.Frame()
             self.ui.frame.set_shadow_type(gtk.SHADOW_IN)
-            self.ui.lbl = gtk.Label(self.hiasym)
+            self.ui.lbl_title = gtk.Label(" {} <{}>".format(self.hiasym, self._layoutmap.name))
             self.ui.btn_popup = gtk.Button("...")
             self.ui.ctxmenu = BindableArrangerContextMenu()
             self.ui.row_lbl = gtk.HBox()
             self.ui.row_lbl.pack_start(self.ui.btn_popup, False, False, 0)
-            self.ui.row_lbl.pack_start(self.ui.lbl, False, False, 0)
+            self.ui.row_lbl.pack_start(self.ui.lbl_title, False, False, 0)
             self.ui.row_lbl.show_all()
             self.ui.frame.set_label_widget(self.ui.row_lbl)
         self.ui.top = gtk.VBox()
@@ -1577,6 +1578,10 @@ Composed of two parts visible at any one time:
         else:
             # top-level cluster.
             self.ui.grid.resize(1,1)
+
+        # Update frame title.
+        if self.hiasym:
+            self.ui.lbl_title.set_label(" {} <{}>".format(self.hiasym, self._layoutmap.name))
 
         # Attach all specified hia.
         for hiadata in self.layoutmap:
