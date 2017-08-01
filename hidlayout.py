@@ -507,6 +507,10 @@ class Bindable (object):
             if parent_cluster:
                 parent_cluster.hiatops[hiasym] = hiatop
                 parent_cluster.hiaclusters[hiasym] = hiatop
+#                for subsym in self.hiatops:
+#                    parent_cluster.hiatops[subsym] = self.hiatops[subsym]
+#                for subsym in self.hiaclusters:
+#                    parent_cluster.hiaclusters[subsym] = self.hiaclusters[subsym]
         elif hiatype == "key":
             hiatop = BindableTop(hiasym, hialbl, self.vis, init_binds)
             if parent_cluster:
@@ -1576,12 +1580,16 @@ Composed of two parts visible at any one time:
 
         # Attach all specified hia.
         for hiadata in self.layoutmap:
-            hiasuffix, lbl, prototyp, x, y, w, h = hiadata
-            hiasym = "{}{}".format(self.hiasym, hiasuffix)
+            hiasym, lbl, prototyp, x, y, w, h = hiadata
+            #hiasym = "{}{}".format(self.hiasym, hiasuffix)
             if not hiasym in self.hiatops:
                 #hiatop = BindableTop(hiasym, lbl, self.vis, init_binds=None)
                 #self.hiatops[hiasym] = hiatop
                 hiatop = self.make_hiatop(hiadata, self.binds, self)
+                try:
+                    hiatop.connect("cluster-type-changed", self.on_cluster_type_changed)
+                except TypeError:
+                    pass
             else:
                 hiatop = self.hiatops[hiasym]
                 hiatop.set_vis(self.vis)
@@ -1593,6 +1601,7 @@ Composed of two parts visible at any one time:
             hiatop.show()
         self.ui.grid.show()
         self.ui.top.show()
+        self.emit("cluster-type-changed", self.hiasym, self._binds[self._layer])
         self.show()
 
     def update_binds (self):
@@ -1613,14 +1622,31 @@ Composed of two parts visible at any one time:
         logger.debug("arranger = %r" % (arranger,))
         self.emit("bind-assigned", self.hiasym, arranger)
 
-    def on_bind_assigned (self, w, hiasym, hiabind):
-        pass
-    def on_bind_swapped (self, w, src_hiasym, dst_hiasym):
-        pass
-    def on_bind_erased (self, w, hiasym):
-        pass
+    def on_cluster_type_changed (self, w, hiasym, cluster_type):
+        """Nested cluster type changed -- pull in its nested hiatops."""
+        hiacluster = self.hiaclusters[hiasym]
+        for subsym in hiacluster.hiatops:
+            subtop = hiacluster.hiatops[subsym]
+            self.hiatops[subsym] = subtop
+        self.emit("cluster-type-changed", hiasym, cluster_type)
 
-    __gsignals__ = Bindable.__gsignals__
+    def on_bind_assigned (self, w, hiasym, hiabind):
+        self.emit("bind-assigned", hiasym, hiabind)
+    def on_bind_swapped (self, w, src_hiasym, dst_hiasym):
+        self.emit("bind-swapped", src_hiasym, dst_hiasym)
+    def on_bind_erased (self, w, hiasym):
+        self.emit("bind-erased", hiasym)
+
+#    __gsignals__ = Bindable.__gsignals__
+    __gsignals__ = dict(
+        [ (k,v) for k,v in Bindable.__gsignals__.iteritems() ]
+        +
+        [ (k,v) for k,v in {
+            "cluster-type-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING, gobject.TYPE_STRING)),
+          }.iteritems() ]
+        )
+
+gobject.type_register(BindableCluster)
 
 
 
@@ -1675,7 +1701,7 @@ Controller interface:
         return
 
     def update_binds (self):
-        for hiasym in self.hiatops:
+        for hiasym in self.hiatops.keys():
             hiatop = self.hiatops[hiasym]
             hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
             if hiatop.get_visible():
@@ -1685,7 +1711,6 @@ Controller interface:
             hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
             if hiacluster.get_visible():
                 hiacluster.set_binds(hiabinds)
-            pass
         return
 
     def update_layoutmap (self):
@@ -1708,7 +1733,7 @@ Controller interface:
     def on_bind_erased (self, w, hiasym):
         logger.debug("doing on_bind_erased(layer=%d, sym=%r" % (self.layer, hiasym))
         #self.bindstore[self.group][self.layer][src_hiasym] = ""
-        del self.bindstore[self.group][self.layer][src_hiasym]
+        del self.bindstore[self.group][self.layer][hiasym]
         self.update_binds()
         return
 
