@@ -32,6 +32,23 @@ Loop ends when coroutine ends (uses return instead of yield)
                 t = time.time()
             phase += 1
 
+    def skel (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        layout.pack_start(WIDGET, True, True, 0)
+
+        #w.show_all()
+        self.w.show()
+        layout.show()
+        b.show()
+
+        def script ():
+            yield 1
+
+        self.runloop(script)
+        #time.sleep(4)
+        self.w.hide()
 
     def test_bindtop (self):
         layout = gtk.VBox()
@@ -524,6 +541,40 @@ Loop ends when coroutine ends (uses return instead of yield)
             yield 5
 
         self.runloop(script, 1)
+        self.w.hide()
+
+    def test_bindlist0 (self):
+        layout = gtk.VBox()
+        self.w.add(layout)
+
+        hiatops = dict()
+        BindableTop = hidlayout.BindableTop
+        vis = [True,True]
+        hiatops['K_TEST1'] = BindableTop('K_TEST1', None, vis, ['test1', 'testA'])
+        hiatops['K_TEST2'] = BindableTop('K_TEST2', None, vis, ['test2', 'testB'])
+        hiatops['K_TEST3'] = BindableTop('K_TEST3', None, vis, ['test3', 'testC'])
+        hiatops['K_TEST4'] = BindableTop('K_TEST4', None, vis, ['test4', 'testD'])
+        #bl = hidlayout.BindableListView(hiatops.values())
+        mdl_listmenu = gtk.ListStore(str,str,  str,str,str,str)
+        mdl_listmenu.append(("K_TEST1", "K_TEST1", "test1", "testA", "t1", "tA"))
+        mdl_listmenu.append(("K_TEST2", "K_TEST2", "test2", "testB", "t2", "tB"))
+        mdl_listmenu.append(("K_TEST3", "K_TEST3", "test3", "testC", "t3", "tC"))
+        mdl_listmenu.append(("K_TEST4", "K_TEST4", "test4", "testD", "t4", "tD"))
+        bl = hidlayout.BindableListView(mdl_listmenu)
+        layout.pack_start(bl, True, True, 0)
+
+        #w.show_all()
+        self.w.show()
+        layout.show()
+        bl.show()
+
+        def script ():
+            yield 1
+            bl.set_layer(1)
+            yield 5
+
+        self.runloop(script, 1)
+        #time.sleep(4)
         self.w.hide()
 
 
