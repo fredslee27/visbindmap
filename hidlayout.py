@@ -984,8 +984,8 @@ Parent BindableCluster manipulates bound model (BindableListStore).
             #logger.debug("hialistview bind-drop")
             dropinfo = w.get_dest_row_at_pos(x,y)
             bindval = seldata.data
-            logger.debug("list-bind-assigning: %r" % bindval)
             hiasym = self.model[destpath][0]
+            logger.debug("list-bind-assigning: %r <- %r" % (hiasym, bindval))
             self.emit("bind-assigned", hiasym, bindval)
             ctx.finish(True, False, time)
             return True
@@ -1777,18 +1777,28 @@ Composed of two parts visible at any one time:
         # necessarily visible or attached to grid.
         # Expect "#c", "#1", "#2", ... "#20".
         #self.ui.listview = BindableListView([])
-        listdescr = (str,) + (str,)*self.nlayers
-        mdl_listmenu = gtk.ListStore(*listdescr)
+        listdescr = (str,str) + (str,)*self.nlayers
+        self.mdl_listmenu = gtk.ListStore(*listdescr)
         # TODO: should handle changing number of layers.
-        for n in range(0,21):
+        for n in range(1,21):
             hiasym = "{}{}".format(self.hiasym, n)
-            mdl_listmenu.append( (hiasym,)+("",)*self.nlayers )
-        self.ui.listview = BindableListView(mdl_listmenu)
+            self.mdl_listmenu.append( (hiasym,hiasym,)+("",)*self.nlayers )
+        self.ui.listview = BindableListView(self.mdl_listmenu)
+        # KLUDGE: pull up all clusterd_layouts hiatops.
+        for layoutrow in self.clustered_layouts:
+            layoutname, layoutmap = layoutrow
+            self.merge_hiatops(layoutmap)
 
-        self.ui.top.pack_start(self.ui.grid, True, True, 0)
+        self.ui.page_grid = gtk.VBox()
+        self.ui.page_grid.pack_start(self.ui.grid, True, True, 0)
+        self.ui.page_list = gtk.VBox()
+        #self.ui.page_list.pack_start(self.ui.listview, True, True, 0)
+        #self.ui.top.pack_start(self.ui.grid, True, True, 0)
+        self.ui.top.pack_start(self.ui.page_grid, True, True, 0)
+        self.ui.top.pack_start(self.ui.page_list, True, True, 0)
 
-        self.ui.top.pack_start(self.ui.listview, True, True, 0)
-        self.ui.listview.show_all()
+        #self.ui.top.pack_start(self.ui.listview, True, True, 0)
+        #self.ui.listview.show_all()
 
         if self.hiasym:
             self.ui.frame.add(self.ui.top)
@@ -1805,6 +1815,9 @@ Composed of two parts visible at any one time:
         if self.ui.ctxmenu:
             self.ui.btn_popup.connect('clicked', self.on_btn_popup_clicked)
             self.ui.ctxmenu.connect("arrangement-activated", self.on_arrangement_activated)
+        self.ui.listview.connect("bind-assigned", self.on_bind_assigned)
+        self.ui.listview.connect("bind-swapped", self.on_bind_swapped)
+        self.ui.listview.connect("bind-erased", self.on_bind_erased)
         return
 
     def update_vis (self):
@@ -1820,6 +1833,25 @@ Composed of two parts visible at any one time:
             if hiatop.get_visible():
                 hiatop.set_layer(self.layer)
         pass
+
+    def merge_hiatops (self, layoutmap):
+        for hiadata in layoutmap:
+            hiasym, lbl, prototyp, x, y, w, h = hiadata
+            #hiasym = "{}{}".format(self.hiasym, hiasuffix)
+            if not hiasym in self.hiatops:
+                #hiatop = BindableTop(hiasym, lbl, self.vis, init_binds=None)
+                #self.hiatops[hiasym] = hiatop
+                hiatop = self.make_hiatop(hiadata, self.binds, self)
+                try:
+                    hiatop.connect("cluster-type-changed", self.on_cluster_type_changed)
+                except TypeError:
+                    pass
+            else:
+                hiatop = self.hiatops[hiasym]
+                hiatop.set_vis(self.vis)
+                # TODO: update bind?
+            hiatop.show()
+        return
 
     def update_layoutmap (self):
         """Based on .layoutmap, ensure widgets exist and are attached to grid."""
@@ -1840,26 +1872,35 @@ Composed of two parts visible at any one time:
             self.ui.lbl_title.set_label(" {} <{}>".format(self.hiasym, self._layoutmap.name))
 
         # Attach all specified hia.
+        self.merge_hiatops(self.layoutmap)
+#        for hiadata in self.layoutmap:
+#            hiasym, lbl, prototyp, x, y, w, h = hiadata
+#            #hiasym = "{}{}".format(self.hiasym, hiasuffix)
+#            if not hiasym in self.hiatops:
+#                #hiatop = BindableTop(hiasym, lbl, self.vis, init_binds=None)
+#                #self.hiatops[hiasym] = hiatop
+#                hiatop = self.make_hiatop(hiadata, self.binds, self)
+#                try:
+#                    hiatop.connect("cluster-type-changed", self.on_cluster_type_changed)
+#                except TypeError:
+##                    pass
+#            else:
+#                hiatop = self.hiatops[hiasym]
+#                hiatop.set_vis(self.vis)
+#                # TODO: update bind?
+#            if isinstance(hiatop, BindableCluster):
+#                self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=4, ypadding=4)
+#            else:
+#                self.ui.grid.attach(hiatop, x, x+w, y, y+h)
+#            hiatop.show()
         for hiadata in self.layoutmap:
             hiasym, lbl, prototyp, x, y, w, h = hiadata
-            #hiasym = "{}{}".format(self.hiasym, hiasuffix)
-            if not hiasym in self.hiatops:
-                #hiatop = BindableTop(hiasym, lbl, self.vis, init_binds=None)
-                #self.hiatops[hiasym] = hiatop
-                hiatop = self.make_hiatop(hiadata, self.binds, self)
-                try:
-                    hiatop.connect("cluster-type-changed", self.on_cluster_type_changed)
-                except TypeError:
-                    pass
-            else:
-                hiatop = self.hiatops[hiasym]
-                hiatop.set_vis(self.vis)
-                # TODO: update bind?
+            hiatop = self.hiatops[hiasym]
+            hiatop.set_vis(self.vis)
             if isinstance(hiatop, BindableCluster):
                 self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=4, ypadding=4)
             else:
                 self.ui.grid.attach(hiatop, x, x+w, y, y+h)
-            hiatop.show()
         self.ui.grid.show()
         self.ui.top.show()
         self.emit("cluster-type-changed", self.hiasym, self._binds[self._layer])
@@ -1880,14 +1921,29 @@ Composed of two parts visible at any one time:
         if not hiatop:
             return
         hiatop.set_binds(bindsval)
+        for row in self.mdl_listmenu:
+            if row[0] == hiasym:
+                for colnum in range(len(bindsval)):
+                    row[2+colnum] = bindsval[colnum]
 
     def on_btn_popup_clicked (self, w, *args):
         if self.ui.ctxmenu:
             self.ui.ctxmenu.popup(None,None,None,1,0)
 
     def on_arrangement_activated (self, w, arranger, *args):
-        logger.debug("arranger = %r" % (arranger,))
-        self.emit("bind-assigned", self.hiasym, arranger)
+        if arranger == "ListMenu":
+            self.ui.page_grid.hide()
+            if not self.ui.listview.get_parent():
+                self.ui.page_list.pack_start(self.ui.listview, True, True, 0)
+                self.ui.listview.show_all()
+            self.ui.page_list.show()
+        else:
+            if not self.ui.page_grid.get_visible():
+                self.ui.page_grid.show()
+            if self.ui.page_list.get_visible():
+                self.ui.page_list.hide()
+            logger.debug("arranger = %r" % (arranger,))
+            self.emit("bind-assigned", self.hiasym, arranger)
 
     def on_cluster_type_changed (self, w, hiasym, cluster_type):
         """Nested cluster type changed -- pull in its nested hiatops."""
@@ -1978,7 +2034,7 @@ Controller interface:
             hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
             if hiacluster.get_visible():
                 hiacluster.set_binds(hiabinds)
-                # This is awkward.  Could turn into O(n^2).
+                # KLUDGE: Could turn into O(n^2).
                 # TODO: subclass all tops as Cluster, where keytop are singleton special case?  Then all set_binds would take (hiasym, bindval) parameters.
                 for subsym in hiacluster.hiatops:
                     # TODO: fix, would only allow one level of nesting.
