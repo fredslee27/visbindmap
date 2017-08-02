@@ -1014,8 +1014,7 @@ Parent BindableCluster manipulates bound model (BindableListStore).
             listbinds[dstrow] = srcbind
         else:
             # insert before a row, or append at end if no "before".
-            REMOVAL = object()  # nonce value to identify removals.
-            listbinds[srcrow] = REMOVAL  # Flag for removal.
+            listbinds[srcrow] = trashed = object()  # nonce value for removals.
             if bias < 0:
                 listbinds.insert(dstrow, srcbind)
             elif dstrow < len(listbinds):
@@ -1025,7 +1024,7 @@ Parent BindableCluster manipulates bound model (BindableListStore).
 #            if srcrow > dstrow:
 #                srcrow += 1
 #            del listbinds[srcrow]
-            listbinds = [ x for x in listbinds if x is not REMOVAL ]
+            listbinds = [ x for x in listbinds if x is not trashed ]
 
         # Identify binds to be changed.
         for i in range(0, len(listbinds)):
@@ -1778,10 +1777,19 @@ Composed of two parts visible at any one time:
         # necessarily visible or attached to grid.
         # Expect "#c", "#1", "#2", ... "#20".
         #self.ui.listview = BindableListView([])
-        mdl_listmenu = gtk.ListStore(str, str,str,str,str,str,str,str,str)
+        listdescr = (str,) + (str,)*self.nlayers
+        mdl_listmenu = gtk.ListStore(*listdescr)
+        # TODO: should handle changing number of layers.
+        for n in range(0,21):
+            hiasym = "{}{}".format(self.hiasym, n)
+            mdl_listmenu.append( (hiasym,)+("",)*self.nlayers )
         self.ui.listview = BindableListView(mdl_listmenu)
 
         self.ui.top.pack_start(self.ui.grid, True, True, 0)
+
+        self.ui.top.pack_start(self.ui.listview, True, True, 0)
+        self.ui.listview.show_all()
+
         if self.hiasym:
             self.ui.frame.add(self.ui.top)
             self.add(self.ui.frame)
@@ -1866,6 +1874,12 @@ Composed of two parts visible at any one time:
                 activelayout = row[1]
         if activelayout:
             self.set_layoutmap(activelayout)
+
+    def proxy_set_binds (self, hiasym, bindsval):
+        hiatop = self.hiatops.get(hiasym, None)
+        if not hiatop:
+            return
+        hiatop.set_binds(bindsval)
 
     def on_btn_popup_clicked (self, w, *args):
         if self.ui.ctxmenu:
@@ -1964,6 +1978,12 @@ Controller interface:
             hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
             if hiacluster.get_visible():
                 hiacluster.set_binds(hiabinds)
+                # This is awkward.  Could turn into O(n^2).
+                # TODO: subclass all tops as Cluster, where keytop are singleton special case?  Then all set_binds would take (hiasym, bindval) parameters.
+                for subsym in hiacluster.hiatops:
+                    # TODO: fix, would only allow one level of nesting.
+                    subval = [ lyr.get(subsym,"") for lyr in self.bindstore[self._group] ]
+                    hiacluster.proxy_set_binds(subsym, subval)
         return
 
     def update_layoutmap (self):
