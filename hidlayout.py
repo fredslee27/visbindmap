@@ -231,6 +231,35 @@ class BindStore (object):
         for bindmode in self.modes:
             bindmode.resize_layers(self.nlayers)
         return
+    def resolve_binds_markup (self, hiasym, modenum):
+        binds = []
+        mode = self.modes[modenum]
+        redirect_limit = len(mode.layers)+1  # number of layers.
+        for layernum in range(len(mode.layers)):
+            lyr = mode.layers[layernum]
+            m = mode
+            redirects = 0
+            bindval = ""
+            entry = ""
+            while m and not entry and redirects < redirect_limit:
+                rawval = m[layernum].get(hiasym, "")
+                if rawval is None:
+                    rawval = ""
+                bindval = glib.markup_escape_text(rawval)
+                if bindval:
+                    break
+                if m.fallthrough is not None:
+                    m = self.modes[m.fallthrough]
+                    redirects += 1
+                else:
+                    m = None
+            if redirects:
+                # Keep trailing space for vertical spacing.
+                entry = "<i><small>{}</small></i> ".format(bindval)
+            else:
+                entry = "{}".format(bindval)
+            binds.append(entry)
+        return binds
     def __copy__ (self):
         retval = BindStore(self.nmodes, self.nlayers)
         copymap = dict()    # map fallthrough links.
@@ -1472,7 +1501,7 @@ Composed of two parts visible at any one time:
         # KLUDGE: pull up all clusterd_layouts hiatops.
         for layoutrow in self.clustered_layouts:
             layoutname, layoutmap = layoutrow
-            self.merge_hiatops(layoutmap)
+            self.refill_hiatops(layoutmap)
 
         self.ui.page_grid = gtk.VBox()
         self.ui.page_grid.pack_start(self.ui.grid, True, True, 0)
@@ -1516,7 +1545,7 @@ Composed of two parts visible at any one time:
         self.ui.listview.set_layer(self.layer)
         return
 
-    def merge_hiatops (self, layoutmap):
+    def refill_hiatops (self, layoutmap):
         for hiadata in layoutmap:
             hiasym, lbl, prototyp, x, y, w, h = hiadata
             #hiasym = "{}{}".format(self.hiasym, hiasuffix)
@@ -1554,27 +1583,7 @@ Composed of two parts visible at any one time:
             self.ui.lbl_title.set_label(" {} <{}>".format(self.hiasym, self._layoutmap.name))
 
         # Attach all specified hia.
-        self.merge_hiatops(self.layoutmap)
-#        for hiadata in self.layoutmap:
-#            hiasym, lbl, prototyp, x, y, w, h = hiadata
-#            #hiasym = "{}{}".format(self.hiasym, hiasuffix)
-#            if not hiasym in self.hiatops:
-#                #hiatop = BindableTop(hiasym, lbl, self.vis, init_binds=None)
-#                #self.hiatops[hiasym] = hiatop
-#                hiatop = self.make_hiatop(hiadata, self.binds, self)
-#                try:
-#                    hiatop.connect("cluster-type-changed", self.on_cluster_type_changed)
-#                except TypeError:
-##                    pass
-#            else:
-#                hiatop = self.hiatops[hiasym]
-#                hiatop.set_vis(self.vis)
-#                # TODO: update bind?
-#            if isinstance(hiatop, BindableCluster):
-#                self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=4, ypadding=4)
-#            else:
-#                self.ui.grid.attach(hiatop, x, x+w, y, y+h)
-#            hiatop.show()
+        self.refill_hiatops(self.layoutmap)
         for hiadata in self.layoutmap:
             hiasym, lbl, prototyp, x, y, w, h = hiadata
             hiatop = self.hiatops[hiasym]
@@ -1704,7 +1713,8 @@ Controller interface:
     def update_binds (self):
         for hiasym in self.hiatops.keys():
             hiatop = self.hiatops[hiasym]
-            hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._mode] ]
+            #hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._mode] ]
+            hiabinds = self.bindstore.resolve_binds_markup(hiasym, self._mode)
             if hiatop.get_visible():
                 hiatop.set_binds(hiabinds)
         for hiasym in self.hiaclusters:
@@ -1774,7 +1784,8 @@ instance.sel_layer.buttons[2].activate()
     def __init__ (self, model_layouts, model_modes, model_layers):
         gtk.VBox.__init__(self)
         self.mdl_layouts = model_layouts
-        self.mdl_modes = model_modes
+        #self.mdl_modes = model_modes
+        self.mdl_modes = gtk.ListStore(str,str)
         self.mdl_layers  = model_layers
         self.setup_widget()
         self.setup_signals()
@@ -1788,7 +1799,10 @@ instance.sel_layer.buttons[2].activate()
     def get_modes_model (self):
         return self.mdl_mode
     def set_modes_model (self, val):
-        self.mdl_modes = val
+        #self.mdl_modes = val
+        self.mdl_modes.clear()
+        for row in val:
+            self.mdl_modes.append(tuple(row))
     modes_model = property(get_modes_model, set_modes_model)
 
     def get_layers_model (self):
@@ -1980,6 +1994,8 @@ class BindableLayoutWidget (gtk.VBox):
         if init_layout is not None:
             self.ui.selectors.frob_layout(init_layout)
 
+        self.update_modelist()
+
     def setup_state (self):
         self._activename = None
         self._activehid = None
@@ -2082,10 +2098,11 @@ class BindableLayoutWidget (gtk.VBox):
         self.update_modelist()
     modelist = property(get_modelist, set_modelist)
     def update_modelist (self):
-        modelist = self.ui.selectors.ui.sel_mode.mdl
-        modelist.clear()
-        for row in self.mdl_modes:
-            modelist.append( tuple(row) )
+        # Set up fallback web.
+        lu_modes = dict([(self.mdl_modes[rownum][0],rownum) for rownum in range(len(self.mdl_modes)) ])
+        for k,fall in self.mdl_modes:
+            self.bindstore[lu_modes[k]].fallthrough = lu_modes.get(fall, None)
+        self.ui.selectors.set_modes_model(self.mdl_modes)  # this call actually resolves to a ListStore copy.
         return
 
     def get_activename (self):
