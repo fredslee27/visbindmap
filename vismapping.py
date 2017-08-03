@@ -219,87 +219,17 @@ Also the save file.
 
 
 
-
-class ObjectReinstantiater(ast.NodeTransformer):
-    """Traverse Abstract Syntax Tree to filter allowed object instantiation."""
-    # Classes allowed to be instantiated.  Otherwise becomes None.
-#    REINSTANCERS = {
-#        "hidlayout.InpDescrModel": hidlayout.InpDescrModel,
-#        "hidlayout.InpLayer": hidlayout.InpLayer,
-#        "hidlayout.InpGroup": hidlayout.InpGroup,
-#        }
-    def nop (self, node=None):
-        return ast.parse("None", mode='eval')
-    def visit_Call (self, node):
-#        cmodule = node.func.value.id
-#        cclass = node.func.attr
-#        ckey = "%s.%s" % (cmodule, cclass)
-#        if ckey in self.REINSTANCERS:
-#            #logger.debug("Invoke %s.%s(**%r)" % (cmodule, cclass, kwargs))
-#            return node
-#        else:
-#            return ast.parse("None", mode='eval')
-        return ast.parse("None", mode='eval')
-    def visit_Yield (self, node): return self.nop()
-    def visit_Lambda (self, node): return self.nop()
-    def visit_IfExp (self, node): return self.nop()
-
-
-# Persistant storage.
-class Store (object):
-    DEFAULT_FILENAME = BASENAME + ".cfg"
-
-    def reset (self):
-        try:
-            self.bindstore
-        except AttributeError:
-            self.bindstore = hidlayout.BindStore(self._nummodes, self._numlevels)
-        self.bindstore.clear()
-        self.fname = None
-        self.cmdsuri = None
-
-    def __init__ (self, nummodes=8, numlevels=8, backingFileName=None):
-        # list of bindings, one binding per layer (typically 8 layers).
-        # bindings are mapping SDL_binding => command.
-        # modes are list of list-of-binding, typically 1 or 2.
-        self._nummodes = nummodes
-        self._numlevels = numlevels
-        self.active_layout = None  # last selected layout (restore view on load).
-        self.reset()
-        self.fname = backingFileName
-        if not backingFileName:
-            self.fname = self.DEFAULT_FILENAME
-
-    def load (self, fileobj=None):
-        if fileobj is None:
-            fileobj = open(self.fname, "rb")
-        s = fileobj.read()
-        astree = ast.parse(s, mode='eval')
-        transformed = ObjectReinstantiater().visit(astree)
-        storedict = eval(compile(transformed, '', 'eval'))
-#        self.inpdescr.restore(storedict.get('inpdescr',None))
-#        self.inpdescr.refresh()
-        # TODO: load BindStore from file.
-        self.cmdsuri = storedict.get("cmdsuri", None)
-        self.active_layout = storedict.get('layout', None)
-
-    def save (self, fileobj=None):
-        if fileobj is None:
-            fileobj = open(self.fname, "wb")
-            fileobj.write(self.modes)
-        storedict = {
-            'layout': self.active_layout,
-            'bindstore': self.bindstore,
-            'cmdsuri': self.cmdsuri,
-            }
-        pprint.pprint(storedict, fileobj, indent=2, width=132)
-        fileobj.write("\n")
-
-
-
-
+# CommandInfo from sqlite3 file.
 @hidlayout.CommandInfo.register
 class CommandInfo_sqlite3 (hidlayout.CommandInfo):
+    @staticmethod
+    def is_acceptable (uri):
+        try:
+            # Check if it quacks like a string.
+            uri.isalpha
+            return True
+        except:
+            return False
     def build (self):
         dbname = self._path
         self.conn = sqlite3.connect(dbname)
@@ -370,14 +300,6 @@ class CommandInfo_sqlite3 (hidlayout.CommandInfo):
 
         self._cmdpack = cmdpack
         self.packname = packname
-    @staticmethod
-    def is_acceptable (uri):
-        try:
-            # Check if it quacks like a string.
-            uri.isalpha
-            return True
-        except:
-            return False
 
 
 
