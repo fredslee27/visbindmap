@@ -820,7 +820,8 @@ Parent BindableCluster manipulates bound model (BindableListStore).
         self.update_vis()
     vis = property(get_vis, set_vis)
     def update_vis (self):
-        pass
+        for colnum in range(len(self._vis)):
+            self.ui.bindcols[colnum].set_visible(self._vis[colnum])
 
     def get_layer (self):
         return self._layer
@@ -874,6 +875,7 @@ Parent BindableCluster manipulates bound model (BindableListStore).
             self.ui.bindcols.append(bind_col)
             self.ui.renderers.append(renderer)
             self.ui.treeview.append_column(bind_col)
+        self.update_vis()
         self.update_layer()
 
         self.add(self.ui.treeview)  # and not with viewport -- scroll with anchored column header.
@@ -1465,7 +1467,7 @@ Composed of two parts visible at any one time:
         for n in range(1,21):
             hiasym = "{}{}".format(self.hiasym, n)
             self.mdl_listmenu.append( (hiasym,hiasym,)+("",)*self.nlayers )
-        self.ui.listview = BindableListView(self.mdl_listmenu)
+        self.ui.listview = BindableListView(self.mdl_listmenu, self._vis)
         # KLUDGE: pull up all clusterd_layouts hiatops.
         for layoutrow in self.clustered_layouts:
             layoutname, layoutmap = layoutrow
@@ -1502,6 +1504,7 @@ Composed of two parts visible at any one time:
             hiatop = self.hiatops[hiasym]
             if hiatop.get_visible():
                 hiatop.set_vis(self.vis)
+        self.ui.listview.set_vis(self.vis)
         return
 
     def update_layer (self):
@@ -1509,7 +1512,8 @@ Composed of two parts visible at any one time:
             hiatop = self.hiatops[hiasym]
             if hiatop.get_visible():
                 hiatop.set_layer(self.layer)
-        pass
+        self.ui.listview.set_layer(self.layer)
+        return
 
     def merge_hiatops (self, layoutmap):
         for hiadata in layoutmap:
