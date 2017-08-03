@@ -1698,11 +1698,7 @@ Controller interface:
         BindableCluster.update_vis(self)
 
     def update_mode (self):
-        for hiasym in self.hiatops:
-            hiatop = self.hiatops[hiasym]
-            mode = self.bindstore[self._mode]
-            modebind = [ lyr.get(hiasym,"") for lyr in mode ]
-            hiatop.set_binds(modebind)
+        self.update_binds()
         return
 
     def update_binds (self):
