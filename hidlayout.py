@@ -1520,6 +1520,8 @@ Composed of two parts visible at any one time:
         self.ui.top.show()
         self.show()
 
+        self.on_arrangement_activated(self, self.binds[self._layer] or "Empty")
+
     def setup_signals (self):
         if self.ui.ctxmenu:
             self.ui.btn_popup.connect('clicked', self.on_btn_popup_clicked)
@@ -1559,8 +1561,8 @@ Composed of two parts visible at any one time:
                     pass
             else:
                 hiatop = self.hiatops[hiasym]
-                hiatop.set_vis(self.vis)
                 # TODO: update bind?
+            hiatop.set_vis(self.vis)
             hiatop.show()
         return
 
@@ -1587,7 +1589,6 @@ Composed of two parts visible at any one time:
         for hiadata in self.layoutmap:
             hiasym, lbl, prototyp, x, y, w, h = hiadata
             hiatop = self.hiatops[hiasym]
-            hiatop.set_vis(self.vis)
             if isinstance(hiatop, BindableCluster):
                 self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=4, ypadding=4)
             else:
@@ -1633,8 +1634,7 @@ Composed of two parts visible at any one time:
                 self.ui.page_grid.show()
             if self.ui.page_list.get_visible():
                 self.ui.page_list.hide()
-            logger.debug("arranger = %r" % (arranger,))
-            self.emit("bind-assigned", self.hiasym, arranger)
+        self.emit("bind-assigned", self.hiasym, arranger)
 
     def on_cluster_type_changed (self, w, hiasym, cluster_type):
         """Nested cluster type changed -- pull in its nested hiatops."""
@@ -1994,6 +1994,7 @@ class BindableLayoutWidget (gtk.VBox):
 
         if init_layout is not None:
             self.ui.selectors.frob_layout(init_layout)
+            self.ui.selectors.emit("layout-changed", init_layout)
 
         self.update_modelist()
 
@@ -2382,7 +2383,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         if self._packname:
             self.ui.treecols[0].set_title(self._packname)
         else:
-            self.ui.treecols[0].set_title("cmd")
+            self.ui.treecols[0].set_title("command")
         return
 
     def setup_state (self):
@@ -2395,7 +2396,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         self.ui.treeview = gtk.TreeView(self._mdl)
         self.ui.treecols = []
         self.ui.treecelltxt = gtk.CellRendererText()
-        col0 = gtk.TreeViewColumn("cmd", self.ui.treecelltxt, text=2)
+        col0 = gtk.TreeViewColumn("command", self.ui.treecelltxt, text=2)
         self.ui.treecols.append(col0)
         for col in self.ui.treecols:
             self.ui.treeview.append_column(col0)

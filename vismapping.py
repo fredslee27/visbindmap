@@ -437,11 +437,9 @@ class VisMapperWindow (gtk.Window):
 
         self.cmdcol = hidlayout.CommandPackView(self.session.cmdinfo.get_cmdpack())
         self.bindrow = gtk.VBox()
-        #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
 
         # Build HidLayouts from kbd_desc.KBD
         self.all_layouts = hidlayout.HidLayouts()
-        #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts, "SteamController", self.session.bindstore)
         for k in sorted(kbd_desc.KBD.keys()):
             layout = hidlayout.HidLayoutStore(k)
             layout.build_from_rowrun(kbd_desc.KBD[k])
@@ -463,6 +461,7 @@ class VisMapperWindow (gtk.Window):
             rowdata = (lyrnum, lbl)
             mdl_layers.append(rowdata)
 
+        #self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "PS3", mdl_modes=self.session.cmdinfo.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
         self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "SteamController", mdl_modes=self.session.cmdinfo.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
         self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
