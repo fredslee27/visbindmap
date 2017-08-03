@@ -784,10 +784,10 @@ class VisMapperApp (object):
     # Operations re: CommandPack
     def get_cmdsuri (self):
         #return self.models.bindstore.cmdsuri
-        return self.session.uri_cmdpack
+        return self.session.uri_cmdinfo
     def set_cmdsuri (self, val):
         #self.models.bindstore.cmdsuri = val
-        self.session.uri_cmdpack = val
+        self.session.uri_cmdinfo = val
         self.update_cmdsuri()
     def ask_cmds_uri (self):
         return self.ui.ask_cmds()
@@ -807,7 +807,7 @@ class VisMapperApp (object):
         if self.session.uri_cmdinfo:
             cmdinfo = None
             try:
-                cmdinfo = CommandInfo_sqlite3(self.session.uri_cmdpack)
+                cmdinfo = CommandInfo_sqlite3(self.session.uri_cmdinfo)
             except sqlite3.OperationalError:
                 pass
             if cmdinfo:
