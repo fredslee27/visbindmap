@@ -2230,15 +2230,18 @@ class CommandPackStore (gtk.TreeStore):
         return repr(self.encode())
 
 
-class CommandPackSource (object):
+class CommandInfo (object):
     """Base class for command pack source."""
     REGISTRY = {}
-    def __init__ (self, path):
+    def __init__ (self, path, raw_data=None):
         self._path = path
         self._cmdpack = None
         self._modelist = None
         self._packname = None
-        self.build()
+        if raw_data is None:
+            self.build()
+        else:
+            self.decode(raw_data)
     def build (self):
         pass
     def get_cmdpack (self):
@@ -2258,21 +2261,43 @@ class CommandPackSource (object):
     packname = property(get_packname, set_packname)
     @staticmethod
     def register (classobj):
-        if not classobj in CommandPackSource.REGISTRY:
-            CommandPackSource.REGISTRY[classobj] = classobj
+        if not classobj in CommandInfo.REGISTRY:
+            CommandInfo.REGISTRY[classobj] = classobj
         return classobj
     @staticmethod
     def from_uri (uri):
         """Main factory function."""
-        for packtype in CommandPackSource.REGISTRY:
+        for packtype in CommandInfo.REGISTRY:
             factory = packtype
             if factory.is_acceptable(uri):
                 inst = factory(uri)
                 return inst
         raise NameError("No factory for command pack source {!r}".format(uri))
 
-@CommandPackSource.register
-class CommandPackSource_builtin (CommandPackSource):
+    def decode (self, raw_data):
+        temp = raw_data['cmdpack']
+        del temp['.class']
+        self._cmdpack = CommandPackStore(**temp)
+        self._modelist = gtk.ListStore(str,str)
+        for (a,b) in raw_data['modelist']:
+            self._modelist.append( (a,b) )
+        self._packname = raw_data['packname']
+
+    def encode (self):
+        enc = dict()
+        enc['.class'] = self.__class__.__name__
+        enc['path'] = self._path
+        enc['raw_data'] = raw_data = dict()
+        raw_data['cmdpack'] = self._cmdpack
+        raw_data['modelist'] = [ tuple(x) for x in self._modelist ] if self._modelist else None
+        raw_data['packname'] = self.packname
+        return enc
+
+    def __repr__ (self):
+        return repr(self.encode())
+
+@CommandInfo.register
+class CommandInfo_builtin (CommandInfo):
     @staticmethod
     def is_acceptable (uri):
         return (uri is None)

@@ -128,9 +128,9 @@ Also the save file.
     FORMAT_VERSION = 1
     def __init__ (self):
         self.bindstore = None   # BindStore.
-        self.cmdsrc = None      # entire CommandPackSource.
+        self.cmdinfo = None     # CommandInfo.
         self.uri_bindstore = None  # path to last saved/loaded BindStore
-        self.uri_cmdsrc = None    # path to last saved/loaded CommandPack
+        self.uri_cmdinfo = None    # path to last saved/loaded CommandInfo
         self.undostack = None   # undo stack.
         self.ui_snapshot = None
         self.reset()
@@ -144,10 +144,9 @@ Also the save file.
         else:
             self.bindstore.clear()
         self.initial_clustertypes()
-        #self.cmdpack = CommandPack()
-        self.cmdsrc = hidlayout.CommandPackSource.from_uri(None)
+        self.cmdinfo = hidlayout.CommandInfo.from_uri(None)
         self.uri_bindstore = None
-        self.uri_cmdsrc = None
+        self.uri_cmdinfo = None
         #self.undostack = AppUndo()
         self.ui_snapshot = None
 
@@ -165,9 +164,9 @@ Also the save file.
         """Write session to persistent storage; usable as Save."""
         enc = {
             "bindstore": self.bindstore,
-            "cmdsrc": self.cmdsrc,
+            "cmdinfo": self.cmdinfo,
             "uri_bindstore": self.uri_bindstore,
-            "uri_cmdsrc": self.uri_cmdsrc,
+            "uri_cmdinfo": self.uri_cmdinfo,
             "undostack": self.undostack,
             "ui_snapshot": None,
             }
@@ -186,10 +185,16 @@ Also the save file.
             return object_desc
         temp = dict(object_desc)
         del temp['.class']
+        print("classname = %r" % classname)
         if classname == hidlayout.BindStore.__name__:
             inst = hidlayout.BindStore(**temp)
         elif classname == hidlayout.CommandPackStore.__name__:
             inst = hidlayout.CommandPackStore(**temp)
+        else:
+            for classobj in hidlayout.CommandInfo.REGISTRY:
+                if classname == classobj.__name__:
+                    inst = classobj(**temp)
+                    break
         return inst
 
     def resume (self, srcfileobj):
@@ -197,10 +202,9 @@ Also the save file.
         enc = ast.literal_eval(srcfileobj.read())
 
         self.bindstore = self.reinstantiate(enc['bindstore'])
-        #self.cmdpack = self.reinstantiate(enc['cmdpack'])
-        self.cmdsrc = self.reinstantiate(enc['cmdsrc'])
+        self.cmdinfo = self.reinstantiate(enc['cmdinfo'])
         self.uri_bindstore = self.reinstantiate(enc['uri_bindstore'])
-        self.uri_cmdsrc = self.reinstantiate(enc['uri_cmdsrc'])
+        self.uri_cmdinfo = self.reinstantiate(enc['uri_cmdinfo'])
         self.undostack = self.reinstantiate(enc['undostack'])
         self.ui_snapshot = self.reinstantiate(enc['ui_snapshot'])
         return
@@ -295,8 +299,8 @@ class Store (object):
 
 
 
-@hidlayout.CommandPackSource.register
-class CommandPackSource_sqlite3 (hidlayout.CommandPackSource):
+@hidlayout.CommandInfo.register
+class CommandInfo_sqlite3 (hidlayout.CommandInfo):
     def build (self):
         dbname = self._path
         self.conn = sqlite3.connect(dbname)
@@ -432,7 +436,7 @@ class VisMapperWindow (gtk.Window):
 
         self.connect("delete-event", self.on_delete_event)
 
-        self.cmdcol = hidlayout.CommandPackView(self.session.cmdsrc.get_cmdpack())
+        self.cmdcol = hidlayout.CommandPackView(self.session.cmdinfo.get_cmdpack())
         self.bindrow = gtk.VBox()
         #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
 
@@ -460,7 +464,7 @@ class VisMapperWindow (gtk.Window):
             rowdata = (lyrnum, lbl)
             mdl_layers.append(rowdata)
 
-        self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "SteamController", mdl_modes=self.session.cmdsrc.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
+        self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "SteamController", mdl_modes=self.session.cmdinfo.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
         self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
 
@@ -688,7 +692,6 @@ class VisMapperModels (object):
 class VisMapperApp (object):
     """Overall application object, with app/GUI state information."""
     def __init__ (self):
-        #self.cmdsrc = None
         self.modenum = 0
         self.levelnum = 0
 
@@ -713,8 +716,7 @@ class VisMapperApp (object):
         #visbind.connect('level-changed', self.on_kblevel_changed)
 
     def update_main_title (self):
-        #cmdname = self.cmdsrc and self.cmdsrc.get_name() or None
-        cmdname = self.session.cmdsrc.get_name if self.session.cmdsrc else None
+        cmdname = self.session.cmdinfo.get_packname() if self.session.cmdinfo else None
         storepath = self.session.uri_bindstore or None
         if storepath:
             basename = os.path.basename(storepath)
@@ -802,17 +804,17 @@ class VisMapperApp (object):
 #            self.update_main_title()
 #        return
     def update_cmdsuri (self):
-        if self.session.uri_cmdpack:
-            cmdsrc = None
+        if self.session.uri_cmdinfo:
+            cmdinfo = None
             try:
-                cmdsrc = CommandPackSource_sqlite3(self.session.uri_cmdpack)
+                cmdinfo = CommandInfo_sqlite3(self.session.uri_cmdpack)
             except sqlite3.OperationalError:
                 pass
-            if cmdsrc:
-                self.session.cmdsrc = cmdsrc
-                self.ui.cmdcol.set_model(self.session.cmdsrc.get_cmdpack())
+            if cmdinfo:
+                self.session.cmdinfo = cmdinfo
+                self.ui.cmdcol.set_model(self.session.cmdinfo.get_cmdpack())
                 # TODO: update modes list model
-                self.ui.bindview.set_modelist(self.session.cmdsrc.get_modelist())
+                self.ui.bindview.set_modelist(self.session.cmdinfo.get_modelist())
 
     def get_vislayers (self):
         hidv = self.ui.bindview
