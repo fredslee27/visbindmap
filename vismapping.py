@@ -9,6 +9,7 @@ import pprint
 import pickle
 import ast, parser
 
+import kbd_desc  # hard-coded keyboard layouts
 import hidlayout
 from hidlayout import Logger
 from hidlayout import DndOpcodes
@@ -127,9 +128,9 @@ Also the save file.
     FORMAT_VERSION = 1
     def __init__ (self):
         self.bindstore = None   # BindStore.
-        self.cmdpack = None     # entire CommandPack.
+        self.cmdsrc = None      # entire CommandPackSource.
         self.uri_bindstore = None  # path to last saved/loaded BindStore
-        self.uri_cmdpack = None    # path to last saved/loaded CommandPack
+        self.uri_cmdsrc = None    # path to last saved/loaded CommandPack
         self.undostack = None   # undo stack.
         self.ui_snapshot = None
         self.reset()
@@ -144,8 +145,9 @@ Also the save file.
             self.bindstore.clear()
         self.initial_clustertypes()
         #self.cmdpack = CommandPack()
+        self.cmdsrc = hidlayout.CommandPackSource.from_uri(None)
         self.uri_bindstore = None
-        self.uri_cmdpack = None
+        self.uri_cmdsrc = None
         #self.undostack = AppUndo()
         self.ui_snapshot = None
 
@@ -163,9 +165,9 @@ Also the save file.
         """Write session to persistent storage; usable as Save."""
         enc = {
             "bindstore": self.bindstore,
-            "cmdpack": self.cmdpack,
+            "cmdsrc": self.cmdsrc,
             "uri_bindstore": self.uri_bindstore,
-            "uri_cmdpack": self.uri_cmdpack,
+            "uri_cmdsrc": self.uri_cmdsrc,
             "undostack": self.undostack,
             "ui_snapshot": None,
             }
@@ -195,9 +197,10 @@ Also the save file.
         enc = ast.literal_eval(srcfileobj.read())
 
         self.bindstore = self.reinstantiate(enc['bindstore'])
-        self.cmdpack = self.reinstantiate(enc['cmdpack'])
+        #self.cmdpack = self.reinstantiate(enc['cmdpack'])
+        self.cmdsrc = self.reinstantiate(enc['cmdsrc'])
         self.uri_bindstore = self.reinstantiate(enc['uri_bindstore'])
-        self.uri_cmdpack = self.reinstantiate(enc['uri_cmdpack'])
+        self.uri_cmdsrc = self.reinstantiate(enc['uri_cmdsrc'])
         self.undostack = self.reinstantiate(enc['undostack'])
         self.ui_snapshot = self.reinstantiate(enc['ui_snapshot'])
         return
@@ -291,159 +294,13 @@ class Store (object):
 
 
 
-def build_treestore_from_commands(cmds_db, treestore=None):
-    if treestore is None:
-        #                       id, cmd, display, hint
-        treestore = gtk.TreeStore(int, str, str, str)
 
-    # First, the unbind item.
-    treestore.append(None, (0, "", "(unbind)", ""))
-
-    # Prepare groups; mapping of group name to TreeIter position of that header row in the TreeStore.
-    groupheads = {}
-
-    # Recursively callable for nested groups.
-    def make_group (grpname):
-        if '/' in grpname:
-            splitpt = grpname.rindex('/')
-            prefix = grpname[:splitpt]
-            suffix = grpname[splitpt+1:]
-            make_group(prefix)
-            parentiter = groupheads[prefix]
-            treeiter = treestore.append(parentiter, (0, "", suffix, ""))
-            groupheads[grpname] = treeiter
-        else:
-            if not groupheads.has_key(grpname):
-                treeiter = treestore.append(None, (0, "", grpname, ""))
-                groupheads[grpname] = treeiter
-
-    for grp in cmds_db.groups:
-        make_group(grp)
-
-    for cmdinfo in cmds_db:
-        (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
-        grpiter = groupheads[grp]
-        if not desc:
-            desc = cmd
-        row = (cmdid, cmd, desc, hint)
-        treeiter = treestore.append(grpiter, row)
-
-
-class CmdStore (gtk.TreeStore):
-    """GUI data model for list of commands available for binding."""
-    def __init__ (self, cmds_db=None):
-        #                            id, cmd, display, hint
-        gtk.TreeStore.__init__(self,  int, str, str, str)
-        self.clear()
-        if cmds_db:
-            self.import_commands(cmds_db)
-
-    def clear (self):
-        gtk.TreeStore.clear(self)
-        # First item = 'unbind'
-        self.append(None, (0, "", "(unbind)", ""))
-        # Prepare groups; mapping of group name to TreeIter position of that header row in the TreeStore.
-        self.groupheads = {}
-        return
-
-    def make_group (self, grpname):
-        if '/' in grpname:
-            splitpt = grpname.rindex('/')
-            prefix = grpname[:splitpt]
-            suffix = grpname[splitpt+1:]
-            self.make_group(prefix)
-            parentiter = self.groupheads[prefix]
-            treeiter = self.append(parentiter, (0, "", suffix, ""))
-            self.groupheads[grpname] = treeiter
-        else:
-            if not self.groupheads.has_key(grpname):
-                treeiter = self.append(None, (0, "", grpname, ""))
-                self.groupheads[grpname] = treeiter
-
-    def import_commands (self, cmds_db):
-        for grp in cmds_db.groups:
-            self.make_group(grp)
-        for cmdinfo in cmds_db:
-            (cmdid, layer, grp, cmd, desc, hint) = cmdinfo
-            grpiter = self.groupheads[grp]
-            if not desc:
-                desc = cmd
-            row = (cmdid, cmd, desc, hint)
-            treeiter = self.append(grpiter, row)
-        return True
-
-
-# List of binding modes.
-class ModeStore (gtk.ListStore):
-    def __init__ (self, cmds_db=None):
-        #                            id, name
-        gtk.ListStore.__init__(self, int, str)
-        self.clear()
-        if cmds_db:
-            self.import_commands(cmds_db)
-
-    def clear (self):
-        gtk.ListStore.clear(self)
-        # First/Minimum is "global".
-        self.append((0, "*GLOBAL"))
-        return
-
-    def import_commands (self, cmds_db):
-        modes = cmds_db.get_modes()
-        n = 1
-        for modename in modes:
-            self.append((n, modename))
-            n += 1
-        return True
-
-
-class CommandSource:  # old-style.
-    """Container for command pack sources."""
-
-    @staticmethod
-    def builtin ():
-        """Hard-coded builtin command pack."""
-        MODES = [ "Menu", "Game" ]
-        COMMANDS = [
-            # Layer: [ tuples... ]
-            ("Shifter", [ ("^1",), ("^2",), ("^3",), ("^4",), ("^5",) ] ),
-            ("Menu", [
-                # Tuples (command_codename, displayed_name, hint)
-                ("Pause", None, None),
-                ("Minimize", None, None),
-                ]),
-            ("Game", [
-                ("Up",), ("Down",), ("Left",), ("Right",),
-                ("Jump",), ("Action",),
-                ]),
-            ]
-        cmdpack = hidlayout.CommandPackStore("(builtin)")
-        cmdid, grpid = 1, 0
-        for grp in COMMANDS:
-            grpname, grpdata = grp
-            cmdpack.begin_group(grpname)
-            for cmdentry in grpdata:
-                cmd, lbl, hint = None, None, None
-                try:
-                    cmd = cmdentry[0]
-                    lbl = cmdentry[1]
-                    hint = cmdentry[2]
-                except IndexError:
-                    lbl = cmd
-                if lbl is None:
-                    lbl = cmd
-                #row = (cmdid, grpid, grpname, cmd, lbl, hint)
-                row = (cmdid, cmd, lbl, hint)
-                cmdpack.append(row)
-                cmdid += 1
-            cmdpack.end_group()
-            grpid += 1
-        return cmdpack
-
-    @staticmethod
-    def sqlite3 (dbname):
-        conn = sqlite3.connect(dbname)
-        cursor = conn.cursor()
+@hidlayout.CommandPackSource.register
+class CommandPackSource_sqlite3 (hidlayout.CommandPackSource):
+    def build (self):
+        dbname = self._path
+        self.conn = sqlite3.connect(dbname)
+        cursor = self.conn.cursor()
 
         # Get pack name.
         packname = os.path.basename(dbname)
@@ -454,6 +311,19 @@ class CommandSource:  # old-style.
         except sqlite3.OperationalError:
             pass
         cmdpack = hidlayout.CommandPackStore(packname)
+
+        # Get modes.
+        try:
+            rows = cursor.execute('''SELECT name FROM modes ORDER BY id;''')
+        except sqlite3.OperationalError:
+            rows = []
+        modelist = gtk.ListStore(str,str)
+        modelist.append( ("Global", None) )
+        for row in rows:
+            modename = row[0]
+            fallthrough = "Global"
+            modelist.append( (modename, fallthrough) )
+        self._modelist = modelist
 
         # Get groups.
         rows = cursor.execute('''SELECT grp FROM cmd GROUP BY grp ORDER BY id;''')
@@ -482,7 +352,10 @@ class CommandSource:  # old-style.
 
         # Iterate all rows.
         stmt = '''SELECT id,layer,grp,cmd,label,hint FROM cmd;'''
-        rows = cursor.execute(stmt)
+        try:
+            rows = cursor.execute(stmt)
+        except sqlite3.OperationalError:
+            rows = []
         for row in rows:
             cmdid, lyr, grp, cmd, lbl, hint = row
             if lbl is None:
@@ -492,179 +365,18 @@ class CommandSource:  # old-style.
             grpiter = grploc.get(grp, None)
             cmdpack.append(grpiter, datum)
 
-        return cmdpack
-
-class Commands (object):
-    """Database of game commands."""
-    def __init__ (self, dbname):
-        self.dbname = dbname
-        self.packname = None
-#        self.db = [(0, "", "", "(none)", None)]
-        # Open DB.
-        self.conn = sqlite3.connect(dbname)
-        # Pull relevant rows.
-        cursor = self.conn.cursor()
-        cursor.execute('''SELECT id,layer,grp,cmd,label,hint FROM cmd;''')
-
-    def get_name (self):
-        if self.packname is None:
-            # Extract packname from table packname if it exists.
-            try:
-                cursor = self.conn.cursor()
-                rows = cursor.execute('''SELECT packname FROM packname LIMIT 1;''')
-                row = rows.fetchone()
-                self.packname = row[0]
-            except:
-                pass
-        return self.packname
-    def set_name (self, val):
-        self.packname = val
-
-    def get_modes (self):
-        cursor = self.conn.cursor()
-        rows = cursor.execute('''SELECT name FROM modes ORDER BY id;''')
-        modenames = []
-        for row in rows:
-            modename = row[0]
-            modenames.append(modename)
-        return modenames
-
-    def get_groups (self):
-        cursor = self.conn.cursor()
-        rows = cursor.execute('''SELECT grp FROM cmd GROUP BY grp ORDER BY id;''');
-        grpnames = []
-        for row in rows:
-            grpname = row[0]
-            grpnames.append(grpname)
-        return grpnames
-
-    groups = property(get_groups)
-
-    def get_by_id (self, val):
-        if val is None:
-            logger.debug("[None]=>None...")
-            return [ None, 0x1f, "", "", "", "" ]
-
-        cursor = self.conn.cursor()
-        #cursor.execute('''SELECT cmd FROM cmd WHERE id=? LIMIT 1;''', str(val))
-        cursor.execute('''SELECT id,layer,grp,cmd,label,hint FROM cmd WHERE id=? LIMIT 1;''', (str(val),))
-        result = cursor.fetchone()
-        if result:
-            if not result[4]:
-                result = result[:4] + (result[3],) + result[5:]
-            return result
-        else:
-            return None
-
-    def get_count (self):
-        cursor = self.conn.cursor()
-        cursor.execute('''SELECT COUNT(*) FROM cmd;''')
-        return cursor.fetchone()[0]
-
-    def find (self, cmdname):
-        if cmdname is None:
-            logger.debug("find(None) => None")
-            return None
-
-        cursor = self.conn.cursor()
-        cursor.execute("""SELECT id FROM cmd WHERE cmd=? LIMIT 1;""", (str(cmdname),))
-        retval = cursor.fetchone()
-        if retval:
-            return retval[0]
-        else:
-            return -1
-
-    def get (self, cmdname, altval):
-        idx = self.find(cmdname)
-        if (idx < 0):
-            return altval
-        return self.get_by_id(idx)
-
-    def __getitem__ (self, idx):
-        return self.get_by_id(idx)
-
-    def __len__ (self):
-        return self.get_count()
-
-    def __iter__ (self):
-        cursor = self.conn.cursor()
-        cursor.execute("""SELECT id,layer,grp,cmd,label,hint FROM cmd;""")
-        row = cursor.fetchone()
-        while row:
-            yield row
-            row = cursor.fetchone()
-        raise StopIteration()
-
-    def build_treestore (self, store):
-        return build_treestore_from_commands(self, store)
-
-
-class CommandsFallback (Commands):
-    """Minimalist hardcoded/builtin command set in case cmds.sqlite3 fails to read."""
-    MODES = [ "Menu", "Game" ]
-    COMMANDS = [
-        # Layer: [ tuples... ]
-        ("Shifter", [ ("^1",), ("^2",), ("^3",), ("^4",), ("^5",) ] ),
-        ("Menu", [
-            # Tuples (command_codename, displayed_name, hint)
-            ("Pause", None, None),
-            ("Minimize", None, None),
-            ]),
-        ("Game", [
-            ("Up",), ("Down",), ("Left",), ("Right",),
-            ("Jump",), ("Action",),
-            ]),
-        ]
-    def __init__ (self, _=None):
-        self.dbname = None
-        self.packname = "(builtin)"
-        cmdid, grpid = 1, 0
-        self.commands = []
-        for grp in self.COMMANDS:
-            grpname, grpdata = grp
-            for cmdentry in grpdata:
-                cmd, lbl, hint = None, None, None
-                try:
-                    cmd = cmdentry[0]
-                    lbl = cmdentry[1]
-                    hint = cmdentry[2]
-                except IndexError:
-                    lbl = cmd
-                row = (cmdid, grpid, grpname, cmd, lbl, hint)
-                self.commands.append(row)
-                cmdid += 1
-            grpid += 1
-
-    def get_name (self): return self.packname
-    def set_name (self, val): self.packname = val
-    def get_modes (self): return self.MODES
-    def get_groups (self): return [ x[0] for x in self.COMMANDS ]
-    groups = property(get_groups)
-    def get_by_id (self, val):
-        if val is None: return ( None, 0x1f, "", "", "", "" )
-
-        result = [ x for x in self.commands if x[0] == val ][0]
-        if result:
-            if not result[4]:
-                result = result[:4] + (result[3],) + result[5:]
-            return result
-        else:
-            return None
-
-    def get_count (self): return len(self.commands)
-
-    def find (self, cmdname):
-        if cmdname is None: return None
-
+        self._cmdpack = cmdpack
+        self.packname = packname
+    @staticmethod
+    def is_acceptable (uri):
         try:
-            return [ x for x in self.commands if x[3] == cmdname ][0]
-        except IndexError:
-            return -1
+            # Check if it quacks like a string.
+            uri.isalpha
+            return True
+        except:
+            return False
 
-    def __iter__ (self):
-        for row in self.commands:
-            yield row
-        raise StopIteration()
+
 
 
 class DlgAbout (gtk.AboutDialog):
@@ -720,14 +432,35 @@ class VisMapperWindow (gtk.Window):
 
         self.connect("delete-event", self.on_delete_event)
 
-        # TODO: from outside.
-        #placeholder = hidlayout.CommandPackView.make_model()
-        placeholder = CommandSource.builtin()
-
-        self.cmdcol = hidlayout.CommandPackView(placeholder)
+        self.cmdcol = hidlayout.CommandPackView(self.session.cmdsrc.get_cmdpack())
         self.bindrow = gtk.VBox()
         #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts,"PS3",self.models.bindstore.bindstore)
-        self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts, "SteamController", self.session.bindstore)
+
+        # Build HidLayouts from kbd_desc.KBD
+        self.all_layouts = hidlayout.HidLayouts()
+        #self.bindview = hidlayout.BindableLayoutWidget(hidlayout.implicit_layouts, "SteamController", self.session.bindstore)
+        for k in sorted(kbd_desc.KBD.keys()):
+            layout = hidlayout.HidLayoutStore(k)
+            layout.build_from_rowrun(kbd_desc.KBD[k])
+            self.all_layouts.append( (k,layout) )
+        # Layers labels.
+        mdl_layers = gtk.ListStore(int, str)
+        maxshifters = 3  # TODO: calculate.
+        maxlayers = (1 << maxshifters)
+        for lyrnum in range(0, maxlayers):
+            sh = []
+            # List the shifters that are involved in activating this layer.
+            for b in range(0, maxshifters):
+                if (lyrnum & (1 << b)):
+                    sh.append("^%s" % (b+1))
+            if sh:
+                lbl = "{} ({})".format(lyrnum, " + ".join(sh))
+            else:
+                lbl = "base"
+            rowdata = (lyrnum, lbl)
+            mdl_layers.append(rowdata)
+
+        self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "SteamController", mdl_modes=self.session.cmdsrc.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
         self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
 
@@ -955,7 +688,7 @@ class VisMapperModels (object):
 class VisMapperApp (object):
     """Overall application object, with app/GUI state information."""
     def __init__ (self):
-        self.cmdsrc = None
+        #self.cmdsrc = None
         self.modenum = 0
         self.levelnum = 0
 
@@ -980,7 +713,8 @@ class VisMapperApp (object):
         #visbind.connect('level-changed', self.on_kblevel_changed)
 
     def update_main_title (self):
-        cmdname = self.cmdsrc and self.cmdsrc.get_name() or None
+        #cmdname = self.cmdsrc and self.cmdsrc.get_name() or None
+        cmdname = self.session.cmdsrc.get_name if self.session.cmdsrc else None
         storepath = self.session.uri_bindstore or None
         if storepath:
             basename = os.path.basename(storepath)
@@ -1071,12 +805,14 @@ class VisMapperApp (object):
         if self.session.uri_cmdpack:
             cmdsrc = None
             try:
-                cmdsrc = CommandSource.sqlite3(self.session.uri_cmdpack)
+                cmdsrc = CommandPackSource_sqlite3(self.session.uri_cmdpack)
             except sqlite3.OperationalError:
                 pass
             if cmdsrc:
-                self.cmdsrc = cmdsrc
-                self.ui.cmdcol.set_model(self.cmdsrc)
+                self.session.cmdsrc = cmdsrc
+                self.ui.cmdcol.set_model(self.session.cmdsrc.get_cmdpack())
+                # TODO: update modes list model
+                self.ui.bindview.set_modelist(self.session.cmdsrc.get_modelist())
 
     def get_vislayers (self):
         hidv = self.ui.bindview

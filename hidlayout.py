@@ -1777,6 +1777,7 @@ instance.sel_layer.buttons[2].activate()
         self.mdl_groups = model_groups
         self.mdl_layers  = model_layers
         self.setup_widget()
+        self.setup_signals()
 
     def get_layouts_model (self):
         return self.mdl_layouts
@@ -1829,7 +1830,8 @@ instance.sel_layer.buttons[2].activate()
         self.ui.row_layout.pack_start(self.ui.sel_layout, False, False, 0)
 
         # Row with group selector.
-        self.ui.sel_group = self.GroupSelectorWidget(self.mdl_groups)
+        #self.ui.sel_group = self.GroupSelectorWidget(self.mdl_groups)
+        self.ui.sel_group = self.GroupSelectorWidget(self, self.mdl_groups)
 
         # Row with layer selector.
         self.ui.sel_layer = self.LayerSelectorWidget()
@@ -1846,6 +1848,9 @@ instance.sel_layer.buttons[2].activate()
         self.ui.sel_layout.set_active(0)
         #idx = self.ui.sel_layout.get_active()
         #val = self.mdl_layouts[idx][0]
+
+    def setup_signals (self):
+        pass
 
     def LayoutSelectorWidget (self, mdl_layouts):
         # Combo (drop) list.
@@ -1868,22 +1873,34 @@ instance.sel_layer.buttons[2].activate()
         #self.show()
         self.emit("layout-changed", val)
 
-    def GroupSelectorWidget (self, mdl_groups):
-        selector = gtk.Frame("Group")
-        selector.mdl = mdl_groups
-        selector.row = gtk.HBox()
-        selector.btnbox = gtk.HButtonBox()
-        selector.buttons = None
+    class GroupSelectorWidget (gtk.Frame):
+        def __init__ (self, parent, mdl_groups):
+            gtk.Frame.__init__(self, "Mode")
+            self._parent = parent
+            self.mdl = mdl_groups
+            self.row = gtk.HBox()
+            self.btnbox = gtk.HButtonBox()
+            self.buttons = None
 
-        def rebuild_buttons (w):
+            self.mdl.connect("row-changed", self.on_data_changed)
+            self.mdl.connect("row-deleted", self.on_data_changed)
+            self.mdl.connect("row-inserted", self.on_data_changed)
+
+            self.rebuild_buttons()
+            self.row.pack_start(self.btnbox, expand=False)
+            self.add(self.row)
+
+        def rebuild_buttons (self):
+            w = self
             if w.buttons:
                 for btn in w.buttons:
-                    w.buttonbox.remove(btn)
+                    w.btnbox.remove(btn)
             w.buttons = list()
             for grpid in range(len(w.mdl)):
                 # Radio group is first button; make leader if no buttons.
                 grp = w.buttons[0] if w.buttons else None
-                lbl = w.mdl[grpid][1]  # second column => displayed name.
+                #lbl = w.mdl[grpid][1]  # second column => displayed name.
+                lbl = w.mdl[grpid][0]  # first column => displayed name.
                 btn = gtk.RadioButton(grp, lbl)
                 btn.groupnum = grpid
                 btn.connect('toggled', self.on_group_toggled)
@@ -1891,51 +1908,33 @@ instance.sel_layer.buttons[2].activate()
                 w.btnbox.add(btn)
             w.row.show_all()
             return
-        selector.rebuild_buttons = lambda: rebuild_buttons(selector)
-        def on_data_changed (w, mdl, *args):
-            rebuild_buttons(selector)
-        selector.on_data_changed = lambda *args: on_data_changed(selector, *args)
 
-        selector.mdl.connect("row-changed", selector.on_data_changed)
-        selector.mdl.connect("row-deleted", selector.on_data_changed)
-        selector.mdl.connect("row-inserted", selector.on_data_changed)
+        def on_data_changed (self, w, mdl, *args):
+            self.rebuild_buttons()
 
-        selector.rebuild_buttons()
-        selector.row.pack_start(selector.btnbox, expand=False)
-        selector.add(selector.row)
-        return selector
-
-    def on_group_toggled (self, w, *args):
-        if w.get_active():
-            groupnum = w.groupnum
-            self.emit("group-changed", groupnum)
+        def on_group_toggled (self, w, *args):
+            if w.get_active():
+                groupnum = w.groupnum
+                #self.emit("group-changed", groupnum)
+                self._parent.emit("group-changed", groupnum)
 
     def LayerSelectorWidget (self):
         selector = gtk.Frame("Layer")
+        selector.mdl = self.mdl_layers
         selector.row = gtk.HBox()
         selector.btnbox = gtk.HButtonBox()
         selector.buttons = list()
 
-        maxshifters = 3
-        maxlayers = (1 << maxshifters)
-
-        for lyrnum in range(0, maxlayers):
-            sh = []
-            # List the shifters that are involved in activating this layer.
-            for b in range(0, maxshifters):
-                if (lyrnum & (1 << b)):
-                    sh.append("^%s" % (b+1))
-            if sh:
-                lbl = "{} ({})".format(lyrnum, " + ".join(sh))
-            else:
-                lbl = "base"
+        for layerinfo in selector.mdl:
             # Group leader is first button; use None to become group leader.
+            lyrnum, lbl = layerinfo[0], layerinfo[1]
             grp = selector.buttons[0] if selector.buttons else None
             btn = gtk.RadioButton(grp, lbl)
             btn.layernum = lyrnum
             btn.connect("toggled", self.on_layer_toggled)
             selector.buttons.append(btn)
             selector.btnbox.add(btn)
+
         selector.row.pack_start(selector.btnbox, expand=True)
         selector.add(selector.row)
         return selector
@@ -1945,6 +1944,7 @@ instance.sel_layer.buttons[2].activate()
         if w.get_active():
             layernum = w.layernum
             self.emit("layer-changed", layernum)
+
     __gsignals__ = {
         "layout-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
         "layer-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
@@ -1961,18 +1961,20 @@ class BindableLayoutWidget (gtk.VBox):
 
  * set_nvislayers(int) : convenience function to automatically determine layer visibilties based on active layers and nearest power-of-two layer.
 """
-    def __init__ (self, all_layouts, init_layout=None, bindstore=None):
-        # TODO: use init_layout for initial layoutname.
+    def __init__ (self, all_layouts, init_layout=None, mdl_modes=None, mdl_layers=None, bindstore=None):
         gtk.VBox.__init__(self)
         self._bindstore = bindstore
         self._layer = 0
         self._vis = [ False ] * len(bindstore[0])
         self._vis[0] = True
         self._nvislayers = None
-        self.all_layouts = None
-        if self.all_layouts is None:
-            self.all_layouts = implicit_layouts
+        self.mdl_modes = mdl_modes
+        self.mdl_layers = mdl_layers
+        if all_layouts is None:
+            all_layouts = implicit_layouts
+        self.all_layouts = all_layouts
 
+        self.setup_state()
         self.setup_widget()
         self.setup_signals()
 
@@ -1982,6 +1984,8 @@ class BindableLayoutWidget (gtk.VBox):
     def setup_state (self):
         self._activename = None
         self._activehid = None
+        self._modelist = gtk.ListStore(str,str)
+        self._modelist.append( ("Global", None) )
 
     def setup_widget (self):
         class ui:
@@ -1990,24 +1994,12 @@ class BindableLayoutWidget (gtk.VBox):
 
         # Primary bindables view.
         #self.ui.hidview = BindableCluster("")
-        self.ui.hidview = BindableLayoutView(self.vis, implicit_layouts['en_US (pc104)'], self._bindstore)
+        #self.ui.hidview = BindableLayoutView(self.vis, implicit_layouts['en_US (pc104)'], self._bindstore)
+        #emptylayout = HidLayoutStore("empty")
+        #emptylayout.append( None, ("empty", "empty", "key", 0, 0, 1, 1) )
+        self.ui.hidview = BindableLayoutView(self.vis, None, self._bindstore)
 
-        self.all_groups = gtk.ListStore(int, str)
-        self.all_groups.append((0, "Global"))
-        self.all_groups.append((1, "Menu"))
-        self.all_groups.append((2, "Game"))
-
-        self.all_layers = gtk.ListStore(int, str)
-        self.all_layers.append((0, "base"))
-        self.all_layers.append((1, "1"))
-        self.all_layers.append((2, "2"))
-        self.all_layers.append((3, "3"))
-        self.all_layers.append((4, "4"))
-        self.all_layers.append((5, "5"))
-        self.all_layers.append((6, "6"))
-        self.all_layers.append((7, "7"))
-
-        self.ui.selectors = BindableLayoutSelectors(self.all_layouts, self.all_groups, self.all_layers)
+        self.ui.selectors = BindableLayoutSelectors(self.all_layouts, self.mdl_modes, self.mdl_layers)
         self.ui.selectors.show_all()
 
         self.ui.hidview.show()
@@ -2049,7 +2041,6 @@ class BindableLayoutWidget (gtk.VBox):
         self.ui.hidview.set_layer(self._layer)
         self.update_nvislayers()
 
-
     def get_nvislayers (self):
         return self._nvislayers
     def set_nvislayers (self, val):
@@ -2084,6 +2075,19 @@ class BindableLayoutWidget (gtk.VBox):
     def update_bindstore (self):
         self.ui.hidview.set_bindstore(self._bindstore)
         self.ui.hidview.update_binds()
+
+    def get_modelist (self):
+        return self.mdl_modes
+    def set_modelist (self, val):
+        self.mdl_modes = val
+        self.update_modelist()
+    modelist = property(get_modelist, set_modelist)
+    def update_modelist (self):
+        modelist = self.ui.selectors.ui.sel_group.mdl
+        modelist.clear()
+        for row in self.mdl_modes:
+            modelist.append( tuple(row) )
+        return
 
     def get_activename (self):
         return self._activename
@@ -2224,6 +2228,85 @@ class CommandPackStore (gtk.TreeStore):
 
     def __repr__ (self):
         return repr(self.encode())
+
+
+class CommandPackSource (object):
+    """Base class for command pack source."""
+    REGISTRY = {}
+    def __init__ (self, path):
+        self._path = path
+        self._cmdpack = None
+        self._modelist = None
+        self._packname = None
+        self.build()
+    def build (self):
+        pass
+    def get_cmdpack (self):
+        return self._cmdpack
+    def set_cmdpack (self, val):
+        self._cmdpack = val
+    cmdpack = property(get_cmdpack, set_cmdpack)
+    def get_modelist (self):
+        return self._modelist
+    def set_modelist (self, val):
+        self._modelist = val
+    modelist = property(get_modelist, set_modelist)
+    def get_packname (self):
+        return self._packname
+    def set_packname (self, val):
+        self._packname = val
+    packname = property(get_packname, set_packname)
+    @staticmethod
+    def register (classobj):
+        if not classobj in CommandPackSource.REGISTRY:
+            CommandPackSource.REGISTRY[classobj] = classobj
+        return classobj
+    @staticmethod
+    def from_uri (uri):
+        """Main factory function."""
+        for packtype in CommandPackSource.REGISTRY:
+            factory = packtype
+            if factory.is_acceptable(uri):
+                inst = factory(uri)
+                return inst
+        raise NameError("No factory for command pack source {!r}".format(uri))
+
+@CommandPackSource.register
+class CommandPackSource_builtin (CommandPackSource):
+    @staticmethod
+    def is_acceptable (uri):
+        return (uri is None)
+
+    def build (self):
+        modelist = gtk.ListStore(str,str)
+        modelist.append( ("Global", None) )
+        modelist.append( ("Menu", "Global") )
+        modelist.append( ("Game", "Global") )
+        self._modelist = modelist
+
+        cmdpack = CommandPackStore("(builtin)")
+        cmdid, grpid = 1, 1
+
+        grp = cmdpack.append(None, (grpid, "", "Shifter", "") ); grpid += 1
+        cmdpack.append(grp, (cmdid, "^1", "^1", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^2", "^2", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^3", "^3", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^4", "^4", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^5", "^5", "")); cmdid += 1
+
+        grp = cmdpack.append(None, (grpid, "", "Menu", "") ); grpid += 1
+        cmdpack.append(grp, (cmdid, "Pause", "Pause", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Minimize", "Minimize", "")); cmdid += 1
+
+        grp = cmdpack.append(None, (grpid, "", "Game", "") ); grpid += 1
+        cmdpack.append(grp, (cmdid, "Up", "Up", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Down", "Down", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Left", "Left", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Right", "Right", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Jump", "Jump", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Action", "Action", "")); cmdid += 1
+
+        self._cmdpack = cmdpack
 
 
 class CommandPackView (gtk.VBox):
