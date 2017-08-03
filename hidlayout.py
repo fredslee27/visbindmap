@@ -1726,7 +1726,8 @@ Controller interface:
                 # TODO: subclass all tops as Cluster, where keytop are singleton special case?  Then all set_binds would take (hiasym, bindval) parameters.
                 for subsym in hiacluster.hiatops:
                     # TODO: fix, would only allow one level of nesting.
-                    subval = [ lyr.get(subsym,"") for lyr in self.bindstore[self._mode] ]
+                    #subval = [ lyr.get(subsym,"") for lyr in self.bindstore[self._mode] ]
+                    subval = self.bindstore.resolve_binds_markup(subsym, self._mode)
                     hiacluster.proxy_set_binds(subsym, subval)
         return
 
