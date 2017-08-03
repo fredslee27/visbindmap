@@ -2,6 +2,7 @@
 # vim: expandtab shiftwidth=4 :
 
 # TODO: adopt __gproperties__ pattern.
+# TODO: bind resolution fallthrough
 
 from __future__ import print_function
 
@@ -109,15 +110,15 @@ logger = Logger(Logger.debug)
 
 # hia = Human(-computer) Interface Atom
 # Bind storage model:
-# BindStore = dict of BindGroup
-#  + BindGroup = list of BindLayer
+# BindStore = dict of BindMode
+#  + BindMode = list of BindLayer
 #    + BindLayer = list of BindEntry
 #      + BindEntry = dict of hiasym => str
 #
 # interface pattern:
-# bindmap[group][layer][hiasym]  =>  str: binding for hiasym in group and layer
-# bindmap[group][layer]  =>  dict: all hiasyms for group and layer
-# bindmap[group]  =>  list: all layers for group
+# bindmap[mode][layer][hiasym]  =>  str: binding for hiasym in mode and layer
+# bindmap[mode][layer]  =>  dict: all hiasyms for mode and layer
+# bindmap[mode]  =>  list: all layers for mode
 
 
 class BindLayer (dict):
@@ -132,7 +133,7 @@ class BindLayer (dict):
         retval = dict(self)
         return retval
 
-class BindGroup (object):
+class BindMode (object):
     """list of BindLayer, one per layer available.
  index = layer number
  value = BindLayer
@@ -141,7 +142,7 @@ class BindGroup (object):
     def __init__ (self, nlayers=1, fallthrough=None, raw_data=None):
         """
  nlayers: int = number of layers to start with.
- fallthrough: BindGroup = another BindGroup to use if resolution fails.
+ fallthrough: BindMode = another BindMode to use if resolution fails.
 """
         self.layers = list()
         self.fallthrough = fallthrough
@@ -163,7 +164,7 @@ class BindGroup (object):
         return
 
     def __copy__ (self):
-        retval = BindGroup(self.nlayers, self.fallthrough)
+        retval = BindMode(self.nlayers, self.fallthrough)
         for lyridx in range(self.nlayers):
             retval[lyridx] = self[lyridx].__copy__()
         return retval
@@ -173,7 +174,7 @@ class BindGroup (object):
         if isinstance(key, slice):
             # slicing.
             sliced = self.layers.__getitem__(key)
-            retval = BindGroup(len(sliced), None)
+            retval = BindMode(len(sliced), None)
             retval.layers = sliced
             return retval
         else:
@@ -202,64 +203,64 @@ class BindGroup (object):
         return repr(self.encode)
 
 class BindStore (object):
-    """list of BindGroup, one per group available.
- index = group number
- value = BindGroup
+    """list of BindMode, one per mode available.
+ index = mode number
+ value = BindMode
 """
-    def __init__ (self, ngroups=1, nlayers=1, raw_data=None):
-        self.groups = []
-        self.ngroups = ngroups
+    def __init__ (self, nmodes=1, nlayers=1, raw_data=None):
+        self.modes = []
+        self.nmodes = nmodes
         self.nlayers = nlayers
         self.resize_layers(self.nlayers)
-        self.resize_groups(self.ngroups)
+        self.resize_modes(self.nmodes)
         if raw_data is not None:
             self.decode(raw_data)
     def clear (self):
         # Erase all binds.
-        for grp in self.groups:
-            grp.clear()
-    def resize_groups (self, ngroups):
-        self.ngroups = ngroups
-        while len(self.groups) < self.ngroups:
-            self.groups.append(BindGroup(self.nlayers))
-        while len(self.groups) > self.ngroups:
-            del self.groups[-1]
+        for mode in self.modes:
+            mode.clear()
+    def resize_modes (self, nmodes):
+        self.nmodes = nmodes
+        while len(self.modes) < self.nmodes:
+            self.modes.append(BindMode(self.nlayers))
+        while len(self.modes) > self.nmodes:
+            del self.modes[-1]
         return
     def resize_layers (self, nlayers):
         self.nlayers = nlayers
-        for bindgrp in self.groups:
-            bindgrp.resize_layers(self.nlayers)
+        for bindmode in self.modes:
+            bindmode.resize_layers(self.nlayers)
         return
     def __copy__ (self):
-        retval = BindStore(self.ngroups, self.nlayers)
+        retval = BindStore(self.nmodes, self.nlayers)
         copymap = dict()    # map fallthrough links.
-        for grpidx in range(len(self.groups)):
+        for modeidx in range(len(self.modes)):
             # TODO: handle mismatched layers.
-            retval.groups[grpidx] = self.groups[grpidx].__copy__()
-            copymap[self.groups[grpidx]] = retval[grpidx]
+            retval.modes[modeidx] = self.modes[modeidx].__copy__()
+            copymap[self.modes[modeidx]] = retval[modeidx]
         # Redirect remapped fallthroughs.
-        for grp in retval.groups:
-            if grp.fallthrough:
-                grp.fallthrough = copymap[grp.fallthrough]
+        for mode in retval.modes:
+            if mode.fallthrough:
+                mode.fallthrough = copymap[mode.fallthrough]
         return retval
-    # Delegate sequence operators to .groups
-    def __len__ (self):             return len(self.groups)
-    def __getitem__ (self, key):    return self.groups.__getitem__(key)
-    def __missing__ (self, key):    return self.groups.__missing__(key)
-    def __iter__ (self):            return self.groups.__iter__()
-    def __setitem__ (self, key, value): self.groups.__setitem__(key, value)
-    def __setslice__ (self, i, j, seq): self.groups.__setslice__(i,j,seq)
-    def __delslice__ (self, i, j):      self.groups.__delslice__(i,j)
+    # Delegate sequence operators to .modes
+    def __len__ (self):             return len(self.modes)
+    def __getitem__ (self, key):    return self.modes.__getitem__(key)
+    def __missing__ (self, key):    return self.modes.__missing__(key)
+    def __iter__ (self):            return self.modes.__iter__()
+    def __setitem__ (self, key, value): self.modes.__setitem__(key, value)
+    def __setslice__ (self, i, j, seq): self.modes.__setslice__(i,j,seq)
+    def __delslice__ (self, i, j):      self.modes.__delslice__(i,j)
 
     def __str__ (self):
         parts = [self.__class__.__name__]
         parts.append(" [")
         parts.append("\n")
-        for gn in range(self.ngroups):
-            parts.append("  [ # Group %d\n" % gn)
+        for gn in range(self.nmodes):
+            parts.append("  [ # Mode %d\n" % gn)
             for ln in range(self.nlayers):
                 parts.append("   { # Layer %d\n" % ln)
-                for k,v in self.groups[gn][ln].iteritems():
+                for k,v in self.modes[gn][ln].iteritems():
                     parts.append("   %r: %r\n" % (k, v))
                 parts.append("   } # L%d\n" % ln)
             parts.append("  ] # G%d\n" % gn)
@@ -267,24 +268,24 @@ class BindStore (object):
         return "".join(parts)
 
     def decode (self, raw_data):
-        self.groups = []
-        for encgrp in raw_data:
-            if encgrp['.class'] != BindGroup.__name__:
-                raise TypeError("Did not find expected BindGroup")
-            temp = dict(encgrp)
+        self.modes = []
+        for encmode in raw_data:
+            if encmode['.class'] != BindMode.__name__:
+                raise TypeError("Did not find expected BindMode")
+            temp = dict(encmode)
             del temp['.class']
-            grp = BindGroup(**temp)
-            self.groups.append(grp)
+            mode = BindMode(**temp)
+            self.modes.append(mode)
 
     def encode (self):
         enc = dict()
         enc['.class'] = self.__class__.__name__
-        enc['ngroups'] = self.ngroups
+        enc['nmodes'] = self.nmodes
         enc['nlayers'] = self.nlayers
         ser = []
-        for grp in self.groups:
-            encgrp = grp.encode()
-            ser.append(encgrp)
+        for mode in self.modes:
+            encmode = mode.encode()
+            ser.append(encmode)
         enc['raw_data'] = ser
         return enc
 
@@ -1661,13 +1662,13 @@ class BindableLayoutView (BindableCluster):
 Controller interface:
  * set_layoutmap(HidLayoutStore) : set of hiatops and their spatial locations.
  * set_layer(int) : set active layer
- * set_group(int) : set active group (mode)
+ * set_mode(int) : set active mode
  * set_vis(list(bool)) : set visibilities of all layers
 """
     def __init__ (self, vis, layoutmap, bind_store):
         BindableCluster.__init__(self, "", "", vis, layoutmap)
         self.bindstore = bind_store
-        self._group = 0
+        self._mode = 0
         self._nvislayers = None
         self.update_binds()
 
@@ -1675,12 +1676,12 @@ Controller interface:
     # inherits property 'layer' from BindableCluster
     # inherits property 'layoutmap' from BindableCluster
 
-    def get_group (self):
-        return self._group
-    def set_group (self, val):
-        self._group = val
-        self.update_group()
-    group = property(get_group, set_group)
+    def get_mode (self):
+        return self._mode
+    def set_mode (self, val):
+        self._mode = val
+        self.update_mode()
+    mode = property(get_mode, set_mode)
 
     def get_bindstore (self):
         return self.bindstore
@@ -1696,30 +1697,30 @@ Controller interface:
         self._nvislayers = None
         BindableCluster.update_vis(self)
 
-    def update_group (self):
+    def update_mode (self):
         for hiasym in self.hiatops:
             hiatop = self.hiatops[hiasym]
-            grp = self.bindstore[self._group]
-            grpbind = [ lyr.get(hiasym,"") for lyr in grp ]
-            hiatop.set_binds(grpbind)
+            mode = self.bindstore[self._mode]
+            modebind = [ lyr.get(hiasym,"") for lyr in mode ]
+            hiatop.set_binds(modebind)
         return
 
     def update_binds (self):
         for hiasym in self.hiatops.keys():
             hiatop = self.hiatops[hiasym]
-            hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
+            hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._mode] ]
             if hiatop.get_visible():
                 hiatop.set_binds(hiabinds)
         for hiasym in self.hiaclusters:
             hiacluster = self.hiaclusters[hiasym]
-            hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._group] ]
+            hiabinds = [ lyr.get(hiasym,"") for lyr in self.bindstore[self._mode] ]
             if hiacluster.get_visible():
                 hiacluster.set_binds(hiabinds)
                 # KLUDGE: Could turn into O(n^2).
                 # TODO: subclass all tops as Cluster, where keytop are singleton special case?  Then all set_binds would take (hiasym, bindval) parameters.
                 for subsym in hiacluster.hiatops:
                     # TODO: fix, would only allow one level of nesting.
-                    subval = [ lyr.get(subsym,"") for lyr in self.bindstore[self._group] ]
+                    subval = [ lyr.get(subsym,"") for lyr in self.bindstore[self._mode] ]
                     hiacluster.proxy_set_binds(subsym, subval)
         return
 
@@ -1729,21 +1730,20 @@ Controller interface:
 
     def on_bind_assigned (self, w, hiasym, hiabind):
         logger.debug("doing on_bind_assigned(layer=%d, sym=%r, val=%r)" % (self.layer, hiasym, hiabind))
-        self.bindstore[self.group][self.layer][hiasym] = hiabind
+        self.bindstore[self.mode][self.layer][hiasym] = hiabind
         self.update_binds()
         return
     def on_bind_swapped (self, w, src_hiasym, dst_hiasym):
         logger.debug("doing on_bind_swapped(layer=%d, asym=%r, bsym=%r" % (self.layer, src_hiasym, dst_hiasym))
-        srcbind = self.bindstore[self.group][self.layer].get(src_hiasym,None)
-        dstbind = self.bindstore[self.group][self.layer].get(dst_hiasym,None)
-        self.bindstore[self.group][self.layer][src_hiasym] = dstbind
-        self.bindstore[self.group][self.layer][dst_hiasym] = srcbind
+        srcbind = self.bindstore[self.mode][self.layer].get(src_hiasym,None)
+        dstbind = self.bindstore[self.mode][self.layer].get(dst_hiasym,None)
+        self.bindstore[self.mode][self.layer][src_hiasym] = dstbind
+        self.bindstore[self.mode][self.layer][dst_hiasym] = srcbind
         self.update_binds()
         return
     def on_bind_erased (self, w, hiasym):
         logger.debug("doing on_bind_erased(layer=%d, sym=%r" % (self.layer, hiasym))
-        #self.bindstore[self.group][self.layer][src_hiasym] = ""
-        del self.bindstore[self.group][self.layer][hiasym]
+        del self.bindstore[self.mode][self.layer][hiasym]
         self.update_binds()
         return
 
@@ -1764,21 +1764,21 @@ Default selector, is separate so a custom control may be used instead.
 
 Signals:
  * layout-changed(str) : when layout has been chosen, name of layout.
- * group-changed(int) : when group has been chosen, index of group.
+ * mode-changed(int) : when mode has been chosen, index of mode.
  * layer-changed(int) : when layer has been chosen, index of layer.
 
 External controls, to trigger selection controls with a single primitive:
  * frob_layout(str)
- * frob_group(int)
+ * frob_mode(int)
  * frob_layer(int)
 
 N.B. without the frob_*(), changing selectors would involve something like
 instance.sel_layer.buttons[2].activate()
 """
-    def __init__ (self, model_layouts, model_groups, model_layers):
+    def __init__ (self, model_layouts, model_modes, model_layers):
         gtk.VBox.__init__(self)
         self.mdl_layouts = model_layouts
-        self.mdl_groups = model_groups
+        self.mdl_modes = model_modes
         self.mdl_layers  = model_layers
         self.setup_widget()
         self.setup_signals()
@@ -1789,11 +1789,11 @@ instance.sel_layer.buttons[2].activate()
         self.mdl_layouts = val
     layouts_model = property(get_layouts_model, set_layouts_model)
 
-    def get_groups_model (self):
-        return self.mdl_group
-    def set_groups_model (self, val):
-        self.mdl_groups = val
-    groups_model = property(get_groups_model, set_groups_model)
+    def get_modes_model (self):
+        return self.mdl_mode
+    def set_modes_model (self, val):
+        self.mdl_modes = val
+    modes_model = property(get_modes_model, set_modes_model)
 
     def get_layers_model (self):
         return self.mdl_layers
@@ -1809,15 +1809,15 @@ instance.sel_layer.buttons[2].activate()
                 n = i
         if n is not None:
             self.ui.sel_layout.set_active(n)
-    def frob_group (self, val):
-        """Adjust group with a single primitive type."""
+    def frob_mode (self, val):
+        """Adjust mode with a single primitive type."""
         # TODO: if val isa str
         n = None
-        for i in range(len(self.mdl_groups)):
+        for i in range(len(self.mdl_modes)):
             if (i == val):
                 n = i
         if n is not None:
-            self.ui.sel_group.buttons[n].activate()
+            self.ui.sel_mode.buttons[n].activate()
     def frob_layer (self, val):
         """Adjust layer with a single primitive type."""
         n = int(val)
@@ -1833,19 +1833,19 @@ instance.sel_layer.buttons[2].activate()
         self.ui.row_layout.pack_start(self.ui.lbl_layout, False, False, 0)
         self.ui.row_layout.pack_start(self.ui.sel_layout, False, False, 0)
 
-        # Row with group selector.
-        #self.ui.sel_group = self.GroupSelectorWidget(self.mdl_groups)
-        self.ui.sel_group = self.GroupSelectorWidget(self, self.mdl_groups)
+        # Row with mode selector.
+        #self.ui.sel_mode = self.ModeSelectorWidget(self.mdl_modes)
+        self.ui.sel_mode = self.ModeSelectorWidget(self, self.mdl_modes)
 
         # Row with layer selector.
         self.ui.sel_layer = self.LayerSelectorWidget()
 
         self.pack_start(self.ui.row_layout, False, False, 0)
-        self.pack_start(self.ui.sel_group, False, False, 0)
+        self.pack_start(self.ui.sel_mode, False, False, 0)
         self.pack_start(self.ui.sel_layer, False, False, 0)
 
         self.ui.row_layout.show_all()
-        self.ui.sel_group.show_all()
+        self.ui.sel_mode.show_all()
         self.ui.sel_layer.show_all()
 
         # Initial layout.
@@ -1877,11 +1877,11 @@ instance.sel_layer.buttons[2].activate()
         #self.show()
         self.emit("layout-changed", val)
 
-    class GroupSelectorWidget (gtk.Frame):
-        def __init__ (self, parent, mdl_groups):
+    class ModeSelectorWidget (gtk.Frame):
+        def __init__ (self, parent, mdl_modes):
             gtk.Frame.__init__(self, "Mode")
             self._parent = parent
-            self.mdl = mdl_groups
+            self.mdl = mdl_modes
             self.row = gtk.HBox()
             self.btnbox = gtk.HButtonBox()
             self.buttons = None
@@ -1900,14 +1900,13 @@ instance.sel_layer.buttons[2].activate()
                 for btn in w.buttons:
                     w.btnbox.remove(btn)
             w.buttons = list()
-            for grpid in range(len(w.mdl)):
+            for modeid in range(len(w.mdl)):
                 # Radio group is first button; make leader if no buttons.
-                grp = w.buttons[0] if w.buttons else None
-                #lbl = w.mdl[grpid][1]  # second column => displayed name.
-                lbl = w.mdl[grpid][0]  # first column => displayed name.
-                btn = gtk.RadioButton(grp, lbl)
-                btn.groupnum = grpid
-                btn.connect('toggled', self.on_group_toggled)
+                mode = w.buttons[0] if w.buttons else None
+                lbl = w.mdl[modeid][0]  # first column => displayed name.
+                btn = gtk.RadioButton(mode, lbl)
+                btn.modenum = modeid
+                btn.connect('toggled', self.on_mode_toggled)
                 w.buttons.append(btn)
                 w.btnbox.add(btn)
             w.row.show_all()
@@ -1916,11 +1915,11 @@ instance.sel_layer.buttons[2].activate()
         def on_data_changed (self, w, mdl, *args):
             self.rebuild_buttons()
 
-        def on_group_toggled (self, w, *args):
+        def on_mode_toggled (self, w, *args):
             if w.get_active():
-                groupnum = w.groupnum
-                #self.emit("group-changed", groupnum)
-                self._parent.emit("group-changed", groupnum)
+                modenum = w.modenum
+                #self.emit("mode-changed", modenum)
+                self._parent.emit("mode-changed", modenum)
 
     def LayerSelectorWidget (self):
         selector = gtk.Frame("Layer")
@@ -1952,7 +1951,7 @@ instance.sel_layer.buttons[2].activate()
     __gsignals__ = {
         "layout-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_STRING,)),
         "layer-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
-        "group-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
+        "mode-changed": (gobject.SIGNAL_RUN_FIRST, gobject.TYPE_NONE, (gobject.TYPE_INT,)),
         }
 
 gobject.type_register(BindableLayoutSelectors)
@@ -2013,26 +2012,26 @@ class BindableLayoutWidget (gtk.VBox):
 
     def on_layout_changed (self, w, layoutname):
         self.set_active(layoutname)
-    def on_group_changed (self, w, groupnum):
-        self.set_group(groupnum)
+    def on_mode_changed (self, w, modenum):
+        self.set_mode(modenum)
     def on_layer_changed (self, w, layernum):
         self.set_layer(layernum)
 
     def setup_signals (self):
         self.ui.selectors.connect("layout-changed", self.on_layout_changed)
-        self.ui.selectors.connect("group-changed", self.on_group_changed)
+        self.ui.selectors.connect("mode-changed", self.on_mode_changed)
         self.ui.selectors.connect("layer-changed", self.on_layer_changed)
         return
 
-    def get_group (self):
-        return self_group
-    def set_group (self, val):
-        self._group = val
-        self.update_group()
-    group = property(get_group, set_group)
+    def get_mode (self):
+        return self_mode
+    def set_mode (self, val):
+        self._mode = val
+        self.update_mode()
+    mode = property(get_mode, set_mode)
 
-    def update_group (self):
-        self.ui.hidview.set_group(self._group)
+    def update_mode (self):
+        self.ui.hidview.set_mode(self._mode)
 
     def get_layer (self):
         return self._layer
@@ -2087,7 +2086,7 @@ class BindableLayoutWidget (gtk.VBox):
         self.update_modelist()
     modelist = property(get_modelist, set_modelist)
     def update_modelist (self):
-        modelist = self.ui.selectors.ui.sel_group.mdl
+        modelist = self.ui.selectors.ui.sel_mode.mdl
         modelist.clear()
         for row in self.mdl_modes:
             modelist.append( tuple(row) )
