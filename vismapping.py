@@ -185,7 +185,6 @@ Also the save file.
             return object_desc
         temp = dict(object_desc)
         del temp['.class']
-        print("classname = %r" % classname)
         if classname == hidlayout.BindStore.__name__:
             inst = hidlayout.BindStore(**temp)
         elif classname == hidlayout.CommandPackStore.__name__:
@@ -756,7 +755,6 @@ class VisMapperApp (object):
         return self.ui.ask_save()
     def save_in_place (self):
         """Save to file specified by internal state 'saveuri'."""
-        print("saving?")
         if self.get_saveuri():
             #savefile = open(self.models.bindstore.fname, "wb")
             #savefile = open(self.session.uri_bindstore, "wb")
