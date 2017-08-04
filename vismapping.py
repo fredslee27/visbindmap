@@ -83,19 +83,26 @@ Preferences:
 
 
 class AppPreferences (object):
-    """Persists across sssions."""
+    """Persists across sssions.
+Passed in and out of the Preferences dialog.
+"""
+    # Explicit object properties to save in rc file.
     SAVEKEYS = [ 'knowwhat' ]
     def __init__ (self):
         self.defaults()
         self.fetch()
 
     def defaults (self):
-        self.knowwhat = False
+        """Trying to keep properties as primitive as possible, and with semantics where a False-like value (bool() sense) is a meaningful default, as when the rc file does not exist."""
+        self.knowwhat = False       # Novices' tooltips.
+        self.deaccel = False        # Erase custom accelerators.
 
-    def config_path (self):
+    def config_path (self, suffix=None):
+        if not suffix:
+            suffix = "prefs"
         path = os.path.join(glib.get_user_config_dir(),
                             PACKAGE,
-                            "prefs")
+                            suffix)
         return path
 
     def fetch (self):
@@ -108,6 +115,8 @@ class AppPreferences (object):
         enc = ast.literal_eval(contents)
         for k in self.SAVEKEYS:
             self.__dict__[k] = enc[k]
+
+        gtk.accel_map_load(self.config_path("accelmap"))
         return
 
     def commit (self):
@@ -130,6 +139,8 @@ class AppPreferences (object):
         gioflags = gio.FILE_CREATE_PRIVATE | gio.FILE_CREATE_REPLACE_DESTINATION
         giostream = giofile.replace_contents(contents=printable, etag=None, make_backup=False, flags=gioflags, cancellable=None)
         os.umask(oldumask)
+
+        gtk.accel_map_save(self.config_path("accelmap"))
         return
 
 
@@ -328,6 +339,7 @@ class DlgAbout (gtk.AboutDialog):
 class DlgPreferences (gtk.Dialog):
     FORMDESC = [
         ("knowwhat", bool, "Suppress novice tooltips"),
+        ("deaccel", bool, "Restore default hotkeys (erase custom accelerators)"),
         ]
 
     def __init__ (self, parent, prefs):
@@ -970,8 +982,35 @@ class VisMapperApp (object):
         response = dlg.run()
         if response == gtk.RESPONSE_ACCEPT:
             dlg.commit_prefs()
+            if self.prefs.deaccel:
+                self.revert_accelmap()
+                self.prefs.deaccel = False
             self.prefs.commit()
         dlg.hide()
+
+    def revert_accelmap (self):
+        # Prepare lookups by accelpath to action.
+        action_lu = dict()
+        def fulfill_action_lu ():
+            # Delayed fill as it's possible no custom accels are loaded.
+            if action_lu: return    # already done.
+            action_lu.update(dict([ (act.get_accel_path(),act) for act in self.appactions.list_actions() ]))
+        def visit (accelpath, accelkey, accelmode, changed, user_data):
+            if changed:
+                fulfill_action_lu()
+                # If stock accelerator not found, erase binding.
+                accelmod = accelkey = 0
+                # Attempt to use a stock accelerator.
+                act = action_lu.get(accelpath, None)
+                if act:
+                    stockid = act.get_stock_id()
+                    if stockid:
+                        stockinfo = gtk.stock_lookup(stockid)
+                        if stockinfo:
+                            accelmod, accelkey = stockinfo[2:4]
+                # Change binding.
+                gtk.accel_map_change_entry(accelpath, accelkey, accelmod, False)
+        gtk.accel_map_foreach_unfiltered(visit, data=None)
 
     def cmds (self, srcpath):
         logger.debug("LOADING CMDS: %r" % srcpath)
