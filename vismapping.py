@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # vim: set expandtab tabstop=4 :
 
-import gtk, gobject
+import gtk, gobject, glib, gio
 import sys, os, os.path
 import sqlite3
 
 import pprint
 import pickle
 import ast, parser
+import weakref
 
 import kbd_desc  # hard-coded keyboard layouts
 import hidlayout
@@ -118,8 +119,48 @@ Preferences:
 
 class AppPreferences (object):
     """Persists across sssions."""
+    SAVEKEYS = [ 'knowwhat' ]
     def __init__ (self):
+        self.defaults()
+        self.fetch()
+
+    def defaults (self):
         self.knowwhat = False
+
+    def config_path (self):
+        path = os.path.join(glib.get_user_config_dir(),
+                            PACKAGE,
+                            "prefs")
+        return path
+
+    def fetch (self):
+        """Load preferences from storage."""
+        giofile = gio.File(path=self.config_path())
+        contents,filelen,etag = giofile.load_contents()
+        enc = ast.literal_eval(contents)
+        for k in self.SAVEKEYS:
+            self.__dict__[k] = enc[k]
+        return
+
+    def commit (self):
+        """Save preferences to storage."""
+        enc = dict()
+        for k in self.SAVEKEYS:
+            enc[k] = self.__dict__[k]
+        printable = pprint.pformat(enc, width=1024)
+
+        oldumask = os.umask(0077)
+        config_path = self.config_path()
+        config_dir = os.path.dirname(config_path)
+        giofile = gio.File(path=config_path)
+        giodir = giofile.get_parent()
+        if giodir:
+            giodir.make_directory_with_parents()
+        gioflags = gio.FILE_CREATE_PRIVATE | gio.FILE_CREATE_REPLACE_DESTINATION
+        giostream = giofile.replace_contents(contents=printable, etag=None, make_backup=False, flags=gioflags, cancellable=None)
+        os.umask(oldumask)
+        return
+
 
 class AppSession (object):
     """User's interaction with a particular BindStore, checkpointable.
@@ -313,6 +354,69 @@ class DlgAbout (gtk.AboutDialog):
         self.set_license("GNU General Public License 3.0 or later")
 
 
+class DlgPreferences (gtk.Dialog):
+    FORMDESC = [
+        ("knowwhat", bool, "Suppress novice tooltips"),
+        ]
+
+    def __init__ (self, parent, prefs):
+        self.prefs = prefs
+        flags = gtk.DIALOG_MODAL | gtk.DIALOG_DESTROY_WITH_PARENT
+        btns = (gtk.STOCK_CANCEL, gtk.RESPONSE_REJECT,
+                gtk.STOCK_OK, gtk.RESPONSE_ACCEPT,)
+        gtk.Dialog.__init__(self, "Preferences", parent=parent, flags=flags, buttons=btns)
+        self.formdata = {}
+        self.setup_widget()
+        self.setup_signals()
+        self.reset()
+
+    def reset (self):
+        for formelt in self.FORMDESC:
+            name, typ, descr = formelt
+            w = self.widgets.get(name, None)
+            if not w:
+                continue
+            if typ is bool:
+                val = bool(self.prefs.__dict__.get(name, False))
+                w.set_active(val)
+                self.formdata[name ] = val
+            else:
+                pass
+        return
+
+    def setup_widget (self):
+        vbox = self.vbox
+        class ui: pass
+        self.ui = ui
+        self.widgets = dict()
+        for formelt in self.FORMDESC:
+            name, typ, descr = formelt
+            init_val = self.prefs.__dict__.get(name, 0)
+            w = None
+            if typ is bool:
+                w = gtk.CheckButton(descr)
+                w.connect("toggled", self.on_checkbutton_toggled, name)
+                w.props.has_tooltip = True
+                w.knowwhat = "{}_{}".format("prefs", name)
+                self.widgets[name] = w
+            else:
+                w = None
+            if w:
+                vbox.pack_start(w, False, False, 0)
+        self.set_size_request(320,240)
+        vbox.show_all()
+
+    def setup_signals (self):
+        pass
+
+    def commit_prefs (self):
+        for k,v in self.formdata.iteritems():
+            self.prefs.__dict__[k] = v
+
+    def on_checkbutton_toggled (self, w, name, *args):
+        self.formdata[name] = w.get_active()
+
+
 class VisMapperWindow (gtk.Window):
     """Main window, majority of state information."""
     BASE_TITLE = "Vismapper"
@@ -325,14 +429,14 @@ class VisMapperWindow (gtk.Window):
         self.bindview.ui.selectors.frob_layer(0)
         #self.bindview.update_bindstore()
 
-    def __init__ (self, parent=None, menubar=None, session=None):
+    def __init__ (self, parent=None, menubar=None, prefs=None, session=None):
         self.app = parent
 
         gtk.Window.__init__(self)
         self.set_title("%s" % self.BASE_TITLE)
         self.subtitle = ""
 
-        #self.models = models
+        self.prefs = prefs
         self.session = session
         self.menubar = menubar
         self.uibuild()
@@ -405,6 +509,7 @@ class VisMapperWindow (gtk.Window):
 
         self.panes.pack_start(self.statusbar, expand=False)
         self.dlg_about = DlgAbout()
+        self.dlg_prefs = DlgPreferences(self, self.prefs)
 
     def uibuild_debug (self):
         """Build  UI elements for debugging."""
@@ -529,6 +634,7 @@ class MainMenubar (gtk.MenuBar):
         return
     def on_edit_options (self, w, *args):
         app = self.app
+        app.ask_preferences()
         return
     def on_debug_1 (self, w, *args):
         app = self.app
@@ -639,6 +745,12 @@ Higher layers are often accessed by multiple combinatinations of shift-modifier 
 
 Change the number of layers visible simultaneously through the menu View. \
 """,
+    "btn_cluster_type_menu": """\
+PlanarCluster
+
+The Steam client can map certain control types from their two-dimensional position to customized virtual keys. \
+Originally designed for the Steam Controller's touchpads, the feature has also been extended to analog sticks, PlayStation 4 controllers, and XInput (Xbox360-style) controllers. \
+""",
     "cmdpackview": """\
 Command Pack
 
@@ -652,6 +764,9 @@ Drag from key to key to swap binds.
 Pre-made command packs can be opened through File &gt; CommmandPack. \
 Most of these packs are in sqlite3 format. \
 """,
+    "prefs_knowwhat": """\
+Advanced mode - hide the helper tooltips intended for novice users. \
+"""
 }
 
 
@@ -666,26 +781,31 @@ class VisMapperApp (object):
         self.session = AppSession()
         self.accelgroup = gtk.AccelGroup()
 
-        menubar = MainMenubar(self, self.accelgroup)
-        self.ui = VisMapperWindow(self, menubar=menubar, session=self.session)
-        self.ui.add_accel_group(self.accelgroup)
         self.build_ui()
+        self.hook_tooltips()
 
         self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
         #self.cmds_in_place()
 
     def build_ui (self):
         """Setup and connect UI elements."""
-        #hidl = self.ui.bindview.hidl
-        hidview = self.ui.bindview.ui.hidview
-        cmdview = self.ui.cmdcol
-        visbind = self.ui.bindview
+        self.menubar = MainMenubar(self, self.accelgroup)
+        self.ui = VisMapperWindow(self, menubar=self.menubar, prefs=self.prefs, session=self.session)
+        self.ui.add_accel_group(self.accelgroup)
+        # New planar-clusters may appear on layout change.  Watch such changes and pick up the new planar-clusters for tooltips.
+        self.ui.bindview.ui.selectors.connect("layout-changed", self.on_layoutmap_changed)
 
+    def on_layoutmap_changed (self, w, val):
+        self.hook_tooltips()
+
+    def hook_tooltips (self):
         # Recursively search all children for has-tooltip widgets.
         # TODO: this misses late-creation widgets such as cluster type buttons.
         stack = []
-        tooltipable = []
-        witer = self.ui.get_children().__iter__()
+        #witer = self.ui.get_children().__iter__()
+        scanning = [ self.ui, self.ui.dlg_about, self.ui.dlg_prefs ]
+        witer = scanning.__iter__()
+        self.tooltipable = weakref.WeakKeyDictionary()
         while stack or witer:
             try:
                 ch = witer.next()
@@ -697,8 +817,8 @@ class VisMapperApp (object):
                     witer = None
                 continue
             if ch.props.has_tooltip:
-                # Do something.
-                tooltipable.append(ch)
+                if not ch in self.tooltipable:
+                    self.tooltipable[ch] = None
             try:
                 # Recurse.
                 chiter = ch.get_children().__iter__()
@@ -707,7 +827,7 @@ class VisMapperApp (object):
             if chiter:
                 stack.append(witer)
                 witer = chiter
-        for tipable in tooltipable:
+        for tipable in self.tooltipable:
             tipable.connect("query-tooltip", self.on_query_tooltip, tipable.knowwhat)
 
     def on_query_tooltip (self, w, x, y, kbd, tooltip, qualifier, *args):
@@ -828,6 +948,15 @@ class VisMapperApp (object):
     def display_about (self):
         self.ui.display_about()
 
+    def ask_preferences (self):
+        dlg = self.ui.dlg_prefs
+        dlg.reset()
+        dlg.show()
+        response = dlg.run()
+        if response == gtk.RESPONSE_ACCEPT:
+            dlg.commit_prefs()
+        dlg.hide()
+        self.prefs.commit()
 
     def cmds (self, srcpath):
         logger.debug("LOADING CMDS: %r" % srcpath)
