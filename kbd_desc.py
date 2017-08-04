@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 
 KBD = {
+   '(none)': [ [ ] ],
+
   # Tuples are: (label, height[cells], width[cells])
   'mouse': [  # list of list
     [ # row 1

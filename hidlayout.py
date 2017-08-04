@@ -421,11 +421,18 @@ Rows are tuples of (layout_name, layout_map).
         alldata = kbd_desc.KBD
         self.build_from_all_rowrun(alldata)
 
-    def __getitem__ (self, key):
+    def __findkey (self, key):
         match = []
         for row in gtk.ListStore.__iter__(self):
             if row[0] == key:
-                match.append(row[1])
+                match.append(row)
+        return match
+
+    def __contains__ (self, key):
+        return bool(self.__findkey(key))
+
+    def __getitem__ (self, key):
+        match = self.__findkey(key)
         if match:
             return match[0]
         return gtk.ListStore.__getitem__(self, key)
@@ -2118,7 +2125,11 @@ class BindableLayoutWidget (gtk.VBox):
         return self._activename
     def set_activename (self, val):
         self._activename = val
-        self._activehid = self.all_layouts[self._activename]
+        if self._activename in self.all_layouts:
+            activerow = self.all_layouts[self._activename]
+        else:
+            activerow = self.all_layouts[0]
+        self._activehid = activerow[1]
         self.update_activehid()
     activename = property(get_activename, set_activename)
 
@@ -2145,7 +2156,7 @@ class BindableLayoutWidget (gtk.VBox):
         return self.activename
     def set_active (self, val):
         self.activename = val
-        self.activehid = self.all_layouts[val]
+        #self.activehid = self.all_layouts[val]
         # TODO: update display
         #self.rebuild_display()
         self.update_activehid()

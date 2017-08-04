@@ -87,7 +87,7 @@ class AppPreferences (object):
 Passed in and out of the Preferences dialog.
 """
     # Explicit object properties to save in rc file.
-    SAVEKEYS = [ 'knowwhat' ]
+    SAVEKEYS = [ 'knowwhat', 'layout0' ]
     def __init__ (self):
         self.defaults()
         self.fetch()
@@ -96,6 +96,8 @@ Passed in and out of the Preferences dialog.
         """Trying to keep properties as primitive as possible, and with semantics where a False-like value (bool() sense) is a meaningful default, as when the rc file does not exist."""
         self.knowwhat = False       # Novices' tooltips.
         self.deaccel = False        # Erase custom accelerators.
+        self.keepdevice = False     # Save current layout as default.
+        self.layout0 = 0            # Default layout choice.
 
     def config_path (self, suffix=None):
         if not suffix:
@@ -114,7 +116,8 @@ Passed in and out of the Preferences dialog.
             return
         enc = ast.literal_eval(contents)
         for k in self.SAVEKEYS:
-            self.__dict__[k] = enc[k]
+            if k in enc:
+                self.__dict__[k] = enc[k]
 
         gtk.accel_map_load(self.config_path("accelmap"))
         return
@@ -340,6 +343,7 @@ class DlgPreferences (gtk.Dialog):
     FORMDESC = [
         ("knowwhat", bool, "Suppress novice tooltips"),
         ("deaccel", bool, "Restore default hotkeys (erase custom accelerators)"),
+        ('keepdevice', bool, "Save currently selected layout as default choice"),
         ]
 
     def __init__ (self, parent, prefs):
@@ -377,6 +381,7 @@ class DlgPreferences (gtk.Dialog):
             init_val = self.prefs.__dict__.get(name, 0)
             w = None
             if typ is bool:
+                # Checkbox
                 w = gtk.CheckButton(descr)
                 w.connect("toggled", self.on_checkbutton_toggled, name)
                 w.props.has_tooltip = True
@@ -433,27 +438,16 @@ class VisMapperWindow (gtk.Window):
         wtitle = "".join(wtitleparts)
         self.set_title(wtitle)
 
-    def uibuild (self):
-        """Build the UI: generate widgets, add children, connect signals."""
-        self.panes = gtk.VBox()
-        self.add(self.panes)
-
-        self.spans = gtk.HBox()
-
-        self.padpane = gtk.VBox()
-
-        self.connect("delete-event", self.on_delete_event)
-
-        self.cmdcol = hidlayout.CommandPackView(self.session.cmdinfo.get_cmdpack())
-        self.bindrow = gtk.VBox()
-
+    def default_layouts_model (self):
         # Build HidLayouts from kbd_desc.KBD
-        self.all_layouts = hidlayout.HidLayouts()
+        all_layouts = hidlayout.HidLayouts()
         for k in sorted(kbd_desc.KBD.keys()):
             layout = hidlayout.HidLayoutStore(k)
             layout.build_from_rowrun(kbd_desc.KBD[k])
-            self.all_layouts.append( (k,layout) )
-        # Layers labels.
+            all_layouts.append( (k,layout) )
+        return all_layouts
+
+    def default_layers_model (self):
         mdl_layers = gtk.ListStore(int, str)
         maxshifters = 3  # TODO: calculate.
         maxlayers = (1 << maxshifters)
@@ -469,9 +463,35 @@ class VisMapperWindow (gtk.Window):
                 lbl = "base"
             rowdata = (lyrnum, lbl)
             mdl_layers.append(rowdata)
+        return mdl_layers
+
+    def uibuild (self):
+        """Build the UI: generate widgets, add children, connect signals."""
+        self.panes = gtk.VBox()
+        self.add(self.panes)
+
+        self.spans = gtk.HBox()
+
+        self.padpane = gtk.VBox()
+
+        self.connect("delete-event", self.on_delete_event)
+
+        self.cmdcol = hidlayout.CommandPackView(self.session.cmdinfo.get_cmdpack())
+        self.bindrow = gtk.VBox()
+
+        # Default layouts model.
+        self.all_layouts = self.default_layouts_model()
+        # Default layers labels.
+        mdl_layers = self.default_layers_model()
+        #default_layout = "SteamController"
+        default_layout = self.prefs.layout0
 
         #self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "PS3", mdl_modes=self.session.cmdinfo.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
-        self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts, "SteamController", mdl_modes=self.session.cmdinfo.get_modelist(), mdl_layers=mdl_layers, bindstore=self.session.bindstore)
+        self.bindview = hidlayout.BindableLayoutWidget(self.all_layouts,
+                            default_layout,
+                            mdl_modes=self.session.cmdinfo.get_modelist(),
+                            mdl_layers=mdl_layers,
+                            bindstore=self.session.bindstore)
         self.bindrow.pack_start(self.bindview)
         self.padpane.pack_start(self.bindrow)
 
@@ -985,6 +1005,9 @@ class VisMapperApp (object):
             if self.prefs.deaccel:
                 self.revert_accelmap()
                 self.prefs.deaccel = False
+            if self.prefs.keepdevice:
+                layoutname = self.ui.bindview.get_activename()
+                self.prefs.layout0 = layoutname
             self.prefs.commit()
         dlg.hide()
 
