@@ -136,7 +136,10 @@ class AppPreferences (object):
     def fetch (self):
         """Load preferences from storage."""
         giofile = gio.File(path=self.config_path())
-        contents,filelen,etag = giofile.load_contents()
+        try:
+            contents,filelen,etag = giofile.load_contents()
+        except:
+            return
         enc = ast.literal_eval(contents)
         for k in self.SAVEKEYS:
             self.__dict__[k] = enc[k]
@@ -155,7 +158,10 @@ class AppPreferences (object):
         giofile = gio.File(path=config_path)
         giodir = giofile.get_parent()
         if giodir:
-            giodir.make_directory_with_parents()
+            try:
+                giodir.make_directory_with_parents()
+            except:
+                pass
         gioflags = gio.FILE_CREATE_PRIVATE | gio.FILE_CREATE_REPLACE_DESTINATION
         giostream = giofile.replace_contents(contents=printable, etag=None, make_backup=False, flags=gioflags, cancellable=None)
         os.umask(oldumask)
@@ -425,7 +431,7 @@ class VisMapperWindow (gtk.Window):
         """Reset window contents."""
         #self.bindview.reset()
         self.bindview.set_bindstore(self.session.bindstore)
-        self.bindview.ui.selectors.frob_group(0)
+        self.bindview.ui.selectors.frob_mode(0)
         self.bindview.ui.selectors.frob_layer(0)
         #self.bindview.update_bindstore()
 
@@ -683,6 +689,170 @@ class MainMenubar (gtk.MenuBar):
           ]
         return BuildMenuBar(menu_desc, self, self.accelgroup)
 
+class AppActions (gtk.ActionGroup):
+    ACTIONS = [
+        # Must also specify actions for submenus?
+        ("file", None, None, "_File"),
+        ("file.new", gtk.STOCK_NEW, "_New", "<Control>n"),
+        ("file.open", gtk.STOCK_OPEN, "_Open", "<Control>o"),
+        ("file.save", gtk.STOCK_SAVE, "_Save", "<Control>s"),
+        ("file.saveas", gtk.STOCK_SAVE_AS, "Save _As", "<Control><Alt>s"),
+        ("file.commandpack", None, "CommandPack"),
+        ("file.quit", gtk.STOCK_QUIT, "_Quit", "<Control>q"),
+        ("edit", None, None, "_Edit"),
+        ("edit.copy", gtk.STOCK_COPY, "_Copy", "<Control>c"),
+        ("edit.cut", gtk.STOCK_CUT, "C_ut", "<Control>x"),
+        ("edit.paste", gtk.STOCK_PASTE, "_Paste", "<Control>v"),
+        ("edit.prefs", gtk.STOCK_PREFERENCES, "Pr_eferences"),
+        ("view", None, None, "_View"),
+        ("view.levels1", None, "_1 level"),
+        ("view.levels2", None, "_2 levels"),
+        ("view.levels4", None, "_4 levels"),
+        ("view.levels8", None, "_8 levels"),
+        ("help", None, None, "_Help"),
+        ("help.help", gtk.STOCK_HELP, "_Help"),
+        ("help.about", gtk.STOCK_ABOUT, "_About"),
+    ]
+
+    def __init__ (self, accelgroup):
+        gtk.ActionGroup.__init__(self, "vismapper")
+        #self.add_actions(self.ACTIONS, None)
+        for actdesc in self.ACTIONS:
+            extend = (None,)*(8-len(actdesc))
+            x = actdesc + extend
+            name, stock, lbl, accel = x[:4]
+            action = gtk.Action(name=name, label=lbl, tooltip=None, stock_id=stock)
+            action.set_accel_group(accelgroup)
+            action.set_accel_path("<MAIN>/group0/{}".format(name))
+            self.add_action_with_accel(action, None)
+            action.connect_accelerator()
+        self.set_sensitive(True)
+        self.set_visible(True)
+
+    def get (self, k, defval=None):
+        val = self.get_action(k)
+        return (val if val is not None else defval)
+
+    def __getitem__ (self, k):
+        return self.get_action(k)
+
+#    def X__init__ (self):
+#        # gtk.Action(name, label, tooltip, stock)
+#        class file:
+#            new = gtk.Action("file.new", "_New", None, gtk.STOCK_NEW)
+#            open = gtk.Action("file.open", "_Open", None, gtk.STOCK_OPEN)
+#            save = gtk.Action("file.save", "_Save", None, gtk.STOCK_SAVE)
+#            saveas = gtk.Action("file.saveas", "Save _As", None, gtk.STOCK_SAVE_AS)
+#            quit = gtk.Action("file.quit", "_Quit", None, gtk.STOCK_QUIT)
+#        class edit:
+#            copy = gtk.Action("edit.copy", "_Copy", None, gtk.STOCK_COPY)
+#            cut = gtk.Action("edit.cut", "C_ut", None, gtk.STOCK_CUT)
+#            paste = gtk.Action("edit.paste", "_Paste", None, gtk.STOCK_PASTE)
+#        class view:
+#            levels1 = gtk.Action("view.levels1", "_1 level", None, None)
+#            levels2 = gtk.Action("view.levels2", "_2 level", None, None)
+#            levels4 = gtk.Action("view.levels4", "_4 level", None, None)
+#            levels8 = gtk.Action("view.levels8", "_8 level", None, None)
+#        self.file = file
+#        self.edit = edit
+#        self.view = view
+#        self.help = gtk.Action("help", "_Help", None, gtk.STOCK_HELP)
+#        self.about = gtk.Action("about", "_About", None, gtk.STOCK_ABOUT)
+
+class MainMenubar2 (gtk.MenuBar):
+#    MENUDESC = [
+#        ('_File', [
+#            ('_New', "<Control><Shift>n", AppActions.file.new),
+#            ('_Open', "<Control>o", AppActions.file.open),
+#            ('_Save', "<Control>s", AppActions.file.save),
+#            ('Save _As', "<Control><Alt>s", AppActions.file.saveas),
+#            None,
+#            ('_CommandPack', None, AppActions.file.commandpack),
+#            None,
+#            ('_Quit', "<Control>q", AppActions.file.quit),
+#            ]),
+#        ('_Edit', [
+#            ('_Copy', "<Control>c", AppActions.edit.copy),
+#            ('C_ut', "<Control>x", AppActions.edit.cut),
+#            ('_Paste', "<Control>v", AppActions.edit.paste),
+#            None,
+#            ('Pr_eferences', None, AppActions.edit.prefs),
+#            ]),
+#        ('_View', [
+#            ('_1 level', None, AppActions.view.levels1),
+#            ('_2 levels', None, AppActions.view.levels2),
+#            ('_4 levels', None, AppActions.view.levels4),
+#            ('_8 levels', None, AppActions.view.levels8),
+#            ]),
+#        ('_Help', [
+#            ('_Help', None, AppActions.help),
+#            ('_About', None, AppActions.about),
+#            ]),
+#        ]
+    MENUDESC = [
+        ('_File', [
+            "file.new",
+            "file.open",
+            "file.save",
+            "file.saveas",
+            None,
+            "file.commandpack",
+            None,
+            "file.quit",
+            ]),
+        ('_Edit', [
+            "edit.copy",
+            "edit.cut",
+            "edit.paste",
+            None,
+            "edit.prefs",
+            ]),
+        ('_View', [
+            "view.levels1",
+            "view.levels2",
+            "view.levels4",
+            "view.levels8",
+            ]),
+        ('_Help', [
+            "help.help",
+            "help.about",
+            ]),
+        ]
+
+    def __init__ (self, appactions):
+        gtk.MenuBar.__init__(self)
+        self.appactions = appactions
+        self.build_menu(self, self.MENUDESC, self.appactions)
+
+    @staticmethod
+    def build_menu (menu, menudesc, appactions):
+        if menu is None:
+            menu = gtk.Menu()
+        for itemdesc in menudesc:
+            menuitem = None
+            if itemdesc is None:
+                menuitem = gtk.SeparatorMenuItem()
+            elif isinstance(itemdesc, tuple):
+                if len(itemdesc) == 2:
+                    name, subdesc = itemdesc
+                    action = appactions.get_action(name)
+                    submenu = None
+                    if action:
+                        submenu = action.create_menu()
+                    submenu = MainMenubar2.build_menu(submenu, subdesc, appactions)
+                    menuitem = gtk.MenuItem(name, True)
+                    menuitem.set_submenu(submenu)
+            else:
+                actname = itemdesc
+                action = appactions.get_action(actname)
+                menuitem = action.create_menu_item()
+                if not action:
+                    raise KeyError("Could not resolve action for {!r}".format(actname))
+                action.connect_proxy(menuitem)
+            if menuitem:
+                menu.append(menuitem)
+        return menu
+
 
 # Massive store of tooltip text.
 AppTooltips = {
@@ -751,18 +921,22 @@ class VisMapperApp (object):
         self.prefs = AppPreferences()
         self.session = AppSession()
         self.accelgroup = gtk.AccelGroup()
+        self.appactions = AppActions(self.accelgroup)
 
         self.build_ui()
         self.hook_tooltips()
+        self.bind_actions()
 
         self.set_cmdsuri(DEFAULT_DBNAME + ".sqlite3")
         #self.cmds_in_place()
 
     def build_ui (self):
         """Setup and connect UI elements."""
-        self.menubar = MainMenubar(self, self.accelgroup)
+        #self.menubar = MainMenubar(self, self.accelgroup)
+        self.menubar = MainMenubar2(self.appactions)
         self.ui = VisMapperWindow(self, menubar=self.menubar, prefs=self.prefs, session=self.session)
         self.ui.add_accel_group(self.accelgroup)
+        #self.ui.add_accel_group(accelgroup)
         # New planar-clusters may appear on layout change.  Watch such changes and pick up the new planar-clusters for tooltips.
         self.ui.bindview.ui.selectors.connect("layout-changed", self.on_layoutmap_changed)
 
@@ -808,6 +982,49 @@ class VisMapperApp (object):
                 tooltip.set_markup(txt)
                 return True
         return False
+
+    def bind_actions (self):
+        actionmap = {
+            "file.new": (lambda w: self.reset(),),
+            "file.open": (self.gui_open,),
+            "file.save": (self.gui_save,),
+            "file.saveas": (self.gui_saveas,),
+            "file.commandpack": (self.gui_commandpack,),
+            "file.quit": (lambda w: self.quit(),),
+            "edit.prefs": (lambda w: self.ask_preferences(),),
+            "view.levels1": (lambda w: self.set_vislayers(1),),
+            "view.levels2": (lambda w: self.set_vislayers(2),),
+            "view.levels4": (lambda w: self.set_vislayers(4),),
+            "view.levels8": (lambda w: self.set_vislayers(8),),
+            "help.about": (lambda w: self.display_about(),),
+        }
+        for actname in actionmap:
+            action = self.appactions.get_action(actname)
+            cb = actionmap[actname]
+            action.connect("activate", *cb)
+        pass
+
+    def gui_open (self, w):
+        loadname = self.ask_load_uri()
+        if loadname:
+            self.set_saveuri(loadname)
+            self.load_in_place()
+        return
+    def gui_save (self, w):
+        if not self.save_in_place():
+            return self.gui_saveas(self, w, *args)
+        return
+    def gui_saveas (self, w):
+        savename = self.ask_save_uri()
+        if savename:
+            self.set_saveuri(savename)
+            self.save_in_place()
+        return
+    def gui_commandpack (self, w):
+        srcname = self.ask_cmds_uri()
+        if srcname:
+            self.set_cmdsuri(srcname)
+        return
 
     def update_main_title (self):
         cmdname = self.session.cmdinfo.get_packname() if self.session.cmdinfo else None
@@ -926,8 +1143,8 @@ class VisMapperApp (object):
         response = dlg.run()
         if response == gtk.RESPONSE_ACCEPT:
             dlg.commit_prefs()
+            self.prefs.commit()
         dlg.hide()
-        self.prefs.commit()
 
     def cmds (self, srcpath):
         logger.debug("LOADING CMDS: %r" % srcpath)
