@@ -56,41 +56,6 @@ logger = hidlayout.logger
 
 
 
-def BuildMenuBar (menubardesc, menubar=None, accelgroup=None):
-    """Build menu bar from a list of menu description list.
-List of menu description contains elements made of tuples, each tuple is:
-1. None = menu separator
-2. (display:str, handler:callable) = menu item + callback ("c/b")
-2a   use lambda for passing userdata : lambda *args: callback(*args, MyUserData)
-3. (display:str, accel:str, handler:callable) = menu item + accelerator + c/b
-3. (display:str, submenu:list) = sub-menu (nested list of menu description)
-"""
-    def BuildMenuItem (itemdesc, accelgroup=None):
-        if itemdesc is None: return gtk.SeparatorMenuItem()  # separator
-        retval = gtk.MenuItem(itemdesc[0])
-        if callable(itemdesc[1]):  # leaf - regular menu item with callback.
-            callback = itemdesc[1]
-            retval.connect("activate", callback)
-        elif hasattr(itemdesc[1], "isalpha"):  # string-like.
-            accelkey = itemdesc[1]
-            callback = itemdesc[2]
-            retval.connect("activate", callback)
-            accelsym, accelmod = gtk.accelerator_parse(accelkey)
-            if accelgroup:
-                retval.add_accelerator('activate', accelgroup, accelsym, accelmod, gtk.ACCEL_VISIBLE)
-        elif hasattr(itemdesc[1], "__getslice__"):  # treat as submenu.
-            submenu = itemdesc[1]
-            retval.set_submenu(BuildMenu(submenu, accelgroup=accelgroup))
-        return retval
-    def BuildMenu (menudesc, menu=None, accelgroup=None):
-        menu = menu or gtk.Menu()
-        #map(menu.append, map(BuildMenuItem, menudesc))
-        map(menu.append, map(lambda x: BuildMenuItem(x,accelgroup), menudesc))
-        return menu
-    if menubar is None:
-        menubar = gtk.MenuBar()
-    return BuildMenu(menubardesc, menubar, accelgroup)
-
 
 """Application states:
 
@@ -587,129 +552,28 @@ Returns: str - path to sqlite3 resource/file.
 
 
 
-class MainMenubar (gtk.MenuBar):
-    """MenuBar for the main window."""
-    def __init__ (self, app, accelgroup=None):
-        gtk.MenuBar.__init__(self)
-        self.accelgroup = accelgroup
-        self.app = app
-        self.uibuild()
-
-    def on_file_new (self, w, *args):
-        app = self.app
-        app.reset()
-        return
-    def on_file_open (self, w, *args):
-        app = self.app
-        loadname = self.app.ask_load_uri()
-        if loadname:
-            self.app.set_saveuri(loadname)
-            self.app.load_in_place()
-        return
-    def on_file_save (self, w, *args):
-        app = self.app
-        if not app.save_in_place():
-            return self.on_file_saveas(self, w, *args)
-        return
-    def on_file_saveas (self, w, *args):
-        app = self.app
-        savename = app.ask_save_uri()
-        if savename:
-            app.set_saveuri(savename)
-            app.save_in_place()
-        return
-    def on_file_cmdpack (self, w, *args):
-        app = self.app
-        srcname = app.ask_cmds_uri()
-        if srcname:
-            app.set_cmdsuri(srcname)
-            #app.cmds_in_place()
-        return
-    def on_quit (self, w, *args):
-        app = self.app
-        app.quit()
-        return
-    def on_edit_copy (self, w, *args):
-        app = self.app
-        return
-    def on_edit_cut (self, w, *args):
-        app = self.app
-        return
-    def on_edit_paste (self, w, *args):
-        app = self.app
-        return
-    def on_edit_options (self, w, *args):
-        app = self.app
-        app.ask_preferences()
-        return
-    def on_help (self, w, *args):
-        app = self.app
-        return
-    def on_about (self, w, *args):
-        app = self.app
-        app.display_about()
-        return
-
-    def on_view_levels (self, w, count, *args):
-        app = self.app
-        logger.debug("View levels = %d" % count)
-        app.set_vislayers(count)
-        pass
-
-    def uibuild (self):
-        menu_desc = [
-          ('_File', [
-            ('_New', "<Control><Shift>n", self.on_file_new),
-            ('_Open', "<Control>o", self.on_file_open),
-            ('_Save', "<Control>s", self.on_file_save),
-            ('Save _As', "<Control><Alt>s", self.on_file_saveas),
-            None,
-            ('_CommandPack', self.on_file_cmdpack),
-            None,
-            ('_Quit', "<Control>q", self.on_quit),
-            ]),
-          ('_Edit', [
-            ('_Copy', "<Control>c", self.on_edit_copy),
-            ('C_ut', "<Control>x", self.on_edit_cut),
-            ('_Paste', "<Control>v", self.on_edit_paste),
-            None,
-            ('_Options', self.on_edit_options),
-            ]),
-          ('_View', [
-            ('_1 level', lambda w: self.on_view_levels(w, 1)),
-            ('_2 levels', lambda w: self.on_view_levels(w, 2)),
-            ('_4 levels', lambda w: self.on_view_levels(w, 4)),
-            ('_8 levels', lambda w: self.on_view_levels(w, 8)),
-            ]),
-          ('_Help', [
-            ('_Help', self.on_help),
-            None,
-            ('_About', self.on_about),
-            ]),
-          ]
-        return BuildMenuBar(menu_desc, self, self.accelgroup)
 
 class AppActions (gtk.ActionGroup):
     ACTIONS = [
         # Must also specify actions for submenus?
-        ("file", None, None, "_File"),
+        ("file", None, "_File"),
         ("file.new", gtk.STOCK_NEW, "_New", "<Control>n"),
         ("file.open", gtk.STOCK_OPEN, "_Open", "<Control>o"),
         ("file.save", gtk.STOCK_SAVE, "_Save", "<Control>s"),
         ("file.saveas", gtk.STOCK_SAVE_AS, "Save _As", "<Control><Alt>s"),
         ("file.commandpack", None, "CommandPack"),
-        ("file.quit", gtk.STOCK_QUIT, "_Quit", "<Control>q"),
-        ("edit", None, None, "_Edit"),
+        ("file.quit", gtk.STOCK_QUIT, "_Quit", "<Control>backslash"),
+        ("edit", None, "_Edit"),
         ("edit.copy", gtk.STOCK_COPY, "_Copy", "<Control>c"),
         ("edit.cut", gtk.STOCK_CUT, "C_ut", "<Control>x"),
         ("edit.paste", gtk.STOCK_PASTE, "_Paste", "<Control>v"),
         ("edit.prefs", gtk.STOCK_PREFERENCES, "Pr_eferences"),
-        ("view", None, None, "_View"),
+        ("view", None, "_View"),
         ("view.levels1", None, "_1 level"),
         ("view.levels2", None, "_2 levels"),
         ("view.levels4", None, "_4 levels"),
         ("view.levels8", None, "_8 levels"),
-        ("help", None, None, "_Help"),
+        ("help", None, "_Help"),
         ("help.help", gtk.STOCK_HELP, "_Help"),
         ("help.about", gtk.STOCK_ABOUT, "_About"),
     ]
@@ -720,11 +584,23 @@ class AppActions (gtk.ActionGroup):
         for actdesc in self.ACTIONS:
             extend = (None,)*(8-len(actdesc))
             x = actdesc + extend
-            name, stock, lbl, accel = x[:4]
-            action = gtk.Action(name=name, label=lbl, tooltip=None, stock_id=stock)
+            name, stockid, lbl, accel = x[:4]
+            actname, actlabel, actaccel = name, lbl, None
+            # Prefer stock properties; use actdesc if missing.
+            stock = (None,)*5
+            if stockid:
+                temp = gtk.stock_lookup(stockid)
+                if temp:
+                    stock = temp
+            if stock[1]:  # No preferred label.
+                actlabel = stock[1]
+            if not stock[2] and not stock[3]:  # No preferred accelerator.
+                actaccel = accel
+            action = gtk.Action(name=name, label=actlabel, tooltip=None, stock_id=stockid)
+            accelpath = "{}/{}/{}".format("<MAIN>", "vismapper", name)
             action.set_accel_group(accelgroup)
-            action.set_accel_path("<MAIN>/group0/{}".format(name))
-            self.add_action_with_accel(action, None)
+            action.set_accel_path(accelpath)
+            self.add_action_with_accel(action, actaccel)
             action.connect_accelerator()
         self.set_sensitive(True)
         self.set_visible(True)
@@ -736,59 +612,8 @@ class AppActions (gtk.ActionGroup):
     def __getitem__ (self, k):
         return self.get_action(k)
 
-#    def X__init__ (self):
-#        # gtk.Action(name, label, tooltip, stock)
-#        class file:
-#            new = gtk.Action("file.new", "_New", None, gtk.STOCK_NEW)
-#            open = gtk.Action("file.open", "_Open", None, gtk.STOCK_OPEN)
-#            save = gtk.Action("file.save", "_Save", None, gtk.STOCK_SAVE)
-#            saveas = gtk.Action("file.saveas", "Save _As", None, gtk.STOCK_SAVE_AS)
-#            quit = gtk.Action("file.quit", "_Quit", None, gtk.STOCK_QUIT)
-#        class edit:
-#            copy = gtk.Action("edit.copy", "_Copy", None, gtk.STOCK_COPY)
-#            cut = gtk.Action("edit.cut", "C_ut", None, gtk.STOCK_CUT)
-#            paste = gtk.Action("edit.paste", "_Paste", None, gtk.STOCK_PASTE)
-#        class view:
-#            levels1 = gtk.Action("view.levels1", "_1 level", None, None)
-#            levels2 = gtk.Action("view.levels2", "_2 level", None, None)
-#            levels4 = gtk.Action("view.levels4", "_4 level", None, None)
-#            levels8 = gtk.Action("view.levels8", "_8 level", None, None)
-#        self.file = file
-#        self.edit = edit
-#        self.view = view
-#        self.help = gtk.Action("help", "_Help", None, gtk.STOCK_HELP)
-#        self.about = gtk.Action("about", "_About", None, gtk.STOCK_ABOUT)
 
-class MainMenubar2 (gtk.MenuBar):
-#    MENUDESC = [
-#        ('_File', [
-#            ('_New', "<Control><Shift>n", AppActions.file.new),
-#            ('_Open', "<Control>o", AppActions.file.open),
-#            ('_Save', "<Control>s", AppActions.file.save),
-#            ('Save _As', "<Control><Alt>s", AppActions.file.saveas),
-#            None,
-#            ('_CommandPack', None, AppActions.file.commandpack),
-#            None,
-#            ('_Quit', "<Control>q", AppActions.file.quit),
-#            ]),
-#        ('_Edit', [
-#            ('_Copy', "<Control>c", AppActions.edit.copy),
-#            ('C_ut', "<Control>x", AppActions.edit.cut),
-#            ('_Paste', "<Control>v", AppActions.edit.paste),
-#            None,
-#            ('Pr_eferences', None, AppActions.edit.prefs),
-#            ]),
-#        ('_View', [
-#            ('_1 level', None, AppActions.view.levels1),
-#            ('_2 levels', None, AppActions.view.levels2),
-#            ('_4 levels', None, AppActions.view.levels4),
-#            ('_8 levels', None, AppActions.view.levels8),
-#            ]),
-#        ('_Help', [
-#            ('_Help', None, AppActions.help),
-#            ('_About', None, AppActions.about),
-#            ]),
-#        ]
+class MainMenubar (gtk.MenuBar):
     MENUDESC = [
         ('_File', [
             "file.new",
@@ -826,6 +651,7 @@ class MainMenubar2 (gtk.MenuBar):
 
     @staticmethod
     def build_menu (menu, menudesc, appactions):
+        __function__ = MainMenubar.build_menu
         if menu is None:
             menu = gtk.Menu()
         for itemdesc in menudesc:
@@ -839,9 +665,11 @@ class MainMenubar2 (gtk.MenuBar):
                     submenu = None
                     if action:
                         submenu = action.create_menu()
-                    submenu = MainMenubar2.build_menu(submenu, subdesc, appactions)
+                    submenu = __function__(submenu, subdesc, appactions)
                     menuitem = gtk.MenuItem(name, True)
                     menuitem.set_submenu(submenu)
+                elif len(itemdesc) == 3:
+                    name, accel, action = itemdesc
             else:
                 actname = itemdesc
                 action = appactions.get_action(actname)
@@ -932,8 +760,7 @@ class VisMapperApp (object):
 
     def build_ui (self):
         """Setup and connect UI elements."""
-        #self.menubar = MainMenubar(self, self.accelgroup)
-        self.menubar = MainMenubar2(self.appactions)
+        self.menubar = MainMenubar(self.appactions)
         self.ui = VisMapperWindow(self, menubar=self.menubar, prefs=self.prefs, session=self.session)
         self.ui.add_accel_group(self.accelgroup)
         #self.ui.add_accel_group(accelgroup)
