@@ -1479,6 +1479,8 @@ Composed of two parts visible at any one time:
             self.ui.frame.set_shadow_type(gtk.SHADOW_IN)
             self.ui.lbl_title = gtk.Label(" {} <{}>".format(self.hiasym, self._layoutmap.name))
             self.ui.btn_popup = gtk.Button("...")
+            self.ui.btn_popup.props.has_tooltip = True
+            self.ui.btn_popup.knowwhat = "btn_cluster_type_menu"
             self.ui.ctxmenu = BindableArrangerContextMenu()
             self.ui.row_lbl = gtk.HBox()
             self.ui.row_lbl.pack_start(self.ui.btn_popup, False, False, 0)
@@ -1865,7 +1867,7 @@ instance.sel_layer.buttons[2].activate()
         #val = self.mdl_layouts[idx][0]
 
     def setup_signals (self):
-        pass
+        return
 
     def LayoutSelectorWidget (self, mdl_layouts):
         # Combo (drop) list.
@@ -1875,6 +1877,8 @@ instance.sel_layer.buttons[2].activate()
         selector.add_attribute(selector.cell_layout, 'text', 0)
         selector.set_active(0)
         selector.connect("changed", self.on_layout_changed)
+        selector.props.has_tooltip = True
+        selector.knowwhat = "sel_layout"
         return selector
 
     def on_layout_changed (self, w, *args):
@@ -1896,6 +1900,8 @@ instance.sel_layer.buttons[2].activate()
             self.row = gtk.HBox()
             self.btnbox = gtk.HButtonBox()
             self.buttons = None
+            self.props.has_tooltip = True
+            self.knowwhat = "sel_mode"
 
             self.mdl.connect("row-changed", self.on_data_changed)
             self.mdl.connect("row-deleted", self.on_data_changed)
@@ -1938,6 +1944,8 @@ instance.sel_layer.buttons[2].activate()
         selector.row = gtk.HBox()
         selector.btnbox = gtk.HButtonBox()
         selector.buttons = list()
+        selector.props.has_tooltip = True
+        selector.knowwhat = "sel_layer"
 
         for layerinfo in selector.mdl:
             # Group leader is first button; use None to become group leader.
@@ -2404,6 +2412,9 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         self.ui.sclwin.add(self.ui.treeview)
         self.add(self.ui.sclwin)
         self.show_all()
+
+        self.props.has_tooltip = True
+        self.knowwhat = "cmdpackview"
 
     def setup_dnd (self):
         """One-time setup, GTK Drag-and-Drop."""

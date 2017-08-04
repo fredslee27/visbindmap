@@ -119,7 +119,7 @@ Preferences:
 class AppPreferences (object):
     """Persists across sssions."""
     def __init__ (self):
-        pass
+        self.knowwhat = False
 
 class AppSession (object):
     """User's interaction with a particular BindStore, checkpointable.
@@ -136,7 +136,7 @@ Also the save file.
         self.reset()
 
     def reset (self):
-        """Re-initialize states to new session."""
+        """Re-initialize states to a new session."""
         # TODO: determine ngroups and nlayers
         #self.bindstore.clear()
         if self.bindstore is None:
@@ -608,6 +608,53 @@ class VisMapperModels (object):
         self.accelgroup = accelgroup
 
 
+AppTooltips = {
+    "sel_layout": """\
+Device Layout
+
+Layout is an approximation of a human-computer input device (HID). \
+The various components of the device are laid out graphically to assist in presenting what and where each bindable component is.
+
+Each bindable component is labeled with some indicator of its physical form. \
+Typically this label related to a printed key face, a "well-known name", or description of the component.
+
+Bindings are the in-game action carried out by activating (pressing) the input component (typically key or button). \
+The bindings are displayed beneath the labels. \
+""",
+    "sel_mode": """\
+Mode selector
+
+Under certain circumstances in a game, the same key may take on completely different meanings specific and unique to the circumstances -- a &quot;mode&quot;.  These &quot;modes&quot; demand their own set of bindings distinct from other modes (or normal gameplay).
+
+For example, in battle, left-click may mean attack; but while shopping, left-click may mean to purchase.  Separating the concepts allows multiple, alternate, or separate bindings, e.g. Ctrl as alternate attack button, while Space as alternate purchase button.
+
+The first mode, Global, is reserved for keys that are (usually) active in all modes.  Examples include a universal &quot;Escape&quot; game menu, in-game console, debug/troubleshooting toggles, quit-to-desktop.  Global bindings that show through to the current mode are marked up in italics (slant) font. \
+""",
+    "sel_layer": """\
+Layer selector
+
+Layers are overloaded meanings of a key that are activated by some other key or action, typically a shift-modifier key (e.g. Shift, Ctrl, Alt, Cmd), but in rare cases same-key manipulation such as long-press, double-tap, or triple-tap.
+
+Higher layers are often accessed by multiple combinatinations of shift-modifier keys.
+
+Change the number of layers visible simultaneously through the menu View. \
+""",
+    "cmdpackview": """\
+Command Pack
+
+Set of commands in the game (not exhaustive). \
+Many commands are grouped together logically under a collapsing row, to avoid having one enormous list that is difficult to browse.
+
+Drag commands from here to a bindable component to bind the action (be aware of currently active layer). \
+Drag from key to here to erase the bind. \
+Drag from key to key to swap binds.
+
+Pre-made command packs can be opened through File &gt; CommmandPack. \
+Most of these packs are in sqlite3 format. \
+""",
+}
+
+
 
 class VisMapperApp (object):
     """Overall application object, with app/GUI state information."""
@@ -615,6 +662,7 @@ class VisMapperApp (object):
         self.modenum = 0
         self.levelnum = 0
 
+        self.prefs = AppPreferences()
         self.session = AppSession()
         self.accelgroup = gtk.AccelGroup()
 
@@ -632,8 +680,43 @@ class VisMapperApp (object):
         hidview = self.ui.bindview.ui.hidview
         cmdview = self.ui.cmdcol
         visbind = self.ui.bindview
-        #visbind.connect('mode-changed', self.on_kbmode_changed)
-        #visbind.connect('level-changed', self.on_kblevel_changed)
+
+        # Recursively search all children for has-tooltip widgets.
+        # TODO: this misses late-creation widgets such as cluster type buttons.
+        stack = []
+        tooltipable = []
+        witer = self.ui.get_children().__iter__()
+        while stack or witer:
+            try:
+                ch = witer.next()
+            except StopIteration:
+                if stack:
+                    witer = stack[-1]
+                    del stack[-1]
+                else:
+                    witer = None
+                continue
+            if ch.props.has_tooltip:
+                # Do something.
+                tooltipable.append(ch)
+            try:
+                # Recurse.
+                chiter = ch.get_children().__iter__()
+            except:
+                chiter = None
+            if chiter:
+                stack.append(witer)
+                witer = chiter
+        for tipable in tooltipable:
+            tipable.connect("query-tooltip", self.on_query_tooltip, tipable.knowwhat)
+
+    def on_query_tooltip (self, w, x, y, kbd, tooltip, qualifier, *args):
+        if not self.prefs.knowwhat:
+            txt = AppTooltips.get(qualifier, None)
+            if txt:
+                tooltip.set_markup(txt)
+                return True
+        return False
 
     def update_main_title (self):
         cmdname = self.session.cmdinfo.get_packname() if self.session.cmdinfo else None
