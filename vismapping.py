@@ -636,20 +636,6 @@ class MainMenubar (gtk.MenuBar):
         app = self.app
         app.ask_preferences()
         return
-    def on_debug_1 (self, w, *args):
-        app = self.app
-        logger.debug("DEBUG 1")
-        app.set_saveuri("/home/fredslee/devel/vismapping/testout.cfg")
-        #app.load_in_place()
-        return
-    def on_debug_2 (self, w, *args):
-        app = self.app
-        app.set_cmdsuri("/home/fredslee/devel/vismapping/cmdset/KerbalSpaceProgram.sqlite3")
-        #app.cmds_in_place()
-        return
-    def on_debug_3 (self, w, *args):
-        app = self.app
-        return
     def on_help (self, w, *args):
         app = self.app
         return
@@ -689,11 +675,6 @@ class MainMenubar (gtk.MenuBar):
             ('_4 levels', lambda w: self.on_view_levels(w, 4)),
             ('_8 levels', lambda w: self.on_view_levels(w, 8)),
             ]),
-          ('_DEBUG', [
-            ('Debug _1', self.on_debug_1),
-            ('Debug _2', self.on_debug_2),
-            ('Debug _3', self.on_debug_3),
-            ]),
           ('_Help', [
             ('_Help', self.on_help),
             None,
@@ -703,17 +684,7 @@ class MainMenubar (gtk.MenuBar):
         return BuildMenuBar(menu_desc, self, self.accelgroup)
 
 
-
-class VisMapperModels (object):
-    """Collection of data models for the GUI."""
-    def __init__ (self, cmdstore=None, modestore=None, bindstore=None, dispstate=None, accelgroup=None):
-        self.dispstate = dispstate
-        self.cmdstore = cmdstore
-        self.modestore = modestore
-        self.bindstore = bindstore
-        self.accelgroup = accelgroup
-
-
+# Massive store of tooltip text.
 AppTooltips = {
     "sel_layout": """\
 Device Layout
