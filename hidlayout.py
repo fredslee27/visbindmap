@@ -2,7 +2,6 @@
 # vim: expandtab shiftwidth=4 :
 
 # TODO: adopt __gproperties__ pattern.
-# TODO: bind resolution fallthrough
 
 from __future__ import print_function
 
