@@ -2510,8 +2510,13 @@ class HidLayoutWindow (gtk.Window):
         #hidw.connect("key-selected", self.on_key_selected)
         #hidw.connect("bind-changed", self.on_bind_changed)
 
+        mdl_modes = gtk.ListStore(str,str)
+        mdl_modes.append( ("Global", None) )
+        mdl_layers = gtk.ListStore(int, str)
+        mdl_layers.append( (0, "base") )
+        mdl_layers.append( (1, "1") )
         self.bindstore = BindStore(3,2)
-        hidw = BindableLayoutWidget(implicit_layouts, None, self.bindstore)
+        hidw = BindableLayoutWidget(implicit_layouts, None, mdl_layers=mdl_layers, mdl_modes=mdl_modes, bindstore=self.bindstore)
         self.layout.add(hidw)
 
         self.connect('delete-event', self.on_delete)
