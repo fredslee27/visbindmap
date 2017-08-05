@@ -6,7 +6,7 @@
 from __future__ import print_function
 
 import sys
-import gtk, gobject, glib
+import gtk, gobject, glib, pango
 import math
 import ast
 
@@ -103,6 +103,25 @@ logger = Logger(Logger.debug)
 # log with: logger.info("...", "...", ...)
 
 
+
+
+class FontBasedUnitsMixin (object):
+    """mix-in for accessing ex and em sizes."""
+    @property
+    def ex (self):
+        ctx_pango = self.get_pango_context()
+        pl = pango.Layout(ctx_pango)
+        pl.set_text("x")
+        val = pl.get_pixel_size()[1]
+        return val
+
+    @property
+    def em (self):
+        ctx_pango = self.get_pango_context()
+        pl = pango.Layout(ctx_pango)
+        pl.set_text("m")
+        val = pl.get_pixel_size()[0]
+        return val
 
 
 
@@ -1443,7 +1462,7 @@ gobject.type_register(BindableArrangerContextMenu)
 
 # TODO: factor out base class to avoid that long "if" in the UI builder.
 
-class BindableCluster (gtk.EventBox, Bindable):
+class BindableCluster (gtk.EventBox, Bindable, FontBasedUnitsMixin):
     """Groups together multiple BindableTops into a unit.
 Intended for use in the context of Steam Controller touchpads.
 Also re-used for the top-level layout view.
@@ -1598,7 +1617,7 @@ Composed of two parts visible at any one time:
             hiasym, lbl, prototyp, x, y, w, h = hiadata
             hiatop = self.hiatops[hiasym]
             if isinstance(hiatop, BindableCluster):
-                self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=4, ypadding=4)
+                self.ui.grid.attach(hiatop, x, x+w, y, y+h, xpadding=self.ex/4, ypadding=self.ex/4)
             else:
                 self.ui.grid.attach(hiatop, x, x+w, y, y+h)
         self.ui.grid.show()

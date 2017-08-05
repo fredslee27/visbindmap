@@ -405,7 +405,7 @@ class DlgPreferences (gtk.Dialog):
         self.formdata[name] = w.get_active()
 
 
-class VisMapperWindow (gtk.Window):
+class VisMapperWindow (gtk.Window, hidlayout.FontBasedUnitsMixin):
     """Main window, majority of state information."""
     BASE_TITLE = "Vismapper"
 
@@ -497,8 +497,7 @@ class VisMapperWindow (gtk.Window):
 
         self.spans = gtk.HPaned()
         self.spans.add(self.cmdcol)
-        # TODO: proportional to font.
-        self.cmdcol.set_size_request(180, -1)
+        self.cmdcol.set_size_request(16 * self.em, -1)
         self.spans.add(self.padpane)
 
         if self.menubar is None:
