@@ -9,6 +9,7 @@ import sys
 import gtk, gobject, glib
 import math
 import ast
+import weakref
 
 import kbd_desc
 
@@ -103,6 +104,199 @@ logger = Logger(Logger.debug)
 # log with: logger.info("...", "...", ...)
 
 
+
+
+
+
+
+
+
+# bind models for widgets; updated by parents
+# BindDisplayStore: TreeStore(hiasym:str, symattr:int, bind[0]:str, attr[0]:int, bind[1]:str, attr[1]:int, ...)
+#  with [0]=".vis" holding visibility list
+
+#class BindInfo (gobject.GObject):
+#    ATTR_FALLTHROUGH = 0x0001
+#    def __init__ (self, bindval, attr=0):
+#        gobject.GObject.__init__(self)
+#        try:
+#            bindval.isalpha
+#        except:
+#            raise TypeError("bindval is not a string")
+#        self.bindval = bindval
+#        self.attr = attr
+#
+#    def __str__ (self):
+#        return str(self.bindval)
+#
+#    def __int__ (self):
+#        return self.attr
+#
+##    def __eq__ (self, other):
+##        return self.bindval == other.bindval and self.attr == other.attr
+#
+#    def __repr__ (self):
+#        return "{}({!r},{!r})".format(self.__class__.__name__, self.bindval, self.attr)
+#
+#gobject.type_register(BindInfo)
+
+
+class BindDisplayStore (gtk.TreeStore):
+    """Bind models for viewing widgets; updated by parents.
+Every widget expected to show a bind-value of some sort views this model.
+
+Columns = (hiasym:str, symattr:int, bind[0]:str, attr[0]:int, bind[1]:str, attr[1]:int, ...)
+
+With row 0 (hiasym == ".vis") holding visibility list.
+
+Clusters have an entry, with column values indicating the cluster type (per layer?), with children corresponding to their nested binds.
+(cluster: iter_has_child() == True)
+"""
+    def __init__ (self, ncols):
+        # Build columns description.
+#        coldesc = [ gobject.TYPE_OBJECT ]
+#        for i in range(ncols):
+#            coldesc.append(gobject.TYPE_OBJECT)
+#        self.coldesc = tuple(coldesc)
+        coldesc = [ str, int ]
+        for i in range(ncols):
+            coldesc.append(str); coldesc.append(int)
+        self.coldesc = tuple(coldesc)
+        gtk.TreeStore.__init__(self, *(self.coldesc))
+        #self._lookup = weakref.WeakValueDictionary()
+        self._lookup = dict()
+        self.connect('row-changed', self.on_row_changed)
+        self.connect('row-deleted', self.on_row_deleted)
+        self.connect('rows-reordered', self.on_rows_reordered)
+
+    def foreach_cluster (self, visitor, userdata):
+        def filtered_visitor (mdl, path, itr, data):
+            if mdl.iter_has_child(itr):
+                visitor(mdl, path, itr, data)
+            return
+        self.foreach(filtered_visitor, userdata)
+        return
+
+    def lookup (self, hiasym, col=None):
+        rowref = self._lookup.get(hiasym, None)
+        if not rowref:
+            return None
+        row = self[rowref.get_path()]
+        if col is not None:
+            if row:
+                return row[col]
+            return None
+        return row
+    def on_row_changed (self, mdl, path, treeiter, *args):
+        hiasym = mdl[path][0]
+        if self.lookup(hiasym,0) != hiasym:
+            # Cache needs update.
+            self._lookup[hiasym] = gtk.TreeRowReference(mdl, path)
+        #self.cleanup_row(mdl[path])
+        return
+    def on_row_deleted (self, mdl, path, *args):
+        hiasym = str(mdl[path][0])
+        if hiasym in self._lookup:
+            del self._lookup[hiasym]
+        return
+    def on_rows_reordered (self, mdl, path, treeiter, new_order, *args):
+        self.update_lookup()
+
+    def update_lookup (self):
+        # Refresh the lookup cache.
+        self._lookup = dict()
+        def visitor (mdl, path, treeiter, userdata):
+            hiasym = str(mdl[path][0])
+            #self.cleanup_row(mdl[path])
+            self._lookup[hiaym] = gtk.TreeRowReference(mdl, path)
+        self.foreach(visitor, None)
+
+    def __findkey (self, key):
+        match = []
+        for row in gtk.TreeStore.__iter__(self):
+            if row[0] == key:
+                match.append(row)
+        return match
+    def __contains__ (self, key):
+        return bool(self.__findkey(key))
+    def __getitem__ (self, key):
+        # Try by hiasym first.
+        match = self.__findkey(key)
+        if match:
+            return match[0]
+        # fall back to TreeStore[]
+        return gtk.TreeStore.__getitem__(self, key)
+        #raise KeyError("Key not found: {}".format(key))
+
+    def set_by_key (self, k, val):
+        # Add or modify bind by hiasym (str).
+        objdata = val
+        try:
+            objdata.len
+            # Sequence type: distinguish string from non-string.
+            try:
+                objdata.isalpha
+                # plain string - treat as first-column only.
+                objdata = (val,0) + (None,0)*(len(self.coldesc)-4)
+            except:
+                # non-string; keep.
+                pass
+        except:
+            # non-sequence type; convert to sequence.
+            objdata = (objdata,0) + (None,0)*(len(self.coldesc)-4)
+        if len(objdata) == (len(self.coldesc)-2)/2:
+            # Exactly half of what's needed; assume attr=0 missing fields.
+            temp = ()
+            for fld in objdata:
+                temp = temp + (fld, 0)
+            objdata = temp
+        if len(objdata) == len(self.coldesc)-2:
+            hiasym = k
+            row = self.lookup(hiasym)
+            if row:
+                # assign in place.
+                #rowiter = rowref.get_iter()
+                for i in range(len(objdata)):
+                    #self.set_value(rowiter, 2+i, objdata[i])
+                    row[2+i] = objdata[i]
+            else:
+                # add.
+                rowdata = (hiasym, 0,) + objdata
+                self.append(None, rowdata)
+        return
+
+    def __setitem__ (self, k, val):
+        try:
+            k.isalpha
+        except:
+            # k is not a string; try as tree path.
+            rowiter = self.get_iter_from_string(k)
+            if rowiter:
+                return gtk.TreeStore.__setitem__(self, k, val)
+        self.set_by_key(k, val)
+        return
+    def __repr__ (self):
+        parts = ['[\n']
+        stack = []
+        treeiter = self.get_iter_root()
+        while stack or treeiter:
+            row = self[treeiter]
+            parts.append("  "*len(stack))
+            parts.append("(")
+            for bindinfo in row:
+                parts.append(repr(bindinfo))
+                parts.append(",")
+            parts.append("),\n")
+            if self.iter_has_child(treeiter):
+                stack.append(treeiter)
+                treeiter = self.iter_children(treeiter)
+                continue
+            treeiter = self.iter_next(treeiter)
+            if not treeiter:
+                treeiter = stack.pop() if stack else None
+        parts.append(']')
+        retval = "".join(parts)
+        return retval
 
 
 
@@ -2491,8 +2685,13 @@ class HidLayoutWindow (gtk.Window):
         #hidw.connect("key-selected", self.on_key_selected)
         #hidw.connect("bind-changed", self.on_bind_changed)
 
+        mdl_layers = gtk.ListStore(int,str)
+        mdl_layers.append( (0, "base") )
+        mdl_layers.append( (1, "1") )
+        mdl_modes = gtk.ListStore(str,str)
+        mdl_modes.append( ("Global", None) )
         self.bindstore = BindStore(3,2)
-        hidw = BindableLayoutWidget(implicit_layouts, None, self.bindstore)
+        hidw = BindableLayoutWidget(implicit_layouts, "PS3", mdl_modes=mdl_modes, mdl_layers=mdl_layers, bindstore=self.bindstore)
         self.layout.add(hidw)
 
         self.connect('delete-event', self.on_delete)
