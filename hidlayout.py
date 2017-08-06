@@ -151,6 +151,13 @@ With row 0 (hiasym == ".vis") holding visibility list.
 
 Clusters have an entry, with column values indicating the cluster type (per layer?), with children corresponding to their nested binds.
 (cluster: iter_has_child() == True)
+
+Overloads __getitem__ and __setitem__ so bindings can be retrieved dict-like.
+
+Parents update this model, and all children should automagically update themselves to reflect changes in binds.
+
+Changes to this mdoel are discarded (non-persistent).
+Desires to change bindings should be propagated by gtk signals "bind-{assigned,swapped,erased}".
 """
     def __init__ (self, ncols):
         # Build columns description.
