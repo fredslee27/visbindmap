@@ -53,6 +53,11 @@ class TestHiaBinds (unittest.TestCase):
         self.assertEqual(tuple(m[3,]), ('d', 40))
         return
 
+    def test_get_value (self):
+        m = self.sample1()
+        v = m.getvalue('a')
+        self.assertEqual(v, (1,))
+        self.assertEqual(m.getfirst('a'), 1)
 
 if __name__ == "__main__":
     unittest.main()
