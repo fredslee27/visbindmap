@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # vim: set ai et ts=4 sw=4 :
 
 import gi
@@ -174,7 +174,7 @@ class BindTop (Gtk.ToolButton, BindAware):
         BindAware.__init__(self, mdl_binddisplay)
         #Gtk.VBox.__init__(self)
         #Gtk.Button.__init__(self)
-        Gtk.ToolButton.__init__(self, None, None)
+        Gtk.ToolButton.__init__(self, label=None)
         self.setup_states()
 
         #self.set_property("display_model", bindsym)
@@ -199,7 +199,7 @@ class BindTop (Gtk.ToolButton, BindAware):
 """
         self.ui = type("ui", (), {})
         self.ui.widget = Gtk.VBox()
-        self.ui.lbl_top = Gtk.Label(self.props.toplabel)
+        self.ui.lbl_top = Gtk.Label(label=self.props.toplabel)
         self.ui.lbl_top.set_xalign(0.0)
 
         self.ui.frame_bind = Gtk.Frame()
@@ -214,27 +214,32 @@ class BindTop (Gtk.ToolButton, BindAware):
         self.ui.bindrows = []   # Bind rows (HBox).
         self.ui.lyrs = []       # layer prefix (Label)
         self.ui.disps = []      # Bind display (Label)
+        self.ui.bgs = []        # EventBox's for background of disp.
         self.ui.hseps = []      # Separators between rows (HSeparator)
 
         box = Gtk.VBox()
         for i in range(nlayers):
             bindrow = Gtk.HBox()
-            lyr = Gtk.Label()
-            disp = Gtk.Label()
+            lyr = Gtk.Label(label="{}:".format(i))
+            disp = Gtk.Label(label="DISP")
+            bg = Gtk.EventBox()
             hsep = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+            bg.add(disp)
             bindrow.pack_start(lyr, False, False, 0)
-            bindrow.pack_start(disp, True, True, 0)
+            bindrow.pack_start(bg, True, True, 0)
             self.ui.bindrows.append(bindrow)
             self.ui.lyrs.append(lyr)
             self.ui.disps.append(disp)
             self.ui.hseps.append(hsep)
+            self.ui.bgs.append(bg)
             box.pack_start(hsep, False, False, 0)
             box.pack_start(bindrow, False, False, 0)
 
             if i == 0:
-                stylectx = disp.get_style_context()
+                stylectx = bg.get_style_context()
                 #print("path: %r" % (refstylectx.get_path()))
                 #stylectx.set_path(refstylectx.get_path())
+                bg.override_background_color(Gtk.StateFlags.NORMAL, bg_rgb)
 
         #self.ui.box_layers.add(box)
         self.ui.frame_bind.add(box)
@@ -242,8 +247,8 @@ class BindTop (Gtk.ToolButton, BindAware):
         self.ui.widget.pack_start(self.ui.lbl_top, False, False, 0)
         #self.ui.widget.pack_start(self.ui.box_layers, True, True, 0)
         self.ui.widget.pack_start(self.ui.frame_bind, True, True, 0)
-        self.ui.widget.pack_start(Gtk.Label("Another"), False, False, 0)
-        self.ui.widget.pack_start(Gtk.Label("Another2"), False, False, 0)
+        #self.ui.widget.pack_start(Gtk.Label("Another"), False, False, 0)
+        #self.ui.widget.pack_start(Gtk.Label("Another2"), False, False, 0)
         self.ui.widget.show_all()
 
         #self.set_image(self.ui.widget)
