@@ -158,6 +158,15 @@ class BindAware (Gtk.Widget):
         Gtk.Widget.__init__(self)
         #self.set_property("display_model" , "Nope")
 
+    def on_display_model_row_changed (self, treemdl, treepath, treeiter, *args):
+        pass
+
+    __gsignals__ = {
+        "bind-assigned": (GObject.SIGNAL_RUN_FIRST, GObject.TYPE_NONE, (GObject.TYPE_STRING, GObject.TYPE_STRING)),
+        "bind-swapped": (GObject.SIGNAL_RUN_FIRST, GObject.TYPE_NONE, (GObject.TYPE_STRING, GObject.TYPE_STRING)),
+        "bind-erased": (GObject.SIGNAL_RUN_FIRST, GObject.TYPE_NONE, (GObject.TYPE_STRING,)),
+        }
+
 GObject.type_register(BindAware)
 
 
@@ -166,7 +175,7 @@ GObject.type_register(BindAware)
 class BindTop (Gtk.ToolButton, BindAware):
     """One human-computer interface device element, based on an approximation of a keyboard key."""
 
-    toplabel = GObject.Property(type=str, default="")
+    label = GObject.Property(type=str, default="")
     # Explicit inheritance?
     display_model = BindAware.display_model
 
@@ -178,7 +187,7 @@ class BindTop (Gtk.ToolButton, BindAware):
         self.setup_states()
 
         #self.set_property("display_model", bindsym)
-        self.set_property("toplabel", "BUTTON")
+        self.set_property("label", "BUTTON")
 
         self.setup_widget()
         self.setup_signals()
@@ -186,9 +195,6 @@ class BindTop (Gtk.ToolButton, BindAware):
 
     def setup_states (self):
         pass
-
-    def setup_states (self):
-        return
 
     def setup_widget (self):
         """"BindTop Button, label composed of multiple rows:
@@ -199,7 +205,7 @@ class BindTop (Gtk.ToolButton, BindAware):
 """
         self.ui = type("ui", (), {})
         self.ui.widget = Gtk.VBox()
-        self.ui.lbl_top = Gtk.Label(label=self.props.toplabel)
+        self.ui.lbl_top = Gtk.Label(label=self.props.label)
         self.ui.lbl_top.set_xalign(0.0)
 
         self.ui.frame_bind = Gtk.Frame()
@@ -257,18 +263,36 @@ class BindTop (Gtk.ToolButton, BindAware):
         return
 
     def setup_signals (self):
+        self.connect("notify::display-model", self.on_props_display_model_changed)
+        self.connect("row-changed::{}".format(self.sym), self.on_display_model_row_changed)
         return
 
     def setup_dnd (self):
         return
 
+    def on_display_model_row_changed (self, treemdl, treepath, treeiter, *args):
+        print("TODO: row-changed")
+        pass
+
+    def on_props_display_model_changed (self, w, propname):
+        print("TODO: model-changed")
+        pass
+
 GObject.type_register(BindTop)
 
 
-class BindClusterable (object):
-    """Handles multiple BindTop simulataneously."""
+class BindClusterable (BindAware):
+    """Handles multiple BindTop simulataneously.
+"""
+
+    layout_model = GObject.GProperty(type=object)
+
+    # Explicit inheritance?
+    label = BindTop.label
+    display_model = BindAware.display_model
+
     def __init__ (self):
-        pass
+        self.bindtops = {}  # Map from bindsym to bindtop.
 
 
 class BindListView (object):
@@ -288,6 +312,22 @@ class BindLayout (BindClusterable):
 Top level grouping of BindTops nad BindPlanar.
 """
     def __init__ (self):
+        pass
+
+
+class BindSlicer (object):
+    """
+Object responsible for juggling layout-model and display-model based on layout and mode.
+"""
+    group = GObject.Property(type=int)
+    layer = GObject.Property(type=int)
+    layout = GObject.Property(type=str)  # name of active layout
+    avail_layouts = GObject.Property(type=object)  # ListStore[LayoutMap]
+
+    def __init__ (self):
+        self.group = None
+        self.layer = None
+        self.layout = None
         pass
 
 
