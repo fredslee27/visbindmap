@@ -1445,8 +1445,9 @@ class ClusteredLayouts (HidLayouts):
         layout9 = self.make_gridded_layoutstore("TouchMenu09",
           4, 4,
           [
-            ("1", 0, 0), ("2", 1, 0),
-            ("3", 0, 1), ("4", 1, 1),
+            ("1", 0, 0), ("2", 1, 0), ("3", 2, 0),
+            ("4", 0, 1), ("5", 1, 1), ("6", 2, 1),
+            ("7", 0, 2), ("8", 1, 2), ("9", 2, 2),
             ]
         )
         layout12 = self.make_gridded_layoutstore("TouchMenu12",
