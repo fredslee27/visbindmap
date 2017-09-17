@@ -440,10 +440,10 @@ class BindStore (object):
             entry = ()
             order = ordering
             if ordering is None:
-                # Default resolve order: try current mode layer, then current mode layer 0, then global mode current layer, then global mode layer 0.
+                # Default resolve order: try current mode current layer, then global mode current layer, current mode layer 0, global mode layer 0.
                 order = [ (modenum,layernum),
-                            (modenum,0),
                             (0,layernum),
+                            (modenum,0),
                             (0,0) ]
             for redirects in range(len(order)):
                 visitor = order[redirects]
@@ -782,9 +782,9 @@ Supports drag-and-drop.  Semantics:
         if redirects > 2:
             entry = "<b><i><small>{}</small></i></b> ".format(bindval)
         elif redirects > 1:
-            entry = "<b><small>{}</small></b> ".format(bindval)
-        elif redirects > 0:
             entry = "<i><small>{}</small></i> ".format(bindval)
+        elif redirects > 0:
+            entry = "<b><small>{}</small></b> ".format(bindval)
         else:
             entry = "{} ".format(bindval)
         return entry
@@ -1761,14 +1761,14 @@ Composed of two parts visible at any one time:
         return
 
     def update_layer (self):
-        # Update layoutmap based on current layer's cluster type.
-        #self.update_layoutmap()
         # Then update cluster contents.
         for hiasym in self.hiatops:
             hiatop = self.hiatops[hiasym]
             if hiatop.get_visible():
                 hiatop.set_layer(self.layer)
         self.ui.listview.set_layer(self.layer)
+        # Update layoutmap based on current layer's cluster type.
+        self.update_layoutmap()
         return
 
     def refill_hiatops (self, layoutmap):
