@@ -77,6 +77,8 @@ class TestBindtops (skel.TestSkel):
         b.show()
 
         def script ():
+            yield 1
+            b.append(None, ("KTEST2", "KTEST2", "test2", 0, None, 0) )
             yield 3
 
         self.runloop(script)

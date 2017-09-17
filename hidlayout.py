@@ -431,34 +431,30 @@ class BindStore (object):
         for bindmode in self.modes:
             bindmode.resize_layers(self.nlayers)
         return
-    def resolve_binds_markup (self, hiasym, modenum):
+    def resolve_binds_markup (self, hiasym, modenum, ordering=None):
         binds = []
         mode = self.modes[modenum]
         redirect_limit = len(mode.layers)+1  # number of layers.
         for layernum in range(len(mode.layers)):
-            lyr = mode.layers[layernum]
-            m = mode
             redirects = 0
-            bindval = ""
-            entry = ""
-            while m and not entry and redirects < redirect_limit:
-                rawval = m[layernum].get(hiasym, "")
-                if rawval is None:
-                    rawval = ""
-                bindval = glib.markup_escape_text(rawval)
-                if bindval:
+            entry = ()
+            order = ordering
+            if ordering is None:
+                # Default resolve order: try current mode layer, then current mode layer 0, then global mode current layer, then global mode layer 0.
+                order = [ (modenum,layernum),
+                            (modenum,0),
+                            (0,layernum),
+                            (0,0) ]
+            for redirects in range(len(order)):
+                visitor = order[redirects]
+                (mnum, lyrnum) = visitor
+                m = self.modes[mnum]
+                lyr = m[lyrnum]
+                rawval = lyr.get(hiasym, None)
+                if rawval:
+                    entry = (redirects, rawval)
                     break
-                if m.fallthrough is not None:
-                    m = self.modes[m.fallthrough]
-                    redirects += 1
-                else:
-                    m = None
-            if redirects:
-                # Keep trailing space for vertical spacing.
-                entry = "<i><small>{}</small></i> ".format(bindval)
-            else:
-                entry = "{}".format(bindval)
-            binds.append(entry)
+            binds.append(entry if entry else ((None,None)))
         return binds
     def __copy__ (self):
         retval = BindStore(self.nmodes, self.nlayers)
@@ -778,6 +774,21 @@ Supports drag-and-drop.  Semantics:
         self.setup_signals()
         self.setup_dnd()
 
+    def _markup_bindval (self, redirects, bindval):
+        # Keep unformatted trailing space for vertical spacing.
+        entry = ""
+        if bindval is None: bindval = ""
+        if redirects is None: redirects = 3
+        if redirects > 2:
+            entry = "<b><i><small>{}</small></i></b> ".format(bindval)
+        elif redirects > 1:
+            entry = "<b><small>{}</small></b> ".format(bindval)
+        elif redirects > 0:
+            entry = "<i><small>{}</small></i> ".format(bindval)
+        else:
+            entry = "{} ".format(bindval)
+        return entry
+
     def setup_widgets (self):
         """One-time setup; visual widgets."""
         # UI components:
@@ -865,7 +876,8 @@ Supports drag-and-drop.  Semantics:
             binddisp = self.ui.disp[ofs]
             if bindval is None:
                 bindval = ""
-            binddisp.set_markup(bindval)
+            markupval = self._markup_bindval(*bindval)
+            binddisp.set_markup(markupval)
 
     def paint_bg (self, bg, activestyle):
         """Set background highlighting for a bind display;
@@ -1749,6 +1761,9 @@ Composed of two parts visible at any one time:
         return
 
     def update_layer (self):
+        # Update layoutmap based on current layer's cluster type.
+        #self.update_layoutmap()
+        # Then update cluster contents.
         for hiasym in self.hiatops:
             hiatop = self.hiatops[hiasym]
             if hiatop.get_visible():
@@ -1809,7 +1824,11 @@ Composed of two parts visible at any one time:
 
     def update_binds (self):
         activelayout = None
+        # Use layout for current layer; fallback to layer 0 (per Steam Action Layers).
         bindval = self._binds[self._layer]
+        if not bindval:
+            bindval = self._binds[0]
+        # Look up: bind value (str) to layout description (object).
         for row in self.clustered_layouts:
             name = row[0]
             if name == bindval:
