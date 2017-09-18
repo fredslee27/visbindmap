@@ -1378,6 +1378,8 @@ class ClusteredLayouts (HidLayouts):
         layout = self.make_gridded_layoutstore("MousePad",
           4, 4,
           [
+            ("t", 0, 0),
+            ("dt", 2, 0),
             ("c", 1, 1),
             ("x+", 2, 1),
             ("y+", 1, 2),
