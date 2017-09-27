@@ -122,6 +122,48 @@ class TestHiaWidgets (skel.TestSkel):
         self.runloop(script)
         self.w.destroy()
 
+    def test_hiaselectors (self):
+        sel = hialayout.HiaSelector('Generic', self.hiaview, ['one', 'two', 'three'])
+        grpsel = hialayout.HiaSelectorGroup(self.hiaview, ['Menu', 'Game'])
+        lyrsel = hialayout.HiaSelectorLayer(self.hiaview, ['0', '1', '2', '3'])
+        box = Gtk.VBox()
+        box.pack_start(sel, False, False, 0)
+        box.pack_start(grpsel, False, False, 0)
+        box.pack_start(lyrsel, False, False, 0)
+        self.w.add(box)
+
+        class box:
+            dgrp = 0
+            dlyr = 0
+
+        def on_group_changed (self, newgrp):
+            box.dgrp += 1
+
+        def on_layer_changed (self, newlyr):
+            box.dlyr += 1
+
+        self.hiaview.connect("group-changed", on_group_changed)
+        self.hiaview.connect("layer-changed", on_layer_changed)
+
+        def script ():
+            self.w.show_all()
+            yield 0.1
+            #print("to use group 1")
+            grpsel.buttons[1].clicked()
+            self.assertEqual(self.hiaview.group, 1)
+            yield 0.1
+            #print("to use group 0")
+            grpsel.buttons[0].clicked()
+            self.assertEqual(self.hiaview.group, 0)
+            yield 0.1
+            #print("to use layer 2")
+            lyrsel.buttons[2].clicked()
+            self.assertEqual(self.hiaview.layer, 2)
+            yield 2
+
+        self.runloop(script)
+        self.w.destroy()
+
 
 
 if __name__ == '__main__':

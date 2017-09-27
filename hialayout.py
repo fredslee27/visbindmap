@@ -336,12 +336,42 @@ class HiaView (GObject.GObject):  # HiaViewModel
     """state information for binds views."""
     def __init__ (self, bindstore=None):
         GObject.GObject.__init__(self)
-        self.group = 0          # Active group
-        self.layer = 0          # Active layer
-        self.vislayers = []     # Visible layers (list of bool)
-        self.bindstore = bindstore
-        if self.bindstore is None:
-            self.bindstore = BindStore()
+        self._group = 0          # Active group
+        self._layer = 0          # Active layer
+        self._vislayers = []     # Visible layers (list of bool)
+        self._bindstore = bindstore
+        if self._bindstore is None:
+            self._bindstore = BindStore()
+
+    def get_group (self): return self._group
+    def set_group (self, val):
+        self._group = val
+        self.emit("group-changed", val)
+    group = property(get_group, set_group)
+
+    def get_layer (self): return self._layer
+    def set_layer (self, val):
+        self._layer = val
+        self.emit("layer-changed", val)
+    layer = property(get_layer, set_layer)
+
+    def get_vislayers (self): return self._vislayers
+    def set_vislayers (self, val_iterable):
+        if len(val_iterable) < len(self._vislayers):
+            self._vislayers = self._vislayers[:len(val_iterable)]
+        elif len(val_iterable) > len(self._vislayers):
+            delta = len(val_iterable) - len(self._vislayers)
+            self._vislayers.extend([False]*delta)
+        for i in range(len(val_iterable)):
+            self._vislayers[i] = val_iterable[i]
+        self.emit("vislayers-changed", self._vislayers[:])
+    vislayers = property(get_vislayers, set_vislayers)
+
+    def get_bindstore (self): return self._bindstore
+    def set_bindstore (self, val):
+        self._bindstore = val
+        self.emit("bindstore-changed", val)
+    bindstore = property(get_bindstore, set_bindstore)
 
     __gsignals__ = {
         str("group-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
@@ -1130,6 +1160,103 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_vislayers_changed (self, hiavia, vislayers):
         return
 
+
+
+#############
+# Selectors #
+#############
+
+class HiaSelector (Gtk.Frame):
+    """
+Row of RadioButton (one-of-many pressed)
+"""
+    EXPAND_MEMBERS = False
+    PADDING = 0
+    def __init__ (self, title, view, names_iterable):
+        Gtk.HBox.__init__(self)
+        self.view = view
+        self._title = title
+        self._namelist = Gtk.ListStore(str)
+        self.setup_widgets()
+        self.setup_signals()
+        self.setup_dnd()
+        self.set_names(names_iterable)
+
+    def setup_widgets (self):
+        class ui: pass
+        self.ui = ui
+        #self.update_widgets()
+        self.set_label(self._title)
+        self.ui.top = Gtk.HBox()
+
+        self.add(self.ui.top)
+        self.show_all()
+        return
+
+    def setup_signals (self):
+        return
+
+    def setup_dnd (self):
+        return
+
+    def update_widgets (self):
+        for ch in self.ui.top.get_children():
+            # TODO: disconnect signals.
+            self.ui.top.remove(ch)
+        self.buttons = []
+        group = None
+        for listrow in self._namelist:
+            name = listrow[0]
+            b = Gtk.RadioButton(group=group, label=name)
+            if not self.buttons:
+                group = b
+            #b.connect("clicked", self.on_button_clicked)
+            b.connect("clicked", self.on_button_clicked, len(self.buttons))
+            #b.connect("toggled", self.on_button_clicked, len(self.buttons))
+            b.show()
+            self.buttons.append(b)
+            self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
+        return
+
+    def get_names (self):
+        return [ x[0] for x in self._namelist ]
+    def set_names (self, names_iterable):
+        self._namelist.clear()
+        for name in names_iterable:
+            self._namelist.append( (name,) )
+        self.update_widgets()
+    names = property(get_names, set_names)
+
+    def get_title (self): return self._title
+    def set_title (self, val):
+        self._title = None
+        self.set_label(self._title)
+    title = property(get_title, set_title)
+
+    def on_button_clicked (self, w, ofs=None):
+        print("generic clicked")
+        return
+
+
+class HiaSelectorGroup (HiaSelector):
+    EXPAND_MEMBERS = False
+    PADDING = 16
+    def __init__ (self, view, names_iterable):
+        HiaSelector.__init__(self, "Mode", view, names_iterable)
+    def on_button_clicked (self, w, ofs=None):
+        if w.get_active():
+            self.view.group = int(ofs)
+        return
+
+
+class HiaSelectorLayer (HiaSelector):
+    EXPAND_MEMBERS = True
+    def __init__ (self, view, names_iterable):
+        HiaSelector.__init__(self, "Layer", view, names_iterable)
+    def on_button_clicked (self, w, ofs=None):
+        if w.get_active():
+            self.view.layer = int(ofs)
+        return
 
 
 
