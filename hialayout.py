@@ -8,6 +8,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib
 
+import kbd_desc
 
 
 
@@ -221,6 +222,9 @@ class BindStore (GObject.GObject):
         GObject.GObject.__init__(self)
         self.groups = [BindGroup(self.make_cb(0))]
 
+    def clear (self):
+        self.groups = [ BindGroup(self.make_cb(0)) ]
+
     def make_cb (self, grp):
         return lambda lyr, sym: self.observe_groupbind(grp,lyr,sym)
 
@@ -286,6 +290,12 @@ class BindStore (GObject.GObject):
             self.groups.append(g)
             g.restore(pg)
         return self
+
+    def __repr__ (self):
+        return "{}(groups={!r})".format(
+            self.__class__.__name__,
+            self.groups,
+            )
 
     def get_bind (self, groupid, layerid, hiasym):
         """Main entry point: get binding for given group, layer, hiasym."""
@@ -407,12 +417,11 @@ class HiaBindable (GObject.GObject):
 For HiaTops, affects bind value to display,
 For HiaCluster, affects what layout to use.
 """
-    def __init__ (self, view, bindstore, hiasym, label=None):
+    def __init__ (self, view, hiasym, label=None):
         GObject.GObject.__init__(self)
         self.view = view
         self._bindstore = None
-        if bindstore is None:
-            bindstore = BindStore()
+        bindstore = view.bindstore if view else BindStore()
         self.set_bindstore(bindstore)
         self.hiasym = str(hiasym)
         self.label = str(label if label is not None else self.hiasym)
@@ -483,16 +492,13 @@ Drag-and-Drop
   * from CmdPackView = set/copy bind
   * from other HiaTop = swap bind
 """
-    def __init__ (self, view, bindstore, hiasym, label=None):
-        HiaBindable.__init__(self, view, bindstore, hiasym, label)
+    def __init__ (self, view, hiasym, label=None):
+        HiaBindable.__init__(self, view, hiasym, label)
         Gtk.Button.__init__(self)
 
-        self.binddisp = [
-            HiaBind(-1, "bind_0"),
-            HiaBind(-1, "bind_1"),
-            HiaBind(-1, "bind_2"),
-            HiaBind(-1, "crash_to_desktop"),
-        ]
+        self.binddisp = [ HiaBind(-1, ""), ]
+        if self.bindstore:
+            self.binddisp = self.get_bindlist()
 
         self.setup_widgets()
         self.setup_signals()
@@ -525,6 +531,7 @@ Drag-and-Drop
         for bi in range(len(binddisp)):
             bd = binddisp[bi]
             if len(self.ui.bindrows) <= bi:
+                # Add another row.
                 bb, bv = Gtk.TextBuffer(), Gtk.TextView()
                 markup = bd.get_markup_str()
                 bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
@@ -543,18 +550,24 @@ Drag-and-Drop
                 hrule.show()
                 br.show_all()
             else:
+                # Update extant row.
                 bb = self.ui.bindbufs[bi]
                 bb.delete(bb.get_start_iter(), bb.get_end_iter())
                 markup = bd.get_markup_str()
                 bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+            # Sensitize to active layer.
+            #self.ui.bindviews[bi].set_sensitive(bi == self.view.layer)
+#            bv = self.ui.bindviews[bi]
+#            if bi == self.view.layer:
+#                bv.set_state_flags(Gtk.StateFlags.ACTIVE, False)
+#            else:
+#                bv.set_state_flags(Gtk.StateFlags.NORMAL, False)
         for bi in range(len(binddisp), len(self.ui.bindrows)):
             self.ui.hrules[bi].hide()
             self.ui.bindrows[bi].hide()
         return
 
-
-    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
-        bindlist = self.get_bindlist()
+    def update_bindlist (self, bindlist):
         binddisp = []
         for lid in range(len(self.view.vislayers)):
             if self.view.vislayers[lid]:
@@ -562,12 +575,17 @@ Drag-and-Drop
                 binddisp.append(hiabind)
         self.binddisp = binddisp
         self.update_bindview(binddisp)
+
+    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+        bindlist = self.get_bindlist()
+        self.update_bindlist(bindlist)
     def on_group_changed (self, hiaview, newgrp):
-        pass
+        bindlist = self.get_bindlist()
+        self.update_bindlist(bindlist)
     def on_layer_changed (self, hiaview, newlyr):
-        pass
+        self.update_bindview()
     def on_vislayers_changed (self, hiavia, vislayers):
-        pass
+        self.update_bindlist()
 
     def setup_dnd (self):
         # DnD source: erase, swap.
@@ -611,6 +629,7 @@ width, height - in terms of cells (Gtk.Table, GtkGrid)
 """
 
     def __init__ (self, layout_name):
+        # (hiasym, label, prototype,  x, y, width_columns, height_rows)
         Gtk.TreeStore.__init__(self, str, str, str, int, int, int, int)
         self.name = layout_name
         self.nrows = 0
@@ -671,11 +690,12 @@ width, height - in terms of cells (Gtk.Table, GtkGrid)
         return
 
 class HiaLayouts (Gtk.ListStore):
-    """AList of HiaLayoutStore.
+    """AssociationList of HiaLayoutStore.
 Rows are tuples of (layout_name, layout_map).
 """
     def __init__ (self):
-        Gtk.ListStore.__init__(self, gobject.TYPE_STRING, gobject.TYPE_OBJECT)
+        #Gtk.ListStore.__init__(self, gobject.TYPE_STRING, gobject.TYPE_OBJECT)
+        Gtk.ListStore.__init__(self, str, object)
 
     def build_from_all_rowrun (self, all_rowrun):
         for hidname in all_rowrun.keys():
@@ -905,15 +925,17 @@ class ClusteredLayouts (HiaLayouts):
             ("13", 0, 3), ("14", 1, 3), ("15", 2, 3), ("16", 3, 3),
             ]
         )
+
+        def SYM (suffix):
+            """Helper function for manually-defined layouts - generate extended hiasym."""
+            return "{}{}".format(self.symprefix, suffix)
+
         # The irregular layouts: 7, 13
         """
         |  1 2
         | 3 4 5
         |  6 7
         """
-
-        def SYM (suffix):
-            return "{}{}".format(self.symprefix, suffix)
         layout7 = self.make_layoutstore("TouchMenu07")
         layout7.append(None, (SYM(1), SYM(1), "key", 2,0,4,4))
         layout7.append(None, (SYM(2), SYM(2), "key", 6,0,4,4))
@@ -964,6 +986,7 @@ class ClusteredLayouts (HiaLayouts):
                 x = r + (float(r) * math.cos(theta)) - .5
                 y = r + (float(r) * math.sin(theta)) + .5
                 yield (SYM(n), SYM(n), "key", x, y, 1, 1)
+        # Generate RadialMenu01 through RadialMenu20
         for variant in range(1,21):
             layout = self.make_layoutstore("{}{:02d}".format("RadialMenu", variant))
             for entry in radialize(variant, r=6):
@@ -972,11 +995,67 @@ class ClusteredLayouts (HiaLayouts):
         return
 
 
+class HiaSurface (Gtk.Grid):
+    """Display of a HiaLayout."""
+    def __init__ (self, view):
+        Gtk.Grid.__init__(self)
+        self.set_row_homogeneous(True)
+        self.set_column_homogeneous(True)
+        self.view = view
+        self._layout = None
+        self.children = []
+
+    def get_layout (self):
+        return self._layout
+    def set_layout (self, layout):
+        self._layout = layout
+        self.rebuild_surface()
+    layout = property(get_layout, set_layout)
+
+    def disown_children (self):
+        chlist = self.get_children()
+        # TODO: disconnect signals.
+        for ch in chlist:
+            self.remove(ch)
+        self.children = []
+
+    def make_hiawidget_cluster (self, hiasym, hialabel):
+        retval = None
+        return retval
+    def make_hiawidget_key (self, hiasym, hialabel):
+        retval = HiaTop(self.view, hiasym, hialabel)
+        retval.show()
+        return retval
+
+    def make_hiawidget (self, hiasym, hialabel, hiaprototype):
+        dispatch = {
+            str("cluster"): self.make_hiawidget_cluster,
+            str("key"): self.make_hiawidget_key,
+        }
+        maker = dispatch.get(hiaprototype, self.make_hiawidget_key)
+        retval = maker(hiasym, hialabel)
+        return retval
+
+    def rebuild_surface (self):
+        self.disown_children()
+        for rowentry in self.layout:
+            intent = (str,str,str, int,int,int,int)
+            #(hiasym, lbl, prototype, x, y, w, h) = rowentry
+            (hiasym, lbl, prototype, x, y, w, h) = [ intended(rawval) for (intended,rawval) in zip(intent,rowentry) ]
+            hw = self.make_hiawidget(hiasym, lbl, prototype)
+            self.children.append(hw)
+            if hw:
+                self.attach(hw, x, y, w, h)
+        self.show()
+        return
 
 
 class HiaCluster (Gtk.Frame, HiaBindable):
-    def __init__ (self, view, bindstore, hiasym, label=None):
-        HiaBindable.__init__(self, view, bindstore, hiasym, label)
+    """
+Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
+"""
+    def __init__ (self, view, hiasym, label=None):
+        HiaBindable.__init__(self, view, hiasym, label)
         Gtk.Button.__init__(self)
         self.hiachildren = []   # List of nested HiaBindable
         self.setup_widgets()
@@ -984,13 +1063,29 @@ class HiaCluster (Gtk.Frame, HiaBindable):
         self.setup_dnd()
 
     def setup_widgets (self):
-        self.ui.labeling = Gtk.HBox()
+        self.ui.frame_title = Gtk.HBox()
         self.ui.frame_menu = Gtk.Button("=")
         self.ui.frame_label = Gtk.Label(label=self.label)
-        self.ui.labeling.pack_start(self.ui.frame_menu, False, False, 0)
-        self.ui.labeling.pack_start(self.ui.frame_label, False, False, 0)
-        self.set_label_widget(self.ui.labeling)
+        self.ui.frame_title.pack_start(self.ui.frame_menu, False, False, 0)
+        self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
+        self.set_label_widget(self.ui.frame_title)
+
         self.ui.top = Gtk.VBox()
+
+    def setup_signals (self):
+        return
+
+    def setup_dnd (self):
+        return
+
+    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+        return
+    def on_group_changed (self, hiaview, newgrp):
+        return
+    def on_layer_changed (self, hiaview, newlyr):
+        return
+    def on_vislayers_changed (self, hiavia, vislayers):
+        return
 
 
 
