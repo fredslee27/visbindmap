@@ -14,6 +14,8 @@ class TestHiaWidgets (skel.TestSkel):
         #GObject.threads_init()  # earlier python may need this.
         self.bindstore = hialayout.BindStore()
         self.hiaview = hialayout.HiaView(self.bindstore)
+        self.all_layouts = hialayout.HiaLayouts()
+        self.all_layouts.build_from_legacy_store()
         self.w = Gtk.Window(title="TestHiaWidget")
         return
 
@@ -126,15 +128,21 @@ class TestHiaWidgets (skel.TestSkel):
         sel = hialayout.HiaSelector('Generic', self.hiaview, ['one', 'two', 'three'])
         grpsel = hialayout.HiaSelectorGroup(self.hiaview, ['Menu', 'Game'])
         lyrsel = hialayout.HiaSelectorLayer(self.hiaview, ['0', '1', '2', '3'])
+        devsel = hialayout.HiaSelectorDevice(self.hiaview, self.all_layouts)
         box = Gtk.VBox()
         box.pack_start(sel, False, False, 0)
         box.pack_start(grpsel, False, False, 0)
         box.pack_start(lyrsel, False, False, 0)
+        box.pack_start(devsel, False, False, 0)
         self.w.add(box)
 
         class box:
+            ddev = 0
             dgrp = 0
             dlyr = 0
+
+        def on_device_changed (self, newdev):
+            box.ddev += 1
 
         def on_group_changed (self, newgrp):
             box.dgrp += 1
@@ -142,6 +150,7 @@ class TestHiaWidgets (skel.TestSkel):
         def on_layer_changed (self, newlyr):
             box.dlyr += 1
 
+        self.hiaview.connect("device-changed", on_device_changed)
         self.hiaview.connect("group-changed", on_group_changed)
         self.hiaview.connect("layer-changed", on_layer_changed)
 
@@ -151,15 +160,26 @@ class TestHiaWidgets (skel.TestSkel):
             #print("to use group 1")
             grpsel.buttons[1].clicked()
             self.assertEqual(self.hiaview.group, 1)
+            self.assertEqual(box.dgrp, 1)
             yield 0.1
             #print("to use group 0")
             grpsel.buttons[0].clicked()
             self.assertEqual(self.hiaview.group, 0)
+            self.assertEqual(box.dgrp, 2)
             yield 0.1
             #print("to use layer 2")
             lyrsel.buttons[2].clicked()
             self.assertEqual(self.hiaview.layer, 2)
-            yield 2
+            self.assertEqual(box.dlyr, 1)
+            yield 0.5
+            devsel.ui.dropbox.popup()
+            yield 0.5
+            devsel.ui.dropbox.set_active(4)
+            yield 0.5
+            devsel.ui.dropbox.popdown()
+            self.assertEqual(self.hiaview.device, "SteamController")
+            self.assertEqual(box.ddev, 1)
+            yield 1
 
         self.runloop(script)
         self.w.destroy()

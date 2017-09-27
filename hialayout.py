@@ -336,12 +336,19 @@ class HiaView (GObject.GObject):  # HiaViewModel
     """state information for binds views."""
     def __init__ (self, bindstore=None):
         GObject.GObject.__init__(self)
-        self._group = 0          # Active group
-        self._layer = 0          # Active layer
-        self._vislayers = []     # Visible layers (list of bool)
+        self._device = None     # Active device (layout)
+        self._group = 0         # Active group
+        self._layer = 0         # Active layer
+        self._vislayers = []    # Visible layers (list of bool)
         self._bindstore = bindstore
         if self._bindstore is None:
             self._bindstore = BindStore()
+
+    def get_device (self): return self._device
+    def set_device (self, val):
+        self._device = val
+        self.emit("device-changed", val)
+    device = property(get_device, set_device)
 
     def get_group (self): return self._group
     def set_group (self, val):
@@ -374,6 +381,7 @@ class HiaView (GObject.GObject):  # HiaViewModel
     bindstore = property(get_bindstore, set_bindstore)
 
     __gsignals__ = {
+        str("device-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str,)),
         str("group-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
         str("layer-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
         str("vislayers-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (object,)),
@@ -1257,6 +1265,51 @@ class HiaSelectorLayer (HiaSelector):
         if w.get_active():
             self.view.layer = int(ofs)
         return
+
+
+# Intended to be named HiaSelectorLayout, but spelling too similar to *Layer
+class HiaSelectorDevice (Gtk.HBox):
+    def __init__ (self, view, layouts):
+        Gtk.HBox.__init__(self)
+        self.view = view
+        self.layouts = layouts
+        self._model = Gtk.ListStore(str)
+        layoutnames = sorted(self.layouts.keys())
+        for i in range(len(layoutnames)):
+            layoutname = layoutnames[i]
+            self._model.append( (layoutname,) )
+        self.setup_widgets()
+        self.setup_signals()
+
+    def setup_widgets (self):
+        class ui: pass
+        self.ui = ui
+
+        self.ui.lbl = Gtk.Label(label="Device:")
+
+        self.ui.render0 = Gtk.CellRendererText()
+
+        #self.ui.sel = Gtk.ComboBox(model=self._model)
+        dropbox = Gtk.ComboBox(model=self._model)
+        dropbox.pack_start(self.ui.render0, 0)
+        dropbox.add_attribute(self.ui.render0, 'text', 0)
+        dropbox.set_active(0)
+        self.view.device = ('(none)', None)
+        self.ui.dropbox = dropbox
+
+        self.pack_start(self.ui.lbl, False, False, 0)
+        self.pack_start(self.ui.dropbox, False, False, 0)
+
+        self.show_all()
+
+    def setup_signals (self):
+        self.ui.dropbox.connect("changed", self.on_selection_changed)
+
+    def on_selection_changed (self, w):
+        ofs = w.get_active()
+        layoutname = self._model[ofs][0]
+        #layoutinfo = self.layouts[layoutname]
+        self.view.device = layoutname
 
 
 
