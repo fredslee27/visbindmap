@@ -394,6 +394,13 @@ class HiaBind (object):
             dispval = self.cmdcode
         return dispval
 
+    def __repr__ (self):
+        return "{}(redirects={!r}, cmdtitle={!r}, cmdcode={!r})".format(
+            self.__class__.__name__,
+            self.redirects,
+            self.cmdtitle,
+            self.cmdcode)
+
 
 class HiaBindable (GObject.GObject):
     """Bindables store and respond to changes in BindStore.
@@ -403,10 +410,10 @@ For HiaCluster, affects what layout to use.
     def __init__ (self, view, bindstore, hiasym, label=None):
         GObject.GObject.__init__(self)
         self.view = view
+        self._bindstore = None
         if bindstore is None:
-            self._bindstore = BindStore()
-        else:
-            self._bindstore = bindstore
+            bindstore = BindStore()
+        self.set_bindstore(bindstore)
         self.hiasym = str(hiasym)
         self.label = str(label if label is not None else self.hiasym)
         class ui: pass   # Plain data.
@@ -420,6 +427,7 @@ For HiaCluster, affects what layout to use.
             pass
         self._bindstore = val
         self._bindstore.connect("bind-changed", self.on_bind_changed)
+    bindstore = property(get_bindstore, set_bindstore)
 
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         pass
@@ -430,14 +438,15 @@ For HiaCluster, affects what layout to use.
     def on_vislayers_changed (self, hiavia, vislayers):
         pass
 
-    def get_bindview (self):
+    def get_bindlist (self):
         """Return list of HiaBind (one per layer)."""
         retval = []
         for lid in range(self.bindstore.nlayers):
-            grpid = view.group
-            lyrid = view.layer
-            bv = self.bindstore.get_bind(grpid, lyrid, self.hiasym)
-            hb = HiaBind(-1, bv.cmdtitle, bv.cmdcode)
+            grpid = self.view.group
+            bv = self.bindstore.get_bind(grpid, lid, self.hiasym)
+            cmdtitle = bv.cmdtitle if bv else ""
+            cmdcode = bv.cmdcode if bv else ""
+            hb = HiaBind(-1, cmdtitle, cmdcode)
             retval.append(hb)
         return retval
 
@@ -510,9 +519,11 @@ Drag-and-Drop
     def setup_signals (self):
         pass
 
-    def update_bindview (self):
-        for bi in range(len(self.binddisp)):
-            bd = self.binddisp[bi]
+    def update_bindview (self, binddisp=None):
+        if binddisp is None:
+            binddisp = self.binddisp
+        for bi in range(len(binddisp)):
+            bd = binddisp[bi]
             if len(self.ui.bindrows) <= bi:
                 bb, bv = Gtk.TextBuffer(), Gtk.TextView()
                 markup = bd.get_markup_str()
@@ -536,14 +547,21 @@ Drag-and-Drop
                 bb.delete(bb.get_start_iter(), bb.get_end_iter())
                 markup = bd.get_markup_str()
                 bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
-        for bi in range(len(self.binddisp), len(self.ui.bindrows)):
+        for bi in range(len(binddisp), len(self.ui.bindrows)):
             self.ui.hrules[bi].hide()
-            self.ui.bindrows[bi].hid_all()
+            self.ui.bindrows[bi].hide()
         return
 
 
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
-        pass
+        bindlist = self.get_bindlist()
+        binddisp = []
+        for lid in range(len(self.view.vislayers)):
+            if self.view.vislayers[lid]:
+                hiabind = bindlist[lid]
+                binddisp.append(hiabind)
+        self.binddisp = binddisp
+        self.update_bindview(binddisp)
     def on_group_changed (self, hiaview, newgrp):
         pass
     def on_layer_changed (self, hiaview, newlyr):
@@ -570,10 +588,397 @@ Drag-and-Drop
 
 
 
+
+
+class HiaLayoutStore (Gtk.TreeStore):
+    """Description of HID element layout.
+Items are (inpsym, lbl, prototype, x, y, w, h)
+
+inpsym is an identifier expected to conform to C identifier constraints, used as the key in a mapping type for bindings.
+lbl is an arbitrary string to show the user for the input element.
+
+prototype: key, cluster
+
+
+rowrun format is list rowdesc
+ rowdesc is list of tuples
+  tuple = ( width, height, inpsym, lbl, prototype ) |
+          ( width, height, inpsym, lbl ) |
+          ( width, height, inpsym ) |
+          ( width, height )
+
+width, height - in terms of cells (Gtk.Table, GtkGrid)
+"""
+
+    def __init__ (self, layout_name):
+        Gtk.TreeStore.__init__(self, str, str, str, int, int, int, int)
+        self.name = layout_name
+        self.nrows = 0
+        self.ncols = 0
+        self.lookup = dict()
+
+    # TODO: overload mutators and check for size maximums there.
+    def append (self, parentiter, rowdata):
+        x, y, w, h = rowdata[3:7]
+        xlim = x + w
+        ylim = y + h
+        if xlim > self.ncols:
+            self.ncols = xlim
+        if ylim > self.nrows:
+            self.nrows = ylim
+        treeiter = Gtk.TreeStore.append(self, parentiter, rowdata)
+        inpsym = rowdata[0]
+        self.lookup[inpsym] = self.get_path(treeiter)
+
+    def get_label (self, inpsym):
+        treeiter = self.lookup.get(inpsym, None)
+        lbl = ""
+        if treeiter:
+            lbl = self[treeiter][1]
+        return lbl
+
+    def build_from_rowrun (self, desc):
+        rownum = 0
+        colnum = 0
+        maxrow = 0
+        maxcol = 0
+        for rowdesc in desc:
+            if rowdesc:
+                for eltdesc in rowdesc:
+                    inpsym, lbl, prototyp = None, None, None
+                    rowspan, colspan = eltdesc[0], eltdesc[1]
+                    if len(eltdesc) > 2:
+                        inpsym = eltdesc[2]
+                    if len(eltdesc) > 3:
+                        lbl = eltdesc[3]
+                    if len(eltdesc) > 4:
+                        prototyp = eltdesc[4]
+                    y, x = rownum, colnum
+                    h, w = rowspan, colspan
+                    if prototyp is None:
+                        if inpsym is None:
+                            prototyp = 'blank'
+                        else:
+                            prototyp = 'key'
+                    if lbl is None:
+                        lbl = inpsym
+                    if inpsym is not None:
+                        data = (inpsym, lbl, prototyp, x, y, w, h)
+                        self.append(None, data)
+                    colnum += colspan
+            rownum += 1
+            colnum = 0
+        return
+
+class HiaLayouts (Gtk.ListStore):
+    """AList of HiaLayoutStore.
+Rows are tuples of (layout_name, layout_map).
+"""
+    def __init__ (self):
+        Gtk.ListStore.__init__(self, gobject.TYPE_STRING, gobject.TYPE_OBJECT)
+
+    def build_from_all_rowrun (self, all_rowrun):
+        for hidname in all_rowrun.keys():
+            hiditem = all_rowrun[hidname]
+            onelayout = HiaLayoutStore(hidname)
+            onelayout.build_from_rowrun(hiditem)
+            row = self.append((hidname, onelayout))
+
+    def build_from_legacy_store (self):
+        alldata = kbd_desc.KBD
+        self.build_from_all_rowrun(alldata)
+
+    def __findkey (self, key):
+        match = []
+        for row in Gtk.ListStore.__iter__(self):
+            if row[0] == key:
+                match.append(row)
+        return match
+
+    def __contains__ (self, key):
+        return bool(self.__findkey(key))
+
+    def __getitem__ (self, key):
+        match = self.__findkey(key)
+        if match:
+            return match[0]
+        return Gtk.ListStore.__getitem__(self, key)
+        #raise KeyError("Key not found: {}".format(key))
+    def __setitem__ (self, key, val):
+        try:
+            Gtk.ListStore.__setitem__(self, key, val)
+        except IndexError:
+            pass
+        # could not use ListStore __getitem__, act like alist.
+        match = [ n for n in range(len(self)) if self[n][0] == key ]
+        if match:
+            # replace.
+            ofs = match[0]
+            k, v = self[ofs][0], val
+            self[ofs] = (k, v)
+        else:
+            # create.
+            cooked = ( key, val )
+            self.append(cooked)
+    def keys (self):
+        return [ k for k,v in self ]
+
+class ClusteredLayouts (HiaLayouts):
+    """Nested layouts for clusters."""
+    def __init__ (self, symprefix):
+        HiaLayouts.__init__(self)
+        self.symprefix = symprefix
+        self.build_layouts()
+
+    # onebutton, scroll, dpad, bquad, mouse, trackpad, js, gyro, touchmenu, radialmenu
+
+    def build_layouts (self):
+        self._build_layout_empty()
+        self._build_layout_one()
+        self._build_layout_scrl()
+        self._build_layout_dpad()
+        self._build_layout_bquad()
+        self._build_layout_track()
+        self._build_layout_mouse()
+        self._build_layout_js()
+        self._build_layout_gyro()
+        self._build_layout_touchmenu()
+        self._build_layout_radialmenu()
+        return
+
+    def make_layoutstore (self, suffix):
+        #layoutname = "{}_{}".format(self.symprefix, suffix)
+        layoutname = "{}".format(suffix)
+        layout = HiaLayoutStore(layoutname)
+        return layout
+
+    def make_gridded_layoutstore (self, suffix, w, h, simple_placements):
+        layout = self.make_layoutstore(suffix)
+        for datum in simple_placements:
+            suffix, x, y = datum
+            row = y * h
+            col = x * w
+            hiasym = "{}{}".format(self.symprefix, suffix)
+            cooked = (hiasym, hiasym, "key", col, row, w, h)
+            layout.append(None, cooked)
+        return layout
+
+    def _build_layout_empty (self):
+        layout = self.make_layoutstore("Empty")
+        self.append( (layout.name, layout) )
+
+    def _build_layout_one (self):
+        layout = self.make_gridded_layoutstore("OneButton",
+          12, 12,
+          [ ("c", 0, 0) ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_scrl (self):
+        layout = self.make_gridded_layoutstore("ScrollWheel",
+          4, 4,
+          [
+            ("u", 1, 0),
+            ("c", 1, 1),
+            ("d", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_dpad (self):
+        layout = self.make_gridded_layoutstore("DirectionPad",
+          4, 4,
+          [
+            ("u", 1, 0),
+            ("l", 0, 1),
+            ("c", 1, 1),
+            ("r", 2, 1),
+            ("d", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_bquad (self):
+        layout = self.make_gridded_layoutstore("ButtonQuad",
+          4, 4,
+          [
+            ("n", 1, 0),
+            ("w", 0, 1),
+            ("e", 2, 1),
+            ("s", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_track (self):
+        layout = self.make_gridded_layoutstore("MousePad",
+          4, 4,
+          [
+            ("t", 0, 0),
+            ("dt", 2, 0),
+            ("c", 1, 1),
+            ("x+", 2, 1),
+            ("y+", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_mouse (self):
+        layout = self.make_gridded_layoutstore("MouseRegion",
+          4, 4,
+          [
+            ("y-", 1, 0),
+            ("x-", 0, 1),
+            ("c",  1, 1),
+            ("x+", 2, 1),
+            ("y+", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_js (self):
+        layout = self.make_gridded_layoutstore("Joystick",
+          4, 4,
+          [
+            ("y-", 1, 0),
+            ("x-", 0, 1),
+            ("c",  1, 1),
+            ("x+", 2, 1),
+            ("y+", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_gyro (self):
+        layout = self.make_gridded_layoutstore("GyroTilt",
+          4, 4,
+          [
+            ("z-", 0, 0),
+            ("y-", 1, 0),
+            ("z+", 2, 0),
+            ("x-", 0, 1),
+            ("c",  1, 1),
+            ("x+", 2, 1),
+            ("y+", 1, 2),
+            ]
+        )
+        self.append( (layout.name, layout) )
+
+    def _build_layout_touchmenu (self):
+        # Variants: 2, 4, 7, 9, 12, 13, 16
+        # the homogeneous grids: 2, 4, 9, 12, 16
+        layout2 = self.make_gridded_layoutstore("TouchMenu02",
+          6, 12,
+          [
+            ("1", 0, 0), ("2", 1, 0),
+            ]
+        )
+        layout4 = self.make_gridded_layoutstore("TouchMenu04",
+          6, 6,
+          [
+            ("1", 0, 0), ("2", 1, 0),
+            ("3", 0, 1), ("4", 1, 1),
+            ]
+        )
+        layout9 = self.make_gridded_layoutstore("TouchMenu09",
+          4, 4,
+          [
+            ("1", 0, 0), ("2", 1, 0), ("3", 2, 0),
+            ("4", 0, 1), ("5", 1, 1), ("6", 2, 1),
+            ("7", 0, 2), ("8", 1, 2), ("9", 2, 2),
+            ]
+        )
+        layout12 = self.make_gridded_layoutstore("TouchMenu12",
+          3, 4,
+          [
+            ("1", 0, 0),  ("2", 1, 0),  ("3", 2, 0),  ("4", 3, 0),
+            ("5", 0, 1),  ("6", 1, 1),  ("7", 2, 1),  ("8", 3, 1),
+            ("9", 0, 2), ("10", 1, 2), ("11", 2, 2), ("12", 3, 2),
+            ]
+        )
+        layout16 = self.make_gridded_layoutstore("TouchMenu16",
+          3, 3,
+          [
+             ("1", 0, 0),  ("2", 1, 0),  ("3", 2, 0),  ("4", 3, 0),
+             ("5", 0, 1),  ("6", 1, 1),  ("7", 2, 1),  ("8", 3, 1),
+             ("9", 0, 2), ("10", 1, 2), ("11", 2, 2), ("12", 3, 2),
+            ("13", 0, 3), ("14", 1, 3), ("15", 2, 3), ("16", 3, 3),
+            ]
+        )
+        # The irregular layouts: 7, 13
+        """
+        |  1 2
+        | 3 4 5
+        |  6 7
+        """
+
+        def SYM (suffix):
+            return "{}{}".format(self.symprefix, suffix)
+        layout7 = self.make_layoutstore("TouchMenu07")
+        layout7.append(None, (SYM(1), SYM(1), "key", 2,0,4,4))
+        layout7.append(None, (SYM(2), SYM(2), "key", 6,0,4,4))
+        layout7.append(None, (SYM(3), SYM(3), "key", 0,4,4,4))
+        layout7.append(None, (SYM(4), SYM(4), "key", 4,4,4,4))
+        layout7.append(None, (SYM(5), SYM(5), "key", 8,4,4,4))
+        layout7.append(None, (SYM(6), SYM(6), "key", 2,8,4,4))
+        layout7.append(None, (SYM(7), SYM(7), "key", 6,8,4,4))
+
+        """
+        | 01 02 03 04
+        | 05       06
+        |     13
+        | 07       08
+        | 09 10 11 12
+        """
+        layout13 = self.make_layoutstore("TouchMenu13")
+        layout13.append(None, (SYM(1), SYM(1), "key", 0,0,3,3))
+        layout13.append(None, (SYM(2), SYM(2), "key", 3,0,3,3))
+        layout13.append(None, (SYM(3), SYM(3), "key", 6,0,3,3))
+        layout13.append(None, (SYM(4), SYM(4), "key", 9,0,3,3))
+
+        layout13.append(None, (SYM(5), SYM(5), "key", 0,3,3,3))
+        layout13.append(None, (SYM(6), SYM(6), "key", 9,3,3,3))
+
+        layout13.append(None, (SYM(7), SYM(7), "key", 0,6,3,3))
+        layout13.append(None, (SYM(8), SYM(8), "key", 9,6,3,3))
+
+        layout13.append(None, (SYM(9), SYM(9),  "key", 0,9,3,3))
+        layout13.append(None, (SYM(10), SYM(10), "key", 3,9,3,3))
+        layout13.append(None, (SYM(11), SYM(11), "key", 6,9,3,3))
+        layout13.append(None, (SYM(12), SYM(12), "key", 9,9,3,3))
+
+        layout13.append(None, (SYM(13), SYM(13), "key", 3,3,6,6))
+
+        for layout in [ layout2, layout4, layout7, layout9, layout12, layout13, layout16 ]:
+            self.append( (layout.name, layout) )
+        return
+
+    def _build_layout_radialmenu (self):
+        # 19 variants, for counts 1..20.
+        def SYM (suffix):
+            return "{}{}".format(self.symprefix, suffix)
+        def radialize (n, r=6):
+            for step in range(n):
+                angle = step * 2*math.pi / float(n)
+                theta = - math.pi / 2. + angle
+                x = r + (float(r) * math.cos(theta)) - .5
+                y = r + (float(r) * math.sin(theta)) + .5
+                yield (SYM(n), SYM(n), "key", x, y, 1, 1)
+        for variant in range(1,21):
+            layout = self.make_layoutstore("{}{:02d}".format("RadialMenu", variant))
+            for entry in radialize(variant, r=6):
+                layout.append(None, entry)
+            self.append( (layout.name, layout) )
+        return
+
+
+
+
 class HiaCluster (Gtk.Frame, HiaBindable):
     def __init__ (self, view, bindstore, hiasym, label=None):
         HiaBindable.__init__(self, view, bindstore, hiasym, label)
         Gtk.Button.__init__(self)
+        self.hiachildren = []   # List of nested HiaBindable
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()

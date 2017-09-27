@@ -24,6 +24,7 @@ class TestBindStore (skel.TestSkel):
         def on_bind_changed (widget, hiasym, newtitle, newcode):
             box.a = True
             box.v = (newtitle, newcode)
+            box.s = hiasym
         b.connect("bind-changed", on_bind_changed)
 
         def script():
@@ -33,15 +34,37 @@ class TestBindStore (skel.TestSkel):
             # set whole entry.
             b.set_bind(0, 0, 'K_a', 'wait'),
             yield 0.1
+
             # set entry field.
+            box.v = None
+            self.assertEqual(box.v, None)
             b.groups[0][0]['K_a'].cmdcode = 'wait 2'
-            self.assertEqual(box.v, ("wait", "wait 2"))
             yield 0.1
+            self.assertEqual(box.v, ("wait", "wait 2"))
+
+            # set row.
+            box.v = None
             l2 = hialayout.BindLayer(lambda k: None)
             l2['K_b'] = 'wait 0x66'
             b.groups[0].nlayers = 2
             b.groups[0][1] = l2
+            yield 0.1
             self.assertEqual(box.v, ("wait 0x66", "wait 0x66"))
+
+            # straight assignment
+            box.v = None
+            b.groups[0][0]['K_b'] = "wait b"
+            yield 0.1
+            self.assertEqual(box.v, ("wait b", "wait b"))
+            self.assertEqual(box.s, "K_b")
+
+            # via set_bind
+            box.v = None
+            b.set_bind(0, 0, 'K_b', 'wait bb')
+            yield 0.1
+            self.assertEqual(box.v, ("wait bb", "wait bb"))
+            self.assertEqual(box.s, "K_b")
+            self.assertEqual(b.groups[0][0]['K_b'][0], 'wait bb')
 
         self.runloop(script)
         self.assertNotEqual(box.a, 0)
