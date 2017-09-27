@@ -6,7 +6,7 @@ from __future__ import print_function, with_statement, unicode_literals
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GObject, GLib
+from gi.repository import Gtk, Gdk, GObject, GLib
 
 
 
@@ -245,20 +245,6 @@ class BindStore (GObject.GObject):
         except (AttributeError, IndexError):
             return None
 
-    def get_bind (self, groupid, layerid, hiasym):
-        lyr = self.get_layer(groupid, layerid)
-        if lyr is None: return None
-        val = lyr.get(hiasym, None)
-        return val
-
-    def set_bind (self, groupid, layerid, hiasym, hiaval, hiacmd=None):
-        cooked = None
-        if hiacmd is not None:
-            cooked = BindValue(hiaval, hiacmd)
-        else:
-            cooked = hiaval
-        self.groups[groupid][layerid][hiasym] = cooked
-
     def get_ngroups (self):
         return len(self.groups)
     def set_ngroups (self, n):
@@ -301,9 +287,306 @@ class BindStore (GObject.GObject):
             g.restore(pg)
         return self
 
+    def get_bind (self, groupid, layerid, hiasym):
+        """Main entry point: get binding for given group, layer, hiasym."""
+        lyr = self.get_layer(groupid, layerid)
+        if lyr is None: return None
+        val = lyr.get(hiasym, None)
+        return val
+
+    def set_bind (self, groupid, layerid, hiasym, hiaval, hiacmd=None):
+        """Main entry point: set binding for given grou, layer, hiasym:
+ set_bind(groupid, layerid, hiasym, instance_BindValue)
+ set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
+"""
+        cooked = None
+        if hiacmd is not None:
+            cooked = BindValue(hiaval, hiacmd)
+        else:
+            cooked = hiaval
+        self.groups[groupid][layerid][hiasym] = cooked
+
     __gsignals__ = {
         str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str, str, str) ),
     }
+
+
+
+
+
+################################
+# Human-Interface Atom widgets #
+################################
+# originally "keytops", but some devices don't have keys.
+# They are, nonetheless, elements Human-Computer Interface.
+
+class HiaView (GObject.GObject):  # HiaViewModel
+    """state information for binds views."""
+    def __init__ (self, bindstore=None):
+        GObject.GObject.__init__(self)
+        self.group = 0          # Active group
+        self.layer = 0          # Active layer
+        self.vislayers = []     # Visible layers (list of bool)
+        self.bindstore = bindstore
+        if self.bindstore is None:
+            self.bindstore = BindStore()
+
+    __gsignals__ = {
+        str("group-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
+        str("layer-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
+        str("vislayers-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        str("bindstore-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (object,)),
+    }
+
+
+class HiaDnd (object):
+    """Drag-and-Drop opcodes enumeration;
+overload the drag-drop 'info' field to as DnD opcodes."""
+    class DndOpcodeEnum (object):
+        _GENSYM = 1
+        def __init__ (self, name, val=None):
+            self.name = name
+            if val is None:
+                self.val = self.__class__._GENSYM
+                self.__class__._GENSYM += 1
+            else:
+                self.val = val
+        def get_name (self): return self.name
+        def get_val (self): return self.val
+        s = property(get_name)  # As string
+        i = property(get_val)   # As integer
+        d = property(get_val)   # As decimal
+        def __int__ (self): return self.val
+        def __str__ (self): return self.name
+        def __eq__ (self, other):
+            if type(other) == int: return other == self.val
+            try:
+                return other == self.val
+            except:
+                return (other is self)
+        def _dnd_target (self, target_bitflags): return Gtk.TargetEntry.new(str(self), target_bitflags, int(self))
+        def target_same_app (self): return self._dnd_target(Gtk.TargetFlags.SAME_APP)
+        def target_same_widget (self): return self._dnd_target(Gtk.TargetFlags.SAME_WIDGET)
+        def target_other_app (self): return self._dnd_target(Gtk.TargetFlags.OTHER_APP)
+        def target_other_widget (self): return self._dnd_target(Gtk.TargetFlags.OTHER_WIDGET)
+        def __repr__ (self): return "{}({!r},{!r})".format(self.__class__.__name__, self.name, self.val)
+
+    enum = DndOpcodeEnum
+    BIND = enum("bind", 1)
+    UNBIND = enum("unbind", 2)
+    SWAP = enum("swap", 3)
+    REORDER = enum("reorder", 11)
+
+
+class HiaBind (object):
+    """POD for bind values to show in HiaTops.
+"""
+    # cmdcode used as lookup within cmdpack.
+    def __init__ (self, redirects=0, cmdtitle=None, cmdcode=None):
+        self.redirects = redirects
+        self.cmdtitle = cmdtitle
+        self.cmdcode = cmdcode
+
+    def get_markup_str (self):
+        """Return string intended for display to user."""
+        dispval = self.cmdtitle
+        if self.cmdcode is not None:
+            dispval = self.cmdcode
+        return dispval
+
+
+class HiaBindable (GObject.GObject):
+    """Bindables store and respond to changes in BindStore.
+For HiaTops, affects bind value to display,
+For HiaCluster, affects what layout to use.
+"""
+    def __init__ (self, view, bindstore, hiasym, label=None):
+        GObject.GObject.__init__(self)
+        self.view = view
+        if bindstore is None:
+            self._bindstore = BindStore()
+        else:
+            self._bindstore = bindstore
+        self.hiasym = str(hiasym)
+        self.label = str(label if label is not None else self.hiasym)
+        class ui: pass   # Plain data.
+        self.ui = ui
+
+    def get_bindstore (self):
+        return self._bindstore
+    def set_bindstore (self, val):
+        if self._bindstore:
+            # TODO: Disconnect
+            pass
+        self._bindstore = val
+        self._bindstore.connect("bind-changed", self.on_bind_changed)
+
+    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+        pass
+    def on_group_changed (self, hiaview, newgrp):
+        pass
+    def on_layer_changed (self, hiaview, newlyr):
+        pass
+    def on_vislayers_changed (self, hiavia, vislayers):
+        pass
+
+    def get_bindview (self):
+        """Return list of HiaBind (one per layer)."""
+        retval = []
+        for lid in range(self.bindstore.nlayers):
+            grpid = view.group
+            lyrid = view.layer
+            bv = self.bindstore.get_bind(grpid, lyrid, self.hiasym)
+            hb = HiaBind(-1, bv.cmdtitle, bv.cmdcode)
+            retval.append(hb)
+        return retval
+
+
+class PlainData (object):
+    def __getattr__ (self, attr):
+        return self.__dict__[attr]
+    def __setattr__ (self, attr, val):
+        self.__dict__[attr] = val
+    def __delattr__ (self, attr):
+        del self.__dict__[attr]
+
+
+class HiaTop (Gtk.Button, HiaBindable):
+    """Generalization (i.e. not specific to keyboard) of keytop.
+    
+Visual:
++-----------
+| display_label
+|  ## spacer as needed ##
+| [ layer0 ]
+| [ layer1 ]
+| ...
++-----------
+    
+
+Drag-and-Drop
+* as source:
+  * to CmdPackView = erase bind
+  * to other HiaTop = swap bind
+  * to Layer Selector = swap bind across layer
+  * to Group Selector = swap bind across group
+* as destination:
+  * from CmdPackView = set/copy bind
+  * from other HiaTop = swap bind
+"""
+    def __init__ (self, view, bindstore, hiasym, label=None):
+        HiaBindable.__init__(self, view, bindstore, hiasym, label)
+        Gtk.Button.__init__(self)
+
+        self.binddisp = [
+            HiaBind(-1, "bind_0"),
+            HiaBind(-1, "bind_1"),
+            HiaBind(-1, "bind_2"),
+            HiaBind(-1, "crash_to_desktop"),
+        ]
+
+        self.setup_widgets()
+        self.setup_signals()
+        self.setup_dnd()
+
+    def setup_widgets (self):
+        self.ui.top = Gtk.VBox()
+        self.ui.lbl = Gtk.Label(label=self.label)
+        self.ui.spacer = Gtk.VBox()
+        self.ui.hrules = []
+        self.ui.bindrows = []
+        self.ui.layernums = []
+        self.ui.bindviews = []
+        self.ui.bindbufs = []
+
+        self.ui.top.pack_start(self.ui.lbl, False, False, 0)
+        self.ui.top.pack_start(self.ui.spacer, True, True, 0)
+
+        self.add(self.ui.top)
+
+        self.update_bindview()
+        self.ui.top.show_all()
+
+    def setup_signals (self):
+        pass
+
+    def update_bindview (self):
+        for bi in range(len(self.binddisp)):
+            bd = self.binddisp[bi]
+            if len(self.ui.bindrows) <= bi:
+                bb, bv = Gtk.TextBuffer(), Gtk.TextView()
+                markup = bd.get_markup_str()
+                bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+                bv.set_buffer(bb)
+                br = Gtk.HBox()
+                lyr = Gtk.Label(label="{}:".format(bi))
+                self.ui.bindrows.append(br)
+                self.ui.bindbufs.append(bb)
+                self.ui.bindviews.append(bv)
+                br.pack_start(lyr, False, False, 0)
+                br.pack_start(bv, True, True, 0)
+                hrule = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+                self.ui.hrules.append(hrule)
+                self.ui.top.pack_start(hrule, False, False, 0)
+                self.ui.top.pack_start(br, False, False, 0)
+                hrule.show()
+                br.show_all()
+            else:
+                bb = self.ui.bindbufs[bi]
+                bb.delete(bb.get_start_iter(), bb.get_end_iter())
+                markup = bd.get_markup_str()
+                bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+        for bi in range(len(self.binddisp), len(self.ui.bindrows)):
+            self.ui.hrules[bi].hide()
+            self.ui.bindrows[bi].hid_all()
+        return
+
+
+    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+        pass
+    def on_group_changed (self, hiaview, newgrp):
+        pass
+    def on_layer_changed (self, hiaview, newlyr):
+        pass
+    def on_vislayers_changed (self, hiavia, vislayers):
+        pass
+
+    def setup_dnd (self):
+        # DnD source: erase, swap.
+        drag_targets = [
+            HiaDnd.UNBIND.target_same_app(),
+            HiaDnd.SWAP.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, drag_targets, drag_actions)
+        # DnD destination: bind, swap.
+        drop_targets = [
+            HiaDnd.BIND.target_same_app(),
+            HiaDnd.SWAP.target_same_app(),
+            ]
+        drop_flags = Gtk.DestDefaults.DROP
+        drop_actions = Gdk.DragAction.COPY
+        self.drag_dest_set(drop_flags, drop_targets, drop_actions)
+
+
+
+class HiaCluster (Gtk.Frame, HiaBindable):
+    def __init__ (self, view, bindstore, hiasym, label=None):
+        HiaBindable.__init__(self, view, bindstore, hiasym, label)
+        Gtk.Button.__init__(self)
+        self.setup_widgets()
+        self.setup_signals()
+        self.setup_dnd()
+
+    def setup_widgets (self):
+        self.ui.labeling = Gtk.HBox()
+        self.ui.frame_menu = Gtk.Button("=")
+        self.ui.frame_label = Gtk.Label(label=self.label)
+        self.ui.labeling.pack_start(self.ui.frame_menu, False, False, 0)
+        self.ui.labeling.pack_start(self.ui.frame_label, False, False, 0)
+        self.set_label_widget(self.ui.labeling)
+        self.ui.top = Gtk.VBox()
+
 
 
 
