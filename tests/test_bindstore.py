@@ -9,7 +9,7 @@ import skel
 import hialayout
 
 
-class TestSkel (skel.TestSkel):
+class TestBindStore (skel.TestSkel):
     def setUp (self):
         return
 
