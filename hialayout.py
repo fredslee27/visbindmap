@@ -8,6 +8,8 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib
 
+import math
+
 import kbd_desc
 
 
@@ -507,6 +509,7 @@ Drag-and-Drop
     def setup_widgets (self):
         self.ui.top = Gtk.VBox()
         self.ui.lbl = Gtk.Label(label=self.label)
+        self.ui.lbl.set_halign(Gtk.Align.START)
         self.ui.spacer = Gtk.VBox()
         self.ui.hrules = []
         self.ui.bindrows = []
@@ -1003,7 +1006,7 @@ class HiaSurface (Gtk.Grid):
         self.set_column_homogeneous(True)
         self.view = view
         self._layout = None
-        self.children = []
+        self.children = {}   # map hiasym to hiatop
 
     def get_layout (self):
         return self._layout
@@ -1017,7 +1020,7 @@ class HiaSurface (Gtk.Grid):
         # TODO: disconnect signals.
         for ch in chlist:
             self.remove(ch)
-        self.children = []
+        self.children = {}
 
     def make_hiawidget_cluster (self, hiasym, hialabel):
         retval = None
@@ -1038,14 +1041,23 @@ class HiaSurface (Gtk.Grid):
 
     def rebuild_surface (self):
         self.disown_children()
+        if not self.layout:
+            return
+        max_row = 0
         for rowentry in self.layout:
             intent = (str,str,str, int,int,int,int)
             #(hiasym, lbl, prototype, x, y, w, h) = rowentry
             (hiasym, lbl, prototype, x, y, w, h) = [ intended(rawval) for (intended,rawval) in zip(intent,rowentry) ]
             hw = self.make_hiawidget(hiasym, lbl, prototype)
-            self.children.append(hw)
+            #self.children.append(hw)
+            self.children[hiasym] = hw
             if hw:
                 self.attach(hw, x, y, w, h)
+            if y > max_row:
+                max_row = y
+        for y in range(max_row):
+            if not self.get_child_at(0, y):
+                self.attach(Gtk.Label(), 0, y, 1, 1)
         self.show()
         return
 
@@ -1056,21 +1068,39 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 """
     def __init__ (self, view, hiasym, label=None):
         HiaBindable.__init__(self, view, hiasym, label)
-        Gtk.Button.__init__(self)
+        Gtk.Frame.__init__(self)
         self.hiachildren = []   # List of nested HiaBindable
+        self._clustered_layouts = ClusteredLayouts(self.hiasym)
+        bindlist = self.get_bindlist()
+        layoutname = bindlist[self.view.layer].cmdtitle
+        try:
+            self._layout = self._clustered_layouts[layoutname][1]
+        except TypeError:
+            self._layout = None
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
 
     def setup_widgets (self):
+        self.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
         self.ui.frame_title = Gtk.HBox()
-        self.ui.frame_menu = Gtk.Button("=")
+        self.ui.frame_menu = Gtk.Button(label="=")
         self.ui.frame_label = Gtk.Label(label=self.label)
         self.ui.frame_title.pack_start(self.ui.frame_menu, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
         self.set_label_widget(self.ui.frame_title)
+        #self.ui.frame_title.show_all()
 
-        self.ui.top = Gtk.VBox()
+        self.ui.planar = HiaSurface(self.view)
+        self.ui.planar.layout = self._layout
+        self.ui.tabular = None
+
+        self.ui.top = Gtk.Stack()
+        self.ui.top.add_named(self.ui.planar, "planar")
+
+        self.add(self.ui.top)
+
+        self.show_all()
 
     def setup_signals (self):
         return
@@ -1078,7 +1108,20 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def setup_dnd (self):
         return
 
+    def get_layout (self):
+        return self._layout
+    def set_layout (self, val):
+        self._layout = val
+        self.ui.planar.layout = val
+    layout = property(get_layout, set_layout)
+
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+        layoutname = newtitle
+        try:
+            layoutinfo = self._clustered_layouts[layoutname][1]
+        except TypeError:
+            layoutinfo = None
+        self.layout = layoutinfo
         return
     def on_group_changed (self, hiaview, newgrp):
         return

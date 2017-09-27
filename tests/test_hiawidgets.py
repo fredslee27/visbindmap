@@ -22,19 +22,32 @@ class TestHiaWidgets (skel.TestSkel):
         if __name__ == "__main__":
             unittest.main()
 
+    def _build_sample_binds0 (self, bindstore):
+        bindstore.clear()
+        bindstore.nlayers = 4
+        bindstore.set_bind(0, 0, 'K_ESC', 'quit')
+        return bindstore
+
     def test_hiatop (self):
-        hiatop = hialayout.HiaTop(self.hiaview, self.bindstore, "K_ESC")
-        self.w.add(hiatop)
-        self.bindstore.nlayers = 4
         self.hiaview.vislayers = [ True, True, True, True ]
+        self._build_sample_binds0(self.hiaview.bindstore)
+        hiatop = hialayout.HiaTop(self.hiaview, "K_ESC")
+        self.w.add(hiatop)
+        #self.bindstore.nlayers = 4
 
         def script ():
             self.w.show_all()
             yield 1
+
             self.bindstore.set_bind(0,0,'K_ESC','crash-0')
             v = hiatop.binddisp[0].cmdtitle
             self.assertEqual(v, "crash-0")
             yield 1
+
+            self.bindstore.set_bind(0,0,'K_ESC','crash--0')
+            v = hiatop.binddisp[0].cmdtitle
+            self.assertEqual(v, "crash--0")
+            yield 0.5
 
         self.runloop(script)
         self.w.destroy()
@@ -80,10 +93,35 @@ class TestHiaWidgets (skel.TestSkel):
 
         def script ():
             self.w.show_all()
+            yield 1
+
+            ch = hiasurface.children['KP_8']
+            bt = ch
+            v = bt.binddisp[0].cmdtitle
+            self.assertEqual(v, "Up")
+            yield 2
+
+        self.runloop(script)
+        self.w.destroy()
+
+    def test_hiacluster (self):
+        layouts = hialayout.HiaLayouts()
+        layouts.build_from_legacy_store()
+        self._build_sample_binds1(self.hiaview.bindstore)
+
+        hiacluster = hialayout.HiaCluster(self.hiaview, "CL")
+        #hiacluster.set_layout(layouts['en_US (pc104)'][1])
+        self.bindstore.set_bind(0,0,'CL','OneButton')
+
+        self.w.add(hiacluster)
+
+        def script ():
+            self.w.show_all()
             yield 5
 
         self.runloop(script)
         self.w.destroy()
+
 
 
 if __name__ == '__main__':
