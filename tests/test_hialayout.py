@@ -46,6 +46,92 @@ class TestSkel (skel.TestSkel):
         self.runloop(script)
         self.assertNotEqual(box.a, 0)
 
+    def test_reprs (self):
+        # Test repr() and serialization.
+        v = hialayout.BindValue("nop", "nop")
+        r = repr(v)
+        self.assertEqual(r, "BindValue(cmdtitle='nop', cmdcode='nop')")
+        s = v.snapshot()
+        expected = {
+            "__class__": hialayout.BindValue.__name__,
+            "cmdtitle": "nop",
+            "cmdcode": "nop" }
+        self.assertEqual(s, expected)
+
+        l = hialayout.BindLayer(lambda k: None)
+        l['K_b'] = hialayout.BindValue(lambda: None, 'No-op', 'nop')
+        r = repr(l)
+        self.assertEqual(r, "BindLayer(values={'K_b': BindValue(cmdtitle='No-op', cmdcode='nop')})")
+        s = l.snapshot()
+        expected = {
+            "__class__": hialayout.BindLayer.__name__,
+            "dict": {
+                'K_b': {
+                    "__class__": hialayout.BindValue.__name__,
+                    "cmdtitle": "No-op",
+                    "cmdcode": "nop" 
+                    },
+                },
+            }
+        self.assertEqual(s, expected)
+
+        g = hialayout.BindGroup(lambda l,k: None)
+        expected = {
+            "__class__": hialayout.BindGroup.__name__,
+            "list": [
+                { "__class__": hialayout.BindLayer.__name__,
+                    "dict": {},
+                    },
+                ]
+            }
+        s = g.snapshot()
+        self.assertEqual(s, expected)
+        l = g[0]
+        l['K_ESC'] = hialayout.BindValue(lambda: None, 'Quit', 'quit')
+        expected = {
+            "__class__": hialayout.BindGroup.__name__,
+            "list": [
+                { "__class__": hialayout.BindLayer.__name__,
+                    "dict": {
+                        'K_ESC': {
+                            "__class__": hialayout.BindValue.__name__,
+                            "cmdtitle": "Quit",
+                            "cmdcode": "quit",
+                            },
+                        },
+                    },
+                ]
+            }
+        s = g.snapshot()
+        self.assertEqual(s, expected)
+
+    def test_restore (self):
+        # Test restore BindStore from serialization.
+        s = {
+            "__class__": hialayout.BindStore.__name__,
+            "groups": [
+                {
+                    "__class__": hialayout.BindGroup.__name__,
+                    "list": [
+                        {
+                            "__class__": hialayout.BindLayer.__name__,
+                            "dict": {
+                                'K_ESC': {
+                                    "__class__": hialayout.BindValue.__name__,
+                                    "cmdtitle": "Immediate Quit",
+                                    "cmdcode": "quit",
+                                    },
+                                },
+                            },
+                        ]
+                    },
+                ]
+            }
+        b = hialayout.BindStore()
+        b.restore(s)
+        v = b.get_bind(0,0,'K_ESC')
+        self.assertEqual(v.cmdtitle, "Immediate Quit")
+
     @staticmethod
     def main ():
         if __name__ == "__main__":

@@ -49,6 +49,24 @@ class BindValue (object):
                     self.set_cmdcode ]
         defer[idx](val)
 
+    def snapshot (self):
+        retval = { "__class__": self.__class__.__name__ }
+        retval['cmdtitle'] = self.cmdtitle
+        retval['cmdcode'] = self.cmdcode
+        return retval
+
+    def restore (self, primitives):
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        self._cmdtitle = primitives['cmdtitle']
+        self._cmdcode = primitives['cmdcode']
+        self.notify_observers()
+        return self
+
+    def notify_observers (self):
+        for o in self.observers:
+            o()
+
     def __repr__ (self):
         return "{}(cmdtitle={!r}, cmdcode={!r})".format(
             self.__class__.__name__,
@@ -89,9 +107,38 @@ class BindLayer (dict):
                 cooked = BindValue(cb, valstr, valstr)
         dict.__setitem__(self, key, cooked)
         self.observe_bindvalue(key)
+
     def observe_bindvalue (self, hiasym):
-        for x in self.observers:
-            x(hiasym)
+        self.notify_observers(hiasym)
+
+    def notify_observers (self, hiasym):
+        for o in self.observers:
+            o(hiasym)
+
+    def snapshot (self):
+        retval = { "__class__": self.__class__.__name__ }
+        retval['dict'] = dict()
+        for hiasym in self:
+            retval['dict'][hiasym] = self[hiasym].snapshot()
+        return retval
+
+    def restore (self, primitives):
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        dict.clear(self)
+        for k in primitives['dict']:
+            cb = lambda: self.observe_bindvalue(k)
+            pd = primitives['dict'][k]
+            v = BindValue(cb, None, None)
+            self[k] = v
+            self[k].restore(pd)
+        return self
+
+    def __repr__ (self):
+        return "{}(values={})".format(
+            self.__class__.__name__,
+            dict.__repr__(self))
+
 
 class BindGroup (list):
     """
@@ -138,8 +185,31 @@ class BindGroup (list):
             local[hiasym] = v
 
     def observe_layerbind (self, layernum, hiasym):
-        for x in self.observers:
-            x(layernum, hiasym)
+        self.notify_observers(layernum, hiasym)
+
+    def notify_observers (self, layernum, hiasym):
+        for o in self.observers:
+            o(layernum, hiasym)
+
+    def snapshot (self):
+        retval = { "__class__": self.__class__.__name__ }
+        retval['list'] = [None]*len(self)
+        for i in range(len(self)):
+            retval['list'][i] = self[i].snapshot()
+        return retval
+
+    def restore (self, primitives):
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        while len(self):
+            del self[0]
+        for i in range(len(primitives['list'])):
+            pl = primitives['list'][i]
+            cb = lambda hiasym: self.observe_layerbind(i, hiasym)
+            l = BindLayer(cb)
+            list.append(self, l)
+            l.restore(pl)
+        return self
 
 
 class BindStore (GObject.GObject):
@@ -211,6 +281,25 @@ class BindStore (GObject.GObject):
 
     def resolve_bindview (self, hiasym, groupid=0):
         return
+
+    def snapshot (self):
+        """Serialize to Python primitives (toplevel dict)."""
+        retval = { "__class__": self.__class__.__name__ }
+        retval['groups'] = [None]*len(self.groups)
+        for i in range(len(self.groups)):
+            retval['groups'][i] = self.groups[i].snapshot()
+
+    def restore (self, primitives):
+        """Restore BindStore from Python primitives (serialized)."""
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        self.groups = []
+        for i in range(len(primitives['groups'])):
+            pg = primitives['groups'][i]
+            g = BindGroup(self.make_cb(i))
+            self.groups.append(g)
+            g.restore(pg)
+        return self
 
     __gsignals__ = {
         str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str, str, str) ),
