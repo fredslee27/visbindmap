@@ -171,7 +171,8 @@ class BindGroup (list):
         return len(self)
     def set_nlayers (self, n):
         while len(self) < n:
-            cb = lambda hiasym: self.observe_layerbind(len(self), hiasym)
+            i = len(self)
+            cb = lambda hiasym: self.observe_layerbind(i, hiasym)
             self.append(BindLayer(cb))
     nlayers = property(get_nlayers, set_nlayers)
 
@@ -460,22 +461,22 @@ For HiaCluster, affects what layout to use.
     def __init__ (self, view, hiasym, label=None):
         GObject.GObject.__init__(self)
         self.view = view
-        self._bindstore = None
         bindstore = view.bindstore if view else BindStore()
-        self.set_bindstore(bindstore)
+        #self.set_bindstore(bindstore)
         self.hiasym = str(hiasym)
         self.label = str(label if label is not None else self.hiasym)
         class ui: pass   # Plain data.
         self.ui = ui
 
     def get_bindstore (self):
-        return self._bindstore
+        return self.view.bindstore
     def set_bindstore (self, val):
-        if self._bindstore:
-            # TODO: Disconnect
-            pass
-        self._bindstore = val
-        self._bindstore.connect("bind-changed", self.on_bind_changed)
+#        if self._bindstore:
+#            # TODO: Disconnect
+#            pass
+#        self._bindstore = val
+#        self._bindstore.connect("bind-changed", self.on_bind_changed)
+        pass
     bindstore = property(get_bindstore, set_bindstore)
 
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
@@ -561,10 +562,14 @@ Drag-and-Drop
         self.add(self.ui.top)
 
         self.update_bindview()
-        self.ui.top.show_all()
+        self.ui.lbl.show()
+        self.ui.spacer.show()
+        self.ui.top.show()
 
     def setup_signals (self):
-        pass
+        self.view.connect("group-changed", self.on_group_changed)
+        self.view.connect("layer-changed", self.on_layer_changed)
+        self.view.connect("vislayers-changed", self.on_vislayers_changed)
 
     def update_bindview (self, binddisp=None):
         if binddisp is None:
@@ -582,20 +587,34 @@ Drag-and-Drop
                 self.ui.bindrows.append(br)
                 self.ui.bindbufs.append(bb)
                 self.ui.bindviews.append(bv)
+                self.ui.layernums.append(lyr)
                 br.pack_start(lyr, False, False, 0)
                 br.pack_start(bv, True, True, 0)
                 hrule = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
                 self.ui.hrules.append(hrule)
                 self.ui.top.pack_start(hrule, False, False, 0)
                 self.ui.top.pack_start(br, False, False, 0)
-                hrule.show()
-                br.show_all()
+                if self.view.vislayers[bi]:
+                    hrule.show()
+                    br.show_all()
             else:
                 # Update extant row.
+                hr = self.ui.hrules[bi]
+                br = self.ui.bindrows[bi]
+                bv = self.ui.bindviews[bi]
                 bb = self.ui.bindbufs[bi]
+                lyr = self.ui.layernums[bi]
                 bb.delete(bb.get_start_iter(), bb.get_end_iter())
                 markup = bd.get_markup_str()
                 bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+                if self.view.vislayers[bi]:
+                    br.show()
+                    bv.show()
+                    lyr.show()
+                    hr.show()
+                else:
+                    br.hide()
+                    hr.hide()
             # Sensitize to active layer.
             #self.ui.bindviews[bi].set_sensitive(bi == self.view.layer)
 #            bv = self.ui.bindviews[bi]
@@ -624,9 +643,11 @@ Drag-and-Drop
         bindlist = self.get_bindlist()
         self.update_bindlist(bindlist)
     def on_layer_changed (self, hiaview, newlyr):
-        self.update_bindview()
+        bindlist = self.get_bindlist()
+        self.update_bindlist(bindlist)
     def on_vislayers_changed (self, hiavia, vislayers):
-        self.update_bindlist()
+        bindlist = self.get_bindlist()
+        self.update_bindlist(bindlist)
 
     def setup_dnd (self):
         # DnD source: erase, swap.
@@ -1249,8 +1270,11 @@ Row of RadioButton (one-of-many pressed)
 class HiaSelectorGroup (HiaSelector):
     EXPAND_MEMBERS = False
     PADDING = 16
-    def __init__ (self, view, names_iterable):
-        HiaSelector.__init__(self, "Mode", view, names_iterable)
+    def __init__ (self, view, names_iterable=None):
+        if names_iterable is None:
+            names_iterable = []
+        adjusted = [ "GLOBAL" ] + [ x for x in names_iterable ]
+        HiaSelector.__init__(self, "Mode", view, adjusted)
     def on_button_clicked (self, w, ofs=None):
         if w.get_active():
             self.view.group = int(ofs)
@@ -1259,7 +1283,9 @@ class HiaSelectorGroup (HiaSelector):
 
 class HiaSelectorLayer (HiaSelector):
     EXPAND_MEMBERS = True
-    def __init__ (self, view, names_iterable):
+    def __init__ (self, view, names_iterable=None):
+        if names_iterable is None:
+            names_iterable = [ 'base' ]
         HiaSelector.__init__(self, "Layer", view, names_iterable)
     def on_button_clicked (self, w, ofs=None):
         if w.get_active():
@@ -1310,6 +1336,53 @@ class HiaSelectorDevice (Gtk.HBox):
         layoutname = self._model[ofs][0]
         #layoutinfo = self.layouts[layoutname]
         self.view.device = layoutname
+
+
+
+###################
+# Aggregated View #
+###################
+
+class HiaPicker (Gtk.VBox):
+    def __init__ (self, view, layouts):
+        Gtk.VBox.__init__(self)
+        self.view = view
+        self.layouts = layouts
+        self.setup_widgets()
+        self.setup_signals()
+
+    def setup_widgets (self):
+        class ui: pass
+        self.ui = ui
+
+        self.ui.sel_device = HiaSelectorDevice(self.view, self.layouts)
+        self.ui.sel_group = HiaSelectorGroup(self.view, None)
+        self.ui.sel_layer = HiaSelectorLayer(self.view, None)
+        self.ui.sel_bind = HiaSurface(self.view)
+
+        self.ui.sel_device.show_all()
+        self.ui.sel_group.show_all()
+        self.ui.sel_layer.show_all()
+        self.ui.sel_bind.show()
+
+        self.pack_start(self.ui.sel_device, False, False, 0)
+        self.pack_start(self.ui.sel_group, False, False, 0)
+        self.pack_start(self.ui.sel_layer, False, False, 0)
+        self.pack_start(self.ui.sel_bind, False, False, 0)
+
+        self.show()
+        return
+
+    def setup_signals (self):
+        self.view.connect("device-changed", self.on_device_changed)
+        return
+
+    def on_device_changed (self, w, newdev):
+        layoutinfo = self.layouts[newdev]
+        layoutname, layoutdata = layoutinfo
+        self.ui.sel_bind.set_layout(layoutdata)
+        return
+
 
 
 
