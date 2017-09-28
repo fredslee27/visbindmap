@@ -261,6 +261,7 @@ class BindStore (GObject.GObject):
             g = BindGroup(cb)
             g.set_nlayers(nlyr)
             self.groups.append(g)
+        self.emit("ngroups-changed", n)
     ngroups = property(get_ngroups, set_ngroups)
 
     # This code section assumes all layers are the same size.
@@ -270,6 +271,8 @@ class BindStore (GObject.GObject):
     def set_nlayers (self, n):
         for g in self.groups:
             g.set_nlayers(n)
+        # TODO: should also emit when invoking BindLayer.set_nlayers()
+        self.emit("nlayers-changed", 0, n)
     nlayers = property(get_nlayers, set_nlayers)
 
     def resolve_bindview (self, hiasym, groupid=0):
@@ -308,19 +311,29 @@ class BindStore (GObject.GObject):
         return val
 
     def set_bind (self, groupid, layerid, hiasym, hiaval, hiacmd=None):
-        """Main entry point: set binding for given grou, layer, hiasym:
+        """Main entry point: set binding for given group, layer, hiasym:
  set_bind(groupid, layerid, hiasym, instance_BindValue)
  set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
+ set_bind(groupid, layerid, hiasym, cmdtitle)
 """
         cooked = None
         if hiacmd is not None:
             cooked = BindValue(hiaval, hiacmd)
         else:
-            cooked = hiaval
+            try:
+                hiaval.cmdtitle, hiaval.cmdvalue  # quack-quack
+                cooked = hiaval
+            except AttributeError:
+                cooked = BindValue(hiaval, hiaval)
         self.groups[groupid][layerid][hiasym] = cooked
 
     __gsignals__ = {
+        # (hiasym, newtitle, newcode)
         str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str, str, str) ),
+        # (ngroups)
+        str("ngroups-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
+        # (groupid, nlayers)
+        str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
     }
 
 
@@ -337,13 +350,19 @@ class HiaView (GObject.GObject):  # HiaViewModel
     """state information for binds views."""
     def __init__ (self, bindstore=None):
         GObject.GObject.__init__(self)
-        self._device = None     # Active device (layout)
-        self._group = 0         # Active group
-        self._layer = 0         # Active layer
-        self._vislayers = []    # Visible layers (list of bool)
+        self._device = None         # Active device id (layout)
+        self._group = 0             # Active group
+        self._layer = 0             # Active layer
+        self._vislayers = [True]    # Visible layers (list of bool)
+
+        n = bindstore.nlayers
+        while len(self._vislayers) < n:
+            self._vislayers.append(False)
+
         self._bindstore = bindstore
         if self._bindstore is None:
             self._bindstore = BindStore()
+        self._bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
 
     def get_device (self): return self._device
     def set_device (self, val):
@@ -365,14 +384,28 @@ class HiaView (GObject.GObject):  # HiaViewModel
 
     def get_vislayers (self): return self._vislayers
     def set_vislayers (self, val_iterable):
-        if len(val_iterable) < len(self._vislayers):
-            self._vislayers = self._vislayers[:len(val_iterable)]
-        elif len(val_iterable) > len(self._vislayers):
-            delta = len(val_iterable) - len(self._vislayers)
-            self._vislayers.extend([False]*delta)
-        for i in range(len(val_iterable)):
-            self._vislayers[i] = val_iterable[i]
+        resize = 1
+        try:
+            iter(val_iterable)
+            # is iterable.
+            resize = len(val_iterable)
+        except:
+            # not iterable, expect int.
+            resize = int(val_iterable)
+        if len(self.vislayers) < resize:
+            delta = resize - len(self.vislayers)
+            self.vislayers.extend([False] * delta)
+        if len(self.vislayers) > resize:
+            del self.vislayers[resize:]
+        try:
+            # Try copy.
+            self.vislayers[:] = val_iterable[:]
+        except:
+            # Nothing to copy, keep to simple resize.
+            pass
+        # use copy of list to suppress back-propagation of mutations.
         self.emit("vislayers-changed", self._vislayers[:])
+
     vislayers = property(get_vislayers, set_vislayers)
 
     def get_bindstore (self): return self._bindstore
@@ -380,6 +413,17 @@ class HiaView (GObject.GObject):  # HiaViewModel
         self._bindstore = val
         self.emit("bindstore-changed", val)
     bindstore = property(get_bindstore, set_bindstore)
+
+    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
+        # Auto-resize vislayers to new number of layers.
+        vislayers = self.vislayers[:]
+        if len(vislayers) < nlayers:
+            delta = nlayers - len(vislayers)
+            vislayers.extend([False] * delta)
+        if len(vislayers) > nlayers:
+            vislayers = vislayers[:nlayers]
+        self.set_vislayers(vislayers)
+        return
 
     __gsignals__ = {
         str("device-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str,)),
@@ -430,7 +474,7 @@ overload the drag-drop 'info' field to as DnD opcodes."""
 
 
 class HiaBind (object):
-    """POD for bind values to show in HiaTops.
+    """POD for bind values to show in HiaBindable.
 """
     # cmdcode used as lookup within cmdpack.
     def __init__ (self, redirects=0, cmdtitle=None, cmdcode=None):
@@ -460,13 +504,23 @@ For HiaCluster, affects what layout to use.
 """
     def __init__ (self, view, hiasym, label=None):
         GObject.GObject.__init__(self)
-        self.view = view
-        bindstore = view.bindstore if view else BindStore()
+        #self._view = view
+        #bindstore = view.bindstore if view else BindStore()
+        self.set_view(view)
         #self.set_bindstore(bindstore)
         self.hiasym = str(hiasym)
         self.label = str(label if label is not None else self.hiasym)
         class ui: pass   # Plain data.
         self.ui = ui
+
+    def get_view (self):
+        return self._view
+    def set_view (self, val):
+        self._view = val
+        bindstore = self._view.bindstore
+        bindstore.connect("bind-changed", self.on_bind_changed)
+        self._view.connect("bindstore-changed", self.on_bindstore_changed)
+    view = property(get_view, set_view)
 
     def get_bindstore (self):
         return self.view.bindstore
@@ -479,6 +533,8 @@ For HiaCluster, affects what layout to use.
         pass
     bindstore = property(get_bindstore, set_bindstore)
 
+    def on_bindstore_changed (self, view, bindstore):
+        bindstore.connect("bind-changed", self.on_bind_changed)
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         pass
     def on_group_changed (self, hiaview, newgrp):
@@ -536,6 +592,7 @@ Drag-and-Drop
     def __init__ (self, view, hiasym, label=None):
         HiaBindable.__init__(self, view, hiasym, label)
         Gtk.Button.__init__(self)
+        self.set_property("no-show-all", True)
 
         self.binddisp = [ HiaBind(-1, ""), ]
         if self.bindstore:
@@ -565,6 +622,7 @@ Drag-and-Drop
         self.ui.lbl.show()
         self.ui.spacer.show()
         self.ui.top.show()
+        self.show()
 
     def setup_signals (self):
         self.view.connect("group-changed", self.on_group_changed)
@@ -1202,7 +1260,7 @@ Row of RadioButton (one-of-many pressed)
     EXPAND_MEMBERS = False
     PADDING = 0
     def __init__ (self, title, view, names_iterable):
-        Gtk.HBox.__init__(self)
+        Gtk.Frame.__init__(self)
         self.view = view
         self._title = title
         self._namelist = Gtk.ListStore(str)
@@ -1298,7 +1356,7 @@ class HiaSelectorDevice (Gtk.HBox):
     def __init__ (self, view, layouts):
         Gtk.HBox.__init__(self)
         self.view = view
-        self.layouts = layouts
+        self._layouts = layouts
         self._model = Gtk.ListStore(str)
         layoutnames = sorted(self.layouts.keys())
         for i in range(len(layoutnames)):
@@ -1331,11 +1389,337 @@ class HiaSelectorDevice (Gtk.HBox):
     def setup_signals (self):
         self.ui.dropbox.connect("changed", self.on_selection_changed)
 
+    def get_layouts (self):
+        return self._layouts
+    def set_layouts (self, val):
+        self._layouts = val
+        try:
+            self.ui.dropbox.set_model(val)
+        except AttributeError:
+            pass
+    layouts = property(get_layouts, set_layouts)
+
     def on_selection_changed (self, w):
         ofs = w.get_active()
         layoutname = self._model[ofs][0]
         #layoutinfo = self.layouts[layoutname]
         self.view.device = layoutname
+
+
+
+########################
+## Command Set Source ##
+########################
+
+class CommandPackStore (Gtk.TreeStore):
+    def __init__ (self, packname=None, cmd_iterables=None):
+        # ( cmd_id_number, cmd_name, display_text, tooltip_markup )
+        Gtk.TreeStore.__init__(self, int, str, str, str)
+        self._cursor = None
+        self.uri = None             # Original source URI, if applicable.
+        self.modelist = []          # List of names for modes/groups.
+        self.packname = packname    # Name of pack, used in window title.
+        # Default initial: unbind
+        Gtk.TreeStore.append(self, None, (0, "", "(unbind)", ""))
+
+    def begin_group (self, entry):
+        """Serial creation -- create a nested grouping."""
+        rowdata = entry
+        # expect type(entyr) == tuple
+        if not isinstance(entry, tuple):
+            # Assume type(entry)==str; convert to expected tuple.
+            rowdata = (-1, "", entry, "")
+        cursor = Gtk.TreeStore.append(self, self._cursor, rowdata)
+        self._cursor = cursor
+
+    def end_group (self):
+        """Serial creation -- end of a nested grouping; continue more adds with the parent."""
+        if self._cursor:
+            self._cursor = self.iter_parent(self._cursor)
+        return
+
+    def append (self, entry, *more):
+        """Serial creation -- add entry at cursor."""
+        if isinstance(entry, tuple):
+            return Gtk.TreeStore.append(self, self._cursor, entry)
+        else:
+            # Assume tuple elements passed in as the arguments.
+            #return Gtk.TreeStore.append(self, self._cursor, (entry,)+more)
+            return Gtk.TreeStore.append(self, entry, *more)
+
+    def _restore_tree (self, cmds_iterable):
+        tupleiter = cmds_iterable.__iter__()
+        treeiter = self.get_iter_root()
+        stack = []  # recurse stack: element=(tuple_iterator, tree_iterator)
+        while stack or tupleiter:
+            try:
+                entry = tupleiter.next()
+            except StopIteration:
+                # No more tuples, try to restore from stack.
+                if stack:
+                    tupleiter, treeiter = stack[-1]
+                    del stack[-1]
+                    continue
+                else:
+                    # Stack also empty; terminate loop.
+                    break
+            rowtuple, subtree = entry
+            rowiter = self.append(treeiter, rowtuple)
+            if subtree:
+                stack.append( (tupleiter, treeiter) )
+                treeiter = rowiter
+                tupleiter = subtree.__iter__()
+
+    def restore (self, primitives):
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        self.packname = primitives['packname']
+        cmds_iterable = primitives['cmds_iterable']
+        self._restore_tree(cmds_iterable)
+
+    def _snapshot_tree (self, treestore):
+        retval = []
+        stack = []
+        treeiter = treestore.get_iter_first()
+        while stack or treeiter:
+            subtree = None
+            if not treeiter:
+                # end of (sub)list, resume from stack.
+                subtree = retval
+                treeiter, retval = stack[-1]
+                del stack[-1]
+            elif treestore.iter_has_child(treeiter):
+                # save state, recurse.
+                stack.append( (treeiter, retval) )
+                retval = []
+                treeiter = treestore.iter_children(treeiter)
+                #continue
+
+            rowtuple = tuple(self[self.get_path(treeiter)])
+            entry = (rowtuple, subtree)
+            retval.append(entry)
+            treeiter = self.iter_next(treeiter)
+        return retval
+
+    def snapshot (self):
+        retval = { "__class__": self.__class__.__name__ }
+        retval['packname'] = self.packname
+        retval['cmds_iterable'] = self._snapshot_tree(self)
+        return retval
+
+    def __repr__ (self):
+        return "{}(packname={!r}, cmds_iterable={!r})".format(
+            self.__class__.__name__,
+            self.packname,
+            self._snapshot_tree(self))
+
+
+#
+# Subclasses should implement functions:
+#  @staticmethod is_acceptable(uri) 
+#  build(self)
+# 
+# Use case:
+#  CommandPackFeed.from_uri("file:///path/to/command/pack.csv")
+#  => searches REGISRY for an instance where is_acceptable(uri) returns true
+#  => instantiates that subclass with the specified URI
+#  => invokes build() to populate instance.cmdpack, instance.modelist, instance.packname
+#  
+# Implementation case:
+#  Subclass CommandPackFeed
+#  Decorate with @CommandPackFeed.register to automagically register with base class/factory method.
+#  Implement function @staticmethod is_acceptable(uri), returns bool.
+#  Implement build(), guided with self._path, to populate self._cmdpack
+class CommandPackFeed (object):
+    """Base class for command pack source."""
+    REGISTRY = {}   # class-scope, registry of specific command pack feeds.
+    def __init__ (self, path):
+        self._path = path       # Path/URI for command pack feed.
+        self._cmdpack = None    # Instance of CommandPackStore made from URI.
+        self._modelist = None   # GtkListStore: list of names for modes/groups.
+        self._packname = None   # Name of the pack feed, used in window title.
+
+    @staticmethod
+    def is_acceptable (uri):
+        raise NotImplementedError("Must implement method is_acceptable(uri)")
+        return False
+
+    def read (self):
+        """Override in subclass.  Generate CommandPackStore from contents of URI.
+Returns CommandPackStore instance.
+"""
+        return CommandPackStore("")
+
+    @staticmethod
+    def register (classobj):
+        """Class scope, register specific command pack feed to be used from factory function.
+Subclasses define @staticmethod is_acceptable(uri) if it understands URI.
+Usable as a decorator to automagically register subclasses:
+
+@CommandPackFeed.register
+class CommandPackFeed_custom01 (CommandPackFeed):
+  @staticmethod
+  def is_acceptable (uri):
+    ...
+  def build (self):
+    # uri is stored as self._path from constructor.
+    ...
+"""
+        if not classobj in CommandPackFeed.REGISTRY:  # Do not overwite
+            CommandPackFeed.REGISTRY[classobj] = classobj
+        return classobj
+    @staticmethod
+    def open (uri):
+        """Main factory function. Given a URI, automagically find subclass that can handle the URI, ready to create CommandPackStore (call read())."""
+        for packtype in CommandPackFeed.REGISTRY:
+            factory = packtype
+            if factory.is_acceptable(uri):
+                inst = factory(uri)
+                return inst
+        raise NameError("No factory for command pack source {!r}".format(uri))
+
+# subclasses of CommandPackFeed can be decorated with CommandPackFeed.register to automagically register with the base class.
+@CommandPackFeed.register
+class CommandPackFeed_builtin (CommandPackFeed):
+    """Builtin/hard-coded CommandPackFeed."""
+    @staticmethod
+    def is_acceptable (uri):
+        # URI of None yields the hard-coded command pack feed.
+        return (uri is None)
+
+    def read (self):
+        cmdpack = CommandPackStore("(builtin)")
+        cmdpack._uri = self._path
+
+        modelist = Gtk.ListStore(str,str)
+        modelist.append( ("Global", None) )
+        modelist.append( ("Menu", "Global") )
+        modelist.append( ("Game", "Global") )
+        cmdpack._modelist = modelist
+
+        cmdid, grpid = 1, 1
+
+        grp = cmdpack.append(None, (grpid, "", "Shifter", "") ); grpid += 1
+        cmdpack.append(grp, (cmdid, "^1", "^1", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^2", "^2", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^3", "^3", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^4", "^4", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "^5", "^5", "")); cmdid += 1
+
+        grp = cmdpack.append(None, (grpid, "", "Menu", "") ); grpid += 1
+        cmdpack.append(grp, (cmdid, "Pause", "Pause", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Minimize", "Minimize", "")); cmdid += 1
+
+        grp = cmdpack.append(None, (grpid, "", "Game", "") ); grpid += 1
+        cmdpack.append(grp, (cmdid, "Up", "Up", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Down", "Down", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Left", "Left", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Right", "Right", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Jump", "Jump", "")); cmdid += 1
+        cmdpack.append(grp, (cmdid, "Action", "Action", "")); cmdid += 1
+
+        return cmdpack
+
+
+class HiaSelectorCommand (Gtk.VBox):
+    """View of the command pack.
+
+static method 'make_model()' for generating a suitable TreeStore expected by this widget.
+"""
+    # Expected to rarely change, so model signals are ignored and instead set_model triggers refreshing view.
+    def __init__ (self, mdl):
+        Gtk.VBox.__init__(self)
+        self._model = mdl
+        if mdl is None:
+            self._model = self.make_model()
+        self._packname = None
+        self.setup_widgets()
+        self.setup_dnd()
+
+    def get_model (self):
+        return self._model
+    def set_model (self, mdl=None):
+        if mdl is not None:
+            self._model = mdl
+            self.ui.treeview.set_model(mdl)
+            try:
+                self._packname = self._model.packname
+            except AttributeError:
+                self._packname = None
+            self.update_widgets()
+    model = property(get_model, set_model)
+
+    def setup_widgets (self):
+        class ui: pass
+        self.ui = ui
+
+        self.ui.sclwin = Gtk.ScrolledWindow()
+
+        self.ui.treeview = Gtk.TreeView(model=self._model)
+        self.ui.treecols = []
+        self.ui.treecelltxt = Gtk.CellRendererText()
+        colname = "command"
+        if self._model:
+            colname = self._model.packname
+        col0 = Gtk.TreeViewColumn(colname, self.ui.treecelltxt, text=2)
+        self.ui.treecols.append(col0)
+        for col in self.ui.treecols:
+            self.ui.treeview.append_column(col0)
+
+        self.ui.sclwin.add(self.ui.treeview)
+        self.add(self.ui.sclwin)
+        self.show_all()
+
+        self.props.has_tooltip = True
+        self.knowwhat = "cmdpackview"
+
+    def update_widgets (self):
+        self.ui.treeview.set_model(self._model)
+        if self.packname:
+            self.ui.treecols[0].set_title(self.packname)
+        else:
+            self.ui.treecols[0].set_title("command")
+        return
+
+    def setup_dnd (self):
+        # DnD source: bind.
+        drag_targets = [
+            HiaDnd.BIND.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, drag_targets, drag_actions)
+        # DnD destination: unbind.
+        drop_targets = [
+            HiaDnd.UNBIND.target_same_app(),
+            ]
+        drop_flags = Gtk.DestDefaults.DROP
+        drop_actions = Gdk.DragAction.COPY
+        #self.drag_dest_set(drop_flags, drop_targets, drop_actions)
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # is DnD source.
+        treesel = w.get_selection()
+        mdl, pathsels = treesel.get_selected_rows()
+        firstsel = pathsels[0]
+        selrow = mdl[firstsel]
+        cmdname = selrow[1]
+        if info == DndOpcodes.BIND:
+            # dragged from command set.
+            seldata.set(seldata.target, 8, str(cmdname))
+            return True
+        return False
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        if info == DndOpcodes.UNBIND:
+            hiasym = seldata.data
+            return True
+        return False
+
+    @staticmethod
+    def make_model ():
+        # Data tuples = ( cmd_id_number, cmd_name, display_text, tooltip_text )
+        store = CommandPackStore()
+        store.append(None, (0, "", "(unbind)", None))
+        return store
+
 
 
 
@@ -1383,6 +1767,74 @@ class HiaPicker (Gtk.VBox):
         self.ui.sel_bind.set_layout(layoutdata)
         return
 
+
+class HiaPlanner (Gtk.HPaned):
+    def __init__ (self, cmdpack, view, layouts):
+        Gtk.HPaned.__init__(self)
+        self.view = view
+        self._layouts = layouts
+        self._cmdpack = cmdpack
+        self.setup_widgets()
+        self.setup_signals()
+
+    def get_layouts (self):
+        return self._layouts
+    def set_layouts (self, val):
+        self._layouts = val
+        try:
+            self.ui.sel_device.set_model(val)
+        except AttributeError:
+            pass
+    layouts = property(get_layouts, set_layouts)
+
+    def get_cmdpack (self):
+        return self._cmdpack
+    def set_cmdpack (self, val):
+        self._cmdpack = val
+        try:
+            self.ui.sel_cmd.set_model(val)
+        except AttributeError:
+            pass
+    cmdpack = property(get_cmdpack, set_cmdpack)
+
+    def setup_widgets (self):
+        class ui: pass
+        self.ui = ui
+
+        self.ui.sel_cmd = HiaSelectorCommand(self.cmdpack)
+        self.ui.sel_device = HiaSelectorDevice(self.view, self.layouts)
+        self.ui.sel_group = HiaSelectorGroup(self.view, None)
+        self.ui.sel_layer = HiaSelectorLayer(self.view, None)
+        self.ui.sel_bind = HiaSurface(self.view)
+
+        self.ui.lhs = Gtk.VBox()
+        self.ui.lhs.pack_start(self.ui.sel_cmd, True, True, 0)
+
+        self.ui.rhs = Gtk.VBox()
+        self.ui.rhs.pack_start(self.ui.sel_device, False, False, 0)
+        self.ui.rhs.pack_start(self.ui.sel_group, False, False, 0)
+        self.ui.rhs.pack_start(self.ui.sel_layer, False, False, 0)
+        self.ui.rhs.pack_start(self.ui.sel_bind, False, False, 0)
+
+        self.add1(self.ui.lhs)
+        self.add2(self.ui.rhs)
+
+        # TODO: calculate width and heights based on default typeface.
+        ex, lineheight = 8, 12
+        # command-picker width 32ex.
+        self.set_position(32*ex)
+
+        self.show_all()
+
+    def setup_signals (self):
+        self.view.connect("device-changed", self.on_device_changed)
+        return
+
+    def on_device_changed (self, w, newdev):
+        layoutinfo = self.layouts[newdev]
+        layoutname, layoutdata = layoutinfo
+        self.ui.sel_bind.set_layout(layoutdata)
+        return
 
 
 

@@ -46,6 +46,7 @@ class TestHiaWidgets (skel.TestSkel):
 
             self.bindstore.set_bind(0,0,'K_ESC','crash-0')
             v = hiatop.binddisp[0].cmdtitle
+            v = self.bindstore.get_bind(0,0,'K_ESC').cmdtitle
             self.assertEqual(v, "crash-0")
             yield 1
 
@@ -74,7 +75,7 @@ class TestHiaWidgets (skel.TestSkel):
         retval.append(None, ("KP_2", "2", "key",  1, 3, 1, 1))
         retval.append(None, ("KP_3", "3", "key",  2, 3, 1, 1))
         retval.append(None, ("KP_ENTER", "ENTER", "key",  3, 3, 1, 2))
-        retval.append(None, ("KP_0", "0", "key",  0, 4, 1, 1))
+        retval.append(None, ("KP_0", "0", "key",  0, 4, 2, 1))
         retval.append(None, ("KP_DECIMAL", ".", "key",  2, 4, 1, 1))
         return retval
 
@@ -119,8 +120,9 @@ class TestHiaWidgets (skel.TestSkel):
         layouts = hialayout.HiaLayouts()
         layouts.build_from_legacy_store()
         self._build_sample_binds1(self.hiaview.bindstore)
+        #self.hiaview.vislayers = [ True, False ]
 
-        hiacluster = hialayout.HiaCluster(self.hiaview, "CL")
+        hiacluster = hialayout.HiaCluster(self.hiaview, "CL#")
         #hiacluster.set_layout(layouts['en_US (pc104)'][1])
         self.bindstore.set_bind(0,0,'CL','OneButton')
 
