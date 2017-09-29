@@ -602,6 +602,7 @@ Drag-and-Drop
         self.setup_dnd()
 
     def setup_widgets (self):
+        """Set up Gtk widgets in HiaTop"""
         self.set_no_show_all(True)
 
         self.ui.top = Gtk.VBox()
@@ -626,6 +627,7 @@ Drag-and-Drop
         self.show()
 
     def setup_signals (self):
+        """Set up widget signals within HiaTop."""
         self.view.connect("group-changed", self.on_group_changed)
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("vislayers-changed", self.on_vislayers_changed)
@@ -709,6 +711,7 @@ Drag-and-Drop
         self.update_bindlist(bindlist)
 
     def setup_dnd (self):
+        """Set up Drag-and-Drop for HiaTop."""
         # DnD source: erase, swap.
         drag_targets = [
             HiaDnd.UNBIND.target_same_app(),
@@ -1205,6 +1208,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.setup_dnd()
 
     def setup_widgets (self):
+        """Set up Gtk widgets within HiaCluster."""
         self.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
         self.ui.frame_title = Gtk.HBox()
         self.ui.frame_menu = Gtk.Button(label="=")
@@ -1226,9 +1230,11 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.show_all()
 
     def setup_signals (self):
+        """Set up widget signas in HiaCluster."""
         return
 
     def setup_dnd (self):
+        """Set up Drag-and-Drop for HiaCluster."""
         return
 
     def get_layout (self):
@@ -1276,6 +1282,7 @@ Row of RadioButton (one-of-many pressed)
         self.set_names(names_iterable)
 
     def setup_widgets (self):
+        """Set up Gtk widgets within HiaSelect (base class)."""
         class ui: pass
         self.ui = ui
         #self.update_widgets()
@@ -1287,9 +1294,11 @@ Row of RadioButton (one-of-many pressed)
         return
 
     def setup_signals (self):
+        # Base class method.
         return
 
     def setup_dnd (self):
+        # Base class method.
         return
 
     def update_widgets (self):
@@ -1372,6 +1381,7 @@ class HiaSelectorDevice (Gtk.HBox):
         self.setup_signals()
 
     def setup_widgets (self):
+        """Set up Gtk widgets within HiaSelectorCmd."""
         class ui: pass
         self.ui = ui
 
@@ -1393,6 +1403,7 @@ class HiaSelectorDevice (Gtk.HBox):
         self.show_all()
 
     def setup_signals (self):
+        """Set up widget signals within HiaSelectorCmd."""
         self.ui.dropbox.connect("changed", self.on_selection_changed)
 
     def get_layouts (self):
@@ -1733,6 +1744,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 # Aggregated View #
 ###################
 
+# DEPRCATED
 class HiaPicker (Gtk.VBox):
     def __init__ (self, view, layouts):
         Gtk.VBox.__init__(self)
@@ -1774,6 +1786,18 @@ class HiaPicker (Gtk.VBox):
         return
 
 
+# Put together the command picker, the device selector, the group selector, the layer selector, the bind selector.
+#
+# +------------------------------
+# | CmdPick | [DeviceSelector  v]
+# |         |  ( ) Mode0   ( ) Mode1  ...
+# |         |  ( ) Layer0  ( ) Layer1 ...
+# |         | { HiaSelectorBind
+# |         |  .
+# |         |   .
+# |         |    .
+# |         |     }
+# +---------+--------------------
 class HiaPlanner (Gtk.HPaned):
     def __init__ (self, cmdpack, view, layouts):
         Gtk.HPaned.__init__(self)
@@ -1804,6 +1828,7 @@ class HiaPlanner (Gtk.HPaned):
     cmdpack = property(get_cmdpack, set_cmdpack)
 
     def setup_widgets (self):
+        """Set up Gtk widgets within HiaPlanner."""
         class ui: pass
         self.ui = ui
 
