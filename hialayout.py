@@ -746,6 +746,7 @@ Drag-and-Drop
         if info == HiaDnd.UNBIND:
             # dragged to command set.
             seldata.set(seldata.get_target(), 8, str(self.hiasym))
+            self.emit("bind-erased", self.hiasym)
         elif info == HiaDnd.SWAP:
             # dragged to HiaTop.
             val = self.hiasym
@@ -1788,13 +1789,11 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         if info == HiaDnd.BIND:
             # dragged from command set.
             # TODO: encode BindValue
-            #seldata.set(seldata.get_target(), 8, cmdname)
             seldata.set(seldata.get_target(), 8, bindvalue)
         return False
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         if info == HiaDnd.UNBIND:
             hiasym = seldata.get_data()
-            self.emit("bind-erased", hiasym)
         return False
 
     @staticmethod
@@ -1803,10 +1802,6 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         store = CommandPackStore()
         store.append(None, (0, "", "(unbind)", None))
         return store
-
-    __gsignals__ = {
-        str("bind-erased"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
-    }
 
 
 
@@ -1947,7 +1942,7 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_bind.connect("bind-assigned", self.on_bind_assigned)
         self.ui.sel_bind.connect("bind-swapped", self.on_bind_swapped)
         self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
-        self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
+        #self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
         return
 
     def on_device_changed (self, w, newdev):
@@ -1959,14 +1954,10 @@ class HiaPlanner (Gtk.HPaned):
     def on_bind_assigned (self, w, hiasym, bindvalue):
         groupid = self.view.group
         layerid = self.view.layer
-        #bv = BindValue(lambda:False, None, None)
-        #bv.restore(bindvalue)
-        #self.bindstore.set_bind(groupid, layerid, hiasym, bv)
-        #bv = self.bindstore.get_bind(groupid, layerid, hiasym)
-        bv = BindValue(lambda:False, None, None)
         bvo = ast.literal_eval(bindvalue)
-        bv.restore(bvo)
-        self.bindstore.set_bind(groupid, layerid, hiasym, bv)
+        cmdtitle = bvo['cmdtitle']
+        cmdcode = bvo['cmdcode']
+        self.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
         self.emit("bind-assigned", hiasym, bindvalue)
     def on_bind_swapped (self, w, hiasym, othersym):
         groupA, layerA = self.view.group, self.view.layer
