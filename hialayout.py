@@ -1969,7 +1969,6 @@ class HiaPlanner (Gtk.HPaned):
             cmdtitleA, cmdcodeA = bvA.cmdtitle, bvA.cmdcode
         if bvB:
             cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
-        print("swap %r <-> %r" % (hiasym, othersym))
         self.bindstore.set_bind(groupA, layerA, hiasym, cmdtitleB, cmdcodeB)
         self.bindstore.set_bind(groupB, layerB, othersym, cmdtitleA, cmdcodeA)
         self.emit("bind-swapped", hiasym, othersym)
