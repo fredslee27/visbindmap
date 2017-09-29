@@ -6,13 +6,45 @@ from __future__ import print_function, with_statement, unicode_literals
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GObject, GLib
+from gi.repository import Gtk, Gdk, GObject, GLib, Gio
 
 import ast
 import math
 
 import kbd_desc
 
+
+
+
+
+###########
+# Actions #
+###########
+
+# GUI Actions, which can be triggered by more than one source, e.g. button and keyboard shortcut.
+class HiaActions (Gio.SimpleActionGroup):
+    def __init__ (self):
+        Gio.SimpleActionGroup.__init__(name="HiaActions")
+        self.setup_actions()
+
+    def setup_actions (self):
+        TEMPLATE = [
+            # (param, accel, name, label, tooltip, stock_id, accel)
+            (None, 0, "file-new", "_New File", "", Gtk.STOCK_NEW),
+            (None, 0, "file-save", "_Save File", "", Gtk.STOCK_SAVE),
+            (None, 0, "file-saveas", "Save _As", "", Gtk.STOCK_SAVEAS),
+            (None, 0, "file-commandpack", "Command Pack", "", ""),
+            (None, 0, "file-quit", "_Quit", Gtk.STOCK_QUIT),
+
+            (None, 0, "edit-copy", "_Copy", "", Gtk.STOCK_COPY),
+            (None, 0, "edit-cut", "C_ut", "", Gtk.STOCK_CUT),
+            (None, 0, "edit-paste", "_Paste", "", Gtk.STOCK_PASTE),
+            (None, 0, "edit-prefs", "Pr_efences", "", Gtk.STOCK_PREFERENCES),
+            ]
+        for actdata in TEMPLATE:
+            param, accel, name, lbl, tooltip, stock = actdata
+            action = Gio.SimpleAction(name=name, parameter_type=param)
+            self.add_action(action)
 
 
 ########################
