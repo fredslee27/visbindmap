@@ -1122,6 +1122,8 @@ class HiaSurface (Gtk.Grid):
         Gtk.Grid.__init__(self)
         self.set_row_homogeneous(True)
         self.set_column_homogeneous(True)
+        self.set_row_spacing(1)
+        self.set_column_spacing(1)
         self.view = view
         self._layout = None
         self.children = {}   # map hiasym to hiatop
@@ -1141,7 +1143,8 @@ class HiaSurface (Gtk.Grid):
         self.children = {}
 
     def make_hiawidget_cluster (self, hiasym, hialabel):
-        retval = None
+        retval = HiaCluster(self.view, hiasym, hialabel)
+        retval.show()
         return retval
     def make_hiawidget_key (self, hiasym, hialabel):
         retval = HiaTop(self.view, hiasym, hialabel)
