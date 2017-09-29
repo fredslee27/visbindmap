@@ -324,7 +324,7 @@ class BindStore (GObject.GObject):
             try:
                 hiaval.cmdtitle, hiaval.cmdcode  # quack-quack
                 cooked = hiaval
-            except AttributeError, e:
+            except AttributeError as e:
                 cooked = BindValue(lambda: False, hiaval, hiaval)
         self.groups[groupid][layerid][hiasym] = cooked
 
@@ -1809,48 +1809,6 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 ###################
 # Aggregated View #
 ###################
-
-# DEPRCATED
-class HiaPicker (Gtk.VBox):
-    def __init__ (self, view, layouts):
-        Gtk.VBox.__init__(self)
-        self.view = view
-        self.layouts = layouts
-        self.setup_widgets()
-        self.setup_signals()
-
-    def setup_widgets (self):
-        class ui: pass
-        self.ui = ui
-
-        self.ui.sel_device = HiaSelectorDevice(self.view, self.layouts)
-        self.ui.sel_group = HiaSelectorGroup(self.view, None)
-        self.ui.sel_layer = HiaSelectorLayer(self.view, None)
-        self.ui.sel_bind = HiaSurface(self.view)
-
-        self.ui.sel_device.show_all()
-        self.ui.sel_group.show_all()
-        self.ui.sel_layer.show_all()
-        self.ui.sel_bind.show()
-
-        self.pack_start(self.ui.sel_device, False, False, 0)
-        self.pack_start(self.ui.sel_group, False, False, 0)
-        self.pack_start(self.ui.sel_layer, False, False, 0)
-        self.pack_start(self.ui.sel_bind, False, False, 0)
-
-        self.show()
-        return
-
-    def setup_signals (self):
-        self.view.connect("device-changed", self.on_device_changed)
-        return
-
-    def on_device_changed (self, w, newdev):
-        layoutinfo = self.layouts[newdev]
-        layoutname, layoutdata = layoutinfo
-        self.ui.sel_bind.set_layout(layoutdata)
-        return
-
 
 # Put together the command picker, the device selector, the group selector, the layer selector, the bind selector.
 #
