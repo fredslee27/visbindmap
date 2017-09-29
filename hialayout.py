@@ -8,6 +8,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib
 
+import ast
 import math
 
 import kbd_desc
@@ -318,13 +319,13 @@ class BindStore (GObject.GObject):
 """
         cooked = None
         if hiacmd is not None:
-            cooked = BindValue(hiaval, hiacmd)
+            cooked = BindValue(lambda: False, hiaval, hiacmd)
         else:
             try:
-                hiaval.cmdtitle, hiaval.cmdvalue  # quack-quack
+                hiaval.cmdtitle, hiaval.cmdcode  # quack-quack
                 cooked = hiaval
-            except AttributeError:
-                cooked = BindValue(hiaval, hiaval)
+            except AttributeError, e:
+                cooked = BindValue(lambda: False, hiaval, hiaval)
         self.groups[groupid][layerid][hiasym] = cooked
 
     __gsignals__ = {
@@ -556,6 +557,16 @@ For HiaCluster, affects what layout to use.
             retval.append(hb)
         return retval
 
+    _gsignals = {
+        # (hiasym, instance_BindValue)
+        str("bind-assigned"): (GObject.SIGNAL_RUN_FIRST, None, (str, str)),
+        # (hiasym, hiasym_other)
+        str("bind-swapped"): (GObject.SIGNAL_RUN_FIRST, None, (str, str)),
+        # (hiasym,)
+        str("bind-erased"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+    }
+    __gsignals__ = _gsignals
+
 
 class PlainData (object):
     def __getattr__ (self, attr):
@@ -620,7 +631,7 @@ Drag-and-Drop
 
         self.add(self.ui.top)
 
-        self.update_bindview()
+        self.update_widgets()
         self.ui.lbl.show()
         self.ui.spacer.show()
         self.ui.top.show()
@@ -632,7 +643,7 @@ Drag-and-Drop
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("vislayers-changed", self.on_vislayers_changed)
 
-    def update_bindview (self, binddisp=None):
+    def update_widgets (self, binddisp=None):
         if binddisp is None:
             binddisp = self.binddisp
         for bi in range(len(binddisp)):
@@ -695,7 +706,7 @@ Drag-and-Drop
                 hiabind = bindlist[lid]
                 binddisp.append(hiabind)
         self.binddisp = binddisp
-        self.update_bindview(binddisp)
+        self.update_widgets(binddisp)
 
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         bindlist = self.get_bindlist()
@@ -714,20 +725,45 @@ Drag-and-Drop
         """Set up Drag-and-Drop for key top."""
         # DnD source: erase, swap.
         drag_targets = [
-            HiaDnd.UNBIND.target_same_app(),
             HiaDnd.SWAP.target_same_app(),
+            HiaDnd.UNBIND.target_same_app(),
             ]
         drag_actions = Gdk.DragAction.COPY
-        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, drag_targets, drag_actions)
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+        self.drag_source_set(drag_buttons, drag_targets, drag_actions)
+        self.connect("drag-data-get", self.on_drag_data_get)
         # DnD destination: bind, swap.
         drop_targets = [
-            HiaDnd.BIND.target_same_app(),
             HiaDnd.SWAP.target_same_app(),
+            HiaDnd.BIND.target_same_app(),
             ]
-        drop_flags = Gtk.DestDefaults.DROP
+        drop_dests = Gtk.DestDefaults.ALL
         drop_actions = Gdk.DragAction.COPY
-        self.drag_dest_set(drop_flags, drop_targets, drop_actions)
+        self.drag_dest_set(drop_dests, drop_targets, drop_actions)
+        self.connect("drag-data-received", self.on_drag_data_received)
 
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        if info == HiaDnd.UNBIND:
+            # dragged to command set.
+            seldata.set(seldata.get_target(), 8, str(self.hiasym))
+        elif info == HiaDnd.SWAP:
+            # dragged to HiaTop.
+            val = self.hiasym
+            seldata.set(seldata.get_target(), 8, str(self.hiasym))
+        return False
+
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        if info == HiaDnd.BIND:
+            seltext = seldata.get_data()
+            self.emit("bind-assigned", self.hiasym, seltext)
+            ctx.finish(True, False, 0)
+        elif info == HiaDnd.SWAP:
+            othersym = seldata.get_data()
+            self.emit("bind-swapped", w.hiasym, othersym)
+            ctx.finish(True, False, 0)
+        return False
+
+    __gsignals__ = dict(HiaBindable._gsignals)
 
 
 
@@ -1147,10 +1183,16 @@ class HiaSurface (Gtk.Grid):
 
     def make_hiawidget_cluster (self, hiasym, hialabel):
         retval = HiaCluster(self.view, hiasym, hialabel)
+        retval.connect("bind-assigned", self.on_bind_assigned)
+        retval.connect("bind-swapped", self.on_bind_swapped)
+        retval.connect("bind-erased", self.on_bind_erased)
         retval.show()
         return retval
     def make_hiawidget_key (self, hiasym, hialabel):
         retval = HiaTop(self.view, hiasym, hialabel)
+        retval.connect("bind-assigned", self.on_bind_assigned)
+        retval.connect("bind-swapped", self.on_bind_swapped)
+        retval.connect("bind-erased", self.on_bind_erased)
         retval.show()
         return retval
 
@@ -1186,6 +1228,21 @@ class HiaSurface (Gtk.Grid):
                 self.attach(filler, 0, y, 1, 1)
         self.show()
         return
+
+    def on_bind_assigned (self, w, hiasym, bindvalue):
+        self.emit("bind-assigned", hiasym, bindvalue)
+
+    def on_bind_swapped (self, w, hiasym, othersym):
+        self.emit("bind-swapped", hiasym, othersym)
+
+    def on_bind_erased (self, w, hiasym):
+        self.emit("bind-erased", hiasym)
+
+    __gsignals__ = {
+        str("bind-assigned"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
+        str("bind-swapped"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
+        str("bind-erased"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+    }
 
 
 class HiaCluster (Gtk.Frame, HiaBindable):
@@ -1258,6 +1315,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         return
     def on_vislayers_changed (self, hiavia, vislayers):
         return
+
+    __gsignals__ = dict(HiaBindable._gsignals)
 
 
 
@@ -1336,7 +1395,6 @@ Row of RadioButton (one-of-many pressed)
     title = property(get_title, set_title)
 
     def on_button_clicked (self, w, ofs=None):
-        print("generic clicked")
         return
 
 
@@ -1701,35 +1759,42 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 
     def setup_dnd (self):
         """Set up Drag-and-Drop for command selector."""
+        treeview = self.ui.treeview
         # DnD source: bind.
         drag_targets = [
             HiaDnd.BIND.target_same_app(),
             ]
         drag_actions = Gdk.DragAction.COPY
-        self.drag_source_set(Gdk.ModifierType.BUTTON1_MASK, drag_targets, drag_actions)
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+        treeview.enable_model_drag_source(drag_buttons, drag_targets, drag_actions)
+        treeview.connect("drag-data-get", self.on_drag_data_get)
         # DnD destination: unbind.
         drop_targets = [
             HiaDnd.UNBIND.target_same_app(),
             ]
         drop_flags = Gtk.DestDefaults.DROP
         drop_actions = Gdk.DragAction.COPY
-        #self.drag_dest_set(drop_flags, drop_targets, drop_actions)
+        treeview.enable_model_drag_dest(drop_targets, drop_actions)
+        treeview.connect("drag-data-received", self.on_drag_data_received)
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         # is DnD source.
         treesel = w.get_selection()
         mdl, pathsels = treesel.get_selected_rows()
         firstsel = pathsels[0]
         selrow = mdl[firstsel]
-        cmdname = selrow[1]
-        if info == DndOpcodes.BIND:
+        #cmdname = selrow[1]
+        bv = BindValue(lambda:False, selrow[2], selrow[1])
+        bindvalue = repr(bv.snapshot())
+        if info == HiaDnd.BIND:
             # dragged from command set.
-            seldata.set(seldata.target, 8, str(cmdname))
-            return True
+            # TODO: encode BindValue
+            #seldata.set(seldata.get_target(), 8, cmdname)
+            seldata.set(seldata.get_target(), 8, bindvalue)
         return False
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
-        if info == DndOpcodes.UNBIND:
-            hiasym = seldata.data
-            return True
+        if info == HiaDnd.UNBIND:
+            hiasym = seldata.get_data()
+            self.emit("bind-erased", hiasym)
         return False
 
     @staticmethod
@@ -1738,6 +1803,10 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         store = CommandPackStore()
         store.append(None, (0, "", "(unbind)", None))
         return store
+
+    __gsignals__ = {
+        str("bind-erased"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+    }
 
 
 
@@ -1801,13 +1870,26 @@ class HiaPicker (Gtk.VBox):
 # |         |     }
 # +---------+--------------------
 class HiaPlanner (Gtk.HPaned):
-    def __init__ (self, cmdpack, view, layouts):
+    def __init__ (self, cmdpack=None, view=None, layouts=None):
         Gtk.HPaned.__init__(self)
+        if cmdpack is None:
+            feed = CommandPackFeed.open(None)
+            cmdpack = feed.read()
+        if view is None:
+            bindstore = BindStore()
+            view = HiaView(bindstore)
+        if layouts is None:
+            layouts = HiaLayouts()
+            layouts.build_from_legacy_store()
         self.view = view
         self._layouts = layouts
         self._cmdpack = cmdpack
         self.setup_widgets()
         self.setup_signals()
+
+    def get_bindstore (self):
+        return self.view.bindstore
+    bindstore = property(get_bindstore)
 
     def get_layouts (self):
         return self._layouts
@@ -1862,6 +1944,10 @@ class HiaPlanner (Gtk.HPaned):
     def setup_signals (self):
         """Set up signals within binds planner."""
         self.view.connect("device-changed", self.on_device_changed)
+        self.ui.sel_bind.connect("bind-assigned", self.on_bind_assigned)
+        self.ui.sel_bind.connect("bind-swapped", self.on_bind_swapped)
+        self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
+        self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
         return
 
     def on_device_changed (self, w, newdev):
@@ -1870,5 +1956,60 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_bind.set_layout(layoutdata)
         return
 
+    def on_bind_assigned (self, w, hiasym, bindvalue):
+        groupid = self.view.group
+        layerid = self.view.layer
+        #bv = BindValue(lambda:False, None, None)
+        #bv.restore(bindvalue)
+        #self.bindstore.set_bind(groupid, layerid, hiasym, bv)
+        #bv = self.bindstore.get_bind(groupid, layerid, hiasym)
+        bv = BindValue(lambda:False, None, None)
+        bvo = ast.literal_eval(bindvalue)
+        bv.restore(bvo)
+        self.bindstore.set_bind(groupid, layerid, hiasym, bv)
+        self.emit("bind-assigned", hiasym, bindvalue)
+    def on_bind_swapped (self, w, hiasym, othersym):
+        groupA, layerA = self.view.group, self.view.layer
+        groupB, layerB = groupA, layerA
+        bvA = self.bindstore.get_bind(groupA, layerA, hiasym)
+        bvB = self.bindstore.get_bind(groupB, layerB, othersym)
+        cmdtitleA, cmdtitleB, cmdcodeA, cmdcodeB = "", "", "", ""
+        if bvA:
+            cmdtitleA, cmdcodeA = bvA.cmdtitle, bvA.cmdcode
+        if bvB:
+            cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
+        print("swap %r <-> %r" % (hiasym, othersym))
+        self.bindstore.set_bind(groupA, layerA, hiasym, cmdtitleB, cmdcodeB)
+        self.bindstore.set_bind(groupB, layerB, othersym, cmdtitleA, cmdcodeA)
+        self.emit("bind-swapped", hiasym, othersym)
+    def on_bind_erased (self, w, hiasym):
+        groupid, layerid = self.view.group, self.view.layer
+        self.bindstore.set_bind(groupid, layerid, hiasym, "", "")
+        self.emit("bind-erased", hiasym)
 
+    __gsignals__ = {
+        str("bind-assigned"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
+        str("bind-swapped"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
+        str("bind-erased"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+    }
+
+
+
+class HiaWindow (Gtk.Window):
+    def __init__ (self):
+        Gtk.Window.__init__(self)
+        bindstore = BindStore()
+        view = HiaView(bindstore)
+        feed = CommandPackFeed.open(None)
+        cmdpack = feed.read()
+        layouts = HiaLayouts()
+        layouts.build_from_legacy_store()
+        planner = HiaPlanner(cmdpack, view, layouts)
+        self.add(planner)
+        self.show_all()
+
+
+if __name__ == "__main__":
+    w = HiaWindow()
+    Gtk.main()
 
