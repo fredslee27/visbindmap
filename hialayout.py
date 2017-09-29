@@ -592,7 +592,6 @@ Drag-and-Drop
     def __init__ (self, view, hiasym, label=None):
         HiaBindable.__init__(self, view, hiasym, label)
         Gtk.Button.__init__(self)
-        self.set_property("no-show-all", True)
 
         self.binddisp = [ HiaBind(-1, ""), ]
         if self.bindstore:
@@ -603,6 +602,8 @@ Drag-and-Drop
         self.setup_dnd()
 
     def setup_widgets (self):
+        self.set_no_show_all(True)
+
         self.ui.top = Gtk.VBox()
         self.ui.lbl = Gtk.Label(label=self.label)
         self.ui.lbl.set_halign(Gtk.Align.START)
@@ -1174,7 +1175,9 @@ class HiaSurface (Gtk.Grid):
                 max_row = y
         for y in range(max_row):
             if not self.get_child_at(0, y):
-                self.attach(Gtk.Label(), 0, y, 1, 1)
+                filler = Gtk.HBox()
+                filler.show()
+                self.attach(filler, 0, y, 1, 1)
         self.show()
         return
 
@@ -1821,8 +1824,8 @@ class HiaPlanner (Gtk.HPaned):
 
         # TODO: calculate width and heights based on default typeface.
         ex, lineheight = 8, 12
-        # command-picker width 32ex.
-        self.set_position(32*ex)
+        # command-picker width 24ex.
+        self.set_position(24*ex)
 
         self.show_all()
 
