@@ -21,30 +21,81 @@ import kbd_desc
 # Actions #
 ###########
 
+r""""
+Actions:
+  choose_command
+  choose_device
+  choose_group
+  choose_layer
+  choose_sym
+
+  swap_bind
+"""
+
 # GUI Actions, which can be triggered by more than one source, e.g. button and keyboard shortcut.
 class HiaActions (Gio.SimpleActionGroup):
+    # Descriptions of GActions to instantiate.
+    DESC = [
+        # Restrict name to valid python identifiers, for __getattr__() use.
+        # (name, param_GLib, initState_tuple_GLib, label, tooltip, stock_id)
+        # action swap_bind_explicit((hiasymA, hiasymB))
+
+        ## Operations on arbitrary HiaSyms.
+        # Two-syllable verbs for specifying the hiasym (explicit target).
+        ("exchange_binds", "(ss)", None, "Swap Binds", "Swap binds between HiaSyms in current group and layer.", None),
+        # action swap_bind_explicit((groupA,layerA,hiasymA, grpB,lyrB,symB))
+        ("exchange_binds_explicit", "(xxsxxs)", None, "Swap Binds Compleat", "Swap binds between HiaSyms in specified groups and layers.", None),
+        # action erase_bind(hiasym)
+        ("erase_bind", "s", None, "Erase Bind", "Erase bind from HiaSym", None),
+        # action assign_bind((hiasym, cmdtitle, cmdcode))
+        ("assign_bind", "(sss)", None, "Assign Bind", "Assign bind to HiaSym", None),
+        # action assign_bind_explicit((group, layer, hiasym, cmdtitle, cmdcode))
+        ("assign_bind_explicit", "(xxsss)", None, "Assign Bind Compleat", "Assign bind to HiaSym in specified group and layer.", None),
+
+        ## Operations on currently-selected HiaSym.
+        # One-syllable verbs for using selected hiasym (implicit target).
+        ("push_bind", "x", None, "Inject Command Pack binding", "Inject bind from selected command pack entry into selected HiaSym", None),
+        ("swap_bind", "s", None, "Exchange binds with HiaSym", "Swap binds between specified HiaSym and currently selected HiaSym", None),
+        ("drop_bind", None, None, "Erase bind", "Erase bind for selected HiaSym", None),
+        ("dup_bind", "s", None, "Copy bind from HiaSym", "Copy bind from another HiaSym.", None),
+        ("move_bind", "s", None, "Move bind to HiaSym", "Move bind to another HiaSym, removing from the selected HiaSym.", None),
+
+        ## Operations on bindstore.
+        ("reset_bindstore", None, None, "Reset all binds", "Erase all bindings and return bindstore to default values.", None),
+
+        ## Operations on viewer state.
+        ("pick_sym", "s", ('s',str("")), "Pick HiaSym", "Specify HiaSym for HiaTop operations.", None),
+        ("pick_layer", "x", ('x',0), "Pick HiaLayer", "Specify HiaLayer to make focus.", None),
+        ("pick_group", "x", ('x',0), "Pick HiaGroup", "Specify HiaGroup to make focus.", None),
+        ("pick_device", "x", ('x',0), "Pick HiaDevice", "Specify HiaDevice to lay out key tops.", None),
+        ("pick_command", "x", ('x',0), "Pick HiaCommand", "Specify HiaCommand for HiaTop oeprations.", None),
+
+        ]
     def __init__ (self):
-        Gio.SimpleActionGroup.__init__(name="HiaActions")
+        Gio.SimpleActionGroup.__init__(self)
+        self._lookup = {}
         self.setup_actions()
 
     def setup_actions (self):
-        TEMPLATE = [
-            # (param, accel, name, label, tooltip, stock_id, accel)
-            (None, 0, "file-new", "_New File", "", Gtk.STOCK_NEW),
-            (None, 0, "file-save", "_Save File", "", Gtk.STOCK_SAVE),
-            (None, 0, "file-saveas", "Save _As", "", Gtk.STOCK_SAVEAS),
-            (None, 0, "file-commandpack", "Command Pack", "", ""),
-            (None, 0, "file-quit", "_Quit", Gtk.STOCK_QUIT),
-
-            (None, 0, "edit-copy", "_Copy", "", Gtk.STOCK_COPY),
-            (None, 0, "edit-cut", "C_ut", "", Gtk.STOCK_CUT),
-            (None, 0, "edit-paste", "_Paste", "", Gtk.STOCK_PASTE),
-            (None, 0, "edit-prefs", "Pr_efences", "", Gtk.STOCK_PREFERENCES),
-            ]
-        for actdata in TEMPLATE:
-            param, accel, name, lbl, tooltip, stock = actdata
-            action = Gio.SimpleAction(name=name, parameter_type=param)
+        """Use action descriptions to generate instances of GAction."""
+        for actdata in self.DESC:
+            name, param, init_state, label, tooltip, stock_id = actdata
+            gparam, gstate = None, None
+            if param is not None:
+                gparam = GLib.VariantType(str(param))
+            if init_state is not None:
+                fmt, val = init_state
+                gstate = GLib.Variant(str(fmt), val)
+            action = Gio.SimpleAction(name=str(name), parameter_type=gparam, state=gstate)
             self.add_action(action)
+            self._lookup[name] = action
+
+    def __getattr__ (self, k):
+        if k in self._lookup:
+            return self._lookup[k]
+        raise AttributeError("No such action '{}'.".format(k))
+
+actions = HiaActions()
 
 
 ########################
@@ -377,7 +428,7 @@ class BindStore (GObject.GObject):
 # Human-Interface Atom widgets #
 ################################
 # originally "keytops", but some devices don't have keys.
-# They are, nonetheless, elements Human-Computer Interface.
+# They are, nonetheless, elements of Human-Computer Interface.
 
 class HiaView (GObject.GObject):  # HiaViewModel
     """state information for binds views."""
@@ -396,6 +447,7 @@ class HiaView (GObject.GObject):  # HiaViewModel
         if self._bindstore is None:
             self._bindstore = BindStore()
         self._bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
+        self._bindstore.connect("bind-changed", self.on_bind_changed)
 
     def get_device (self): return self._device
     def set_device (self, val):
@@ -447,6 +499,9 @@ class HiaView (GObject.GObject):  # HiaViewModel
         self.emit("bindstore-changed", val)
     bindstore = property(get_bindstore, set_bindstore)
 
+    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+        self.emit("bind-changed", hiasym, newtitle, newcode)
+
     def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
         # Auto-resize vislayers to new number of layers.
         vislayers = self.vislayers[:]
@@ -464,6 +519,10 @@ class HiaView (GObject.GObject):  # HiaViewModel
         str("layer-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
         str("vislayers-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (object,)),
         str("bindstore-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (object,)),
+        # Relay bindstore.
+        str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str, str, str)),
+        str("ngroups-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
+        str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
     }
 
 
@@ -550,8 +609,9 @@ For HiaCluster, affects what layout to use.
         return self._view
     def set_view (self, val):
         self._view = val
-        bindstore = self._view.bindstore
-        bindstore.connect("bind-changed", self.on_bind_changed)
+        #bindstore = self._view.bindstore
+        #bindstore.connect("bind-changed", self.on_bind_changed)
+        self._view.connect("bind-changed", self.on_bind_changed)
         self._view.connect("bindstore-changed", self.on_bindstore_changed)
     view = property(get_view, set_view)
 
@@ -567,7 +627,8 @@ For HiaCluster, affects what layout to use.
     bindstore = property(get_bindstore, set_bindstore)
 
     def on_bindstore_changed (self, view, bindstore):
-        bindstore.connect("bind-changed", self.on_bind_changed)
+        #bindstore.connect("bind-changed", self.on_bind_changed)
+        return
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         pass
     def on_group_changed (self, hiaview, newgrp):
