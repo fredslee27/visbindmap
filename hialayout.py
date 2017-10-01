@@ -596,6 +596,7 @@ For HiaCluster, affects what layout to use.
 """
     def __init__ (self, view, hiasym, label=None):
         GObject.GObject.__init__(self)
+        self.setup_properties()
         #self._view = view
         #bindstore = view.bindstore if view else BindStore()
         self.set_view(view)
@@ -605,15 +606,37 @@ For HiaCluster, affects what layout to use.
         class ui: pass   # Plain data.
         self.ui = ui
 
-    def get_view (self):
-        return self._view
-    def set_view (self, val):
-        self._view = val
-        #bindstore = self._view.bindstore
-        #bindstore.connect("bind-changed", self.on_bind_changed)
-        self._view.connect("bind-changed", self.on_bind_changed)
-        self._view.connect("bindstore-changed", self.on_bindstore_changed)
-    view = property(get_view, set_view)
+    def setup_properties (self):
+#        # List of HiaBind for display.
+#        self.__class__.binddisp = GObject.Property(type=object, default=None)
+#        # Key name in bindstore for lookup (dict sense).
+#        self.__class__.hiasym = GObject.Property(type=str, default=None)
+#        # Human-readable label for the key top (print sense).
+#        self.__class__.label = GObject.Property(type=str, default="")
+#        # Viewer state data.
+#        self.__class__.view = GObject.Property(type=object, default=None)
+        self.connect("notify::view", self.on_notify_view)
+
+    binddisp = GObject.Property(type=object, default=None)
+    hiasym = GObject.Property(type=str, default=None)
+    label = GObject.Property(type=str, default="")
+    view = GObject.Property(type=object, default=None)
+
+#    def get_view (self):
+#        return self._view
+#    def set_view (self, val):
+#        self._view = val
+#        #bindstore = self._view.bindstore
+#        #bindstore.connect("bind-changed", self.on_bind_changed)
+#        self._view.connect("bind-changed", self.on_bind_changed)
+#        self._view.connect("bindstore-changed", self.on_bindstore_changed)
+    def get_view (self): return self.view
+    def set_view (self, val): self.view = val
+#    view = property(get_view, set_view)
+    def on_notify_view (self, inst, propobj):
+        val = self.view
+        val.connect("bind-changed", self.on_bind_changed)
+        val.connect("bindstore-changed", self.on_bindstore_changed)
 
     def get_bindstore (self):
         return self.view.bindstore
@@ -704,6 +727,12 @@ Drag-and-Drop
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
+
+# TODO: avoid referenceing in __init__ so they can be initialized by GObject properly, and this copy from class can go away.
+    binddisp = HiaBindable.binddisp
+    hiasym = HiaBindable.hiasym
+    label = HiaBindable.label
+    view = HiaBindable.view
 
     def setup_widgets (self):
         """Set up Gtk widgets in for keytop."""
