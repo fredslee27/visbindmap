@@ -589,68 +589,45 @@ class HiaBind (object):
             self.cmdcode)
 
 
-#class HiaBindable (GObject.GObject):
-class HiaBindable (object):
+class HiaBindable (Gtk.HBox):
     """Bindables store and respond to changes in BindStore.
 For HiaTops, affects bind value to display,
 For HiaCluster, affects what layout to use.
 """
-#    def __init__ (self, view, hiasym, label=None):
-#        print("*** HiaBindable init ***")
-#        GObject.GObject.__init__(self)
-#        self.view = view
-#        self.hiasym = hiasym
-#        self.label = str(label if label is not None else self.hiasym)
-#        class ui: pass   # Plain data.
-#        self.ui = ui
 
-    def setup_properties (self, view, hiasym, label=None):
-#        # List of HiaBind for display.
-#        self.__class__.binddisp = GObject.Property(type=object, default=None)
-#        # Key name in bindstore for lookup (dict sense).
-#        self.__class__.hiasym = GObject.Property(type=str, default=None)
-#        # Human-readable label for the key top (print sense).
-#        self.__class__.label = GObject.Property(type=str, default="")
-#        # Viewer state data.
-#        self.__class__.view = GObject.Property(type=object, default=None)
-        print("setup properties with %r,%r,%r" % (view,hiasym,label))
-#        self.view = view
-#        self.hiasym = str(hiasym)
-#        self.label = str(label if label is not None else hiasym)
-#        self.connect("notify::view", self.on_notify_view)
-        class ui: pass
+    def __init__ (self, view, hiasym, label=None):
+        Gtk.HBox.__init__(self)
+        self.view = view
+        self.hiasym = hiasym
+        self.label = str(label if label is not None else self.hiasym)
+        class ui: pass   # Plain data.
         self.ui = ui
+
+        self.connect("notify::binddisp", self.on_notify_binddisp)
+        self.connect("notify::view", self.on_notify_view)
 
     binddisp = GObject.Property(type=object)
     hiasym = GObject.Property(type=str, default=None)
     label = GObject.Property(type=str, default="")
     view = GObject.Property(type=object)
 
-#    def get_view (self):
-#        return self._view
-#    def set_view (self, val):
-#        self._view = val
-#        #bindstore = self._view.bindstore
-#        #bindstore.connect("bind-changed", self.on_bind_changed)
-#        self._view.connect("bind-changed", self.on_bind_changed)
-#        self._view.connect("bindstore-changed", self.on_bindstore_changed)
     def get_view (self): return self.view
     def set_view (self, val): self.view = val
-#    view = property(get_view, set_view)
     def on_notify_view (self, inst, propobj):
         val = self.view
         val.connect("bind-changed", self.on_bind_changed)
         val.connect("bindstore-changed", self.on_bindstore_changed)
+        val.connect("group-changed", self.on_group_changed)
+        val.connect("layer-changed", self.on_layer_changed)
+        val.connect("vislayers-changed", self.on_vislayers_changed)
 
-    def get_bindstore (self):
-        return self.view.bindstore
-    def set_bindstore (self, val):
-#        if self._bindstore:
-#            # TODO: Disconnect
-#            pass
-#        self._bindstore = val
-#        self._bindstore.connect("bind-changed", self.on_bind_changed)
-        pass
+    def get_binddisp (self): return self.binddisp
+    def set_bindstore (self, val): self.binddisp = val
+    def on_notify_binddisp (self, inst, propobj):
+        self.emit("binddisp-changed", self.binddisp)
+
+    def get_bindstore (self): return self.view.bindstore
+    def set_bindstore (self, val): pass
     bindstore = property(get_bindstore, set_bindstore)
 
     def on_bindstore_changed (self, view, bindstore):
@@ -685,31 +662,12 @@ For HiaCluster, affects what layout to use.
         # (hiasym,)
         str("bind-erased"): (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
-#    __gsignals__ = _gsignals
+    __gsignals__ = _gsignals
 
 
-class HiaBindable_Button (HiaBindable, Gtk.Button):
-    def __init__ (self, view, hiasym, label=None):
-        #super(Gtk.Button,self).__init__()
-        #super(HiaBindable,self).__init__(view, hiasym, label)
-        #HiaBindable.__init__(self, view, hiasym, label)
-        HiaBindable.__init__(self)
-        Gtk.Button.__init__(self)
-        self.setup_properties(view, hiasym, label)
-        #self.connect("clicked", lambda *args: False)
-        Gtk.Button.connect(self, "clicked", lambda *args: False)
-
-#    binddisp = HiaBindable.binddisp
-#    hiasym = HiaBindable.hiasym
-#    label = HiaBindable.label
-#    view = HiaBindable.view
-
-    __gsignals__ = HiaBindable._gsignals
 
 
-#class HiaTop (HiaBindable, Gtk.Button):
-#class HiaTop (Gtk.Button, HiaBindable):
-class HiaTop (HiaBindable_Button):
+class HiaTop (HiaBindable):
     """Generalization (i.e. not specific to keyboard) of keytop.
     
 Visual:
@@ -733,32 +691,23 @@ Drag-and-Drop
   * from other HiaTop = swap bind
 """
     def __init__ (self, view, hiasym, label=None):
-        HiaBindable_Button.__init__(self, view, hiasym, label)
-        #HiaBindable.__init__(self, view, hiasym, label)
-        #Gtk.Button.__init__(self)
-#        super(Gtk.Button, self).__init__()
-        #super(HiaBindable,self).__init__(view, hiasym, label)
-#        self.setup_bindable()
-        self.setup_properties()
+        HiaBindable.__init__(self, view, hiasym, label)
 
         self.binddisp = [ HiaBind(-1, ""), ]
         if self.bindstore:
             self.binddisp = self.get_bindlist()
+        self.hiasym = str(hiasym)
+        self.label = str(label if label is not None else hiasym)
 
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
 
-# TODO: avoid referenceing in __init__ so they can be initialized by GObject properly, and this copying from class can go away.
-#    binddisp = HiaBindable.binddisp
-#    hiasym = HiaBindable.hiasym
-#    label = HiaBindable.label
-#    view = HiaBindable.view
-
     def setup_widgets (self):
         """Set up Gtk widgets in for keytop."""
         self.set_no_show_all(True)
 
+        self.ui.button = Gtk.Button()
         self.ui.top = Gtk.VBox()
         self.ui.lbl = Gtk.Label(label=self.label)
         self.ui.lbl.set_halign(Gtk.Align.START)
@@ -772,9 +721,11 @@ Drag-and-Drop
         self.ui.top.pack_start(self.ui.lbl, False, False, 0)
         self.ui.top.pack_start(self.ui.spacer, True, True, 0)
 
-        self.add(self.ui.top)
+        self.ui.button.add(self.ui.top)
+        self.add(self.ui.button)
 
         self.update_widgets()
+        self.ui.button.show()
         self.ui.lbl.show()
         self.ui.spacer.show()
         self.ui.top.show()
@@ -857,18 +808,30 @@ Drag-and-Drop
         self.binddisp = binddisp
         self.update_widgets(binddisp)
 
+    def on_notify_binddisp (self, inst, propobj):
+        try:
+            self.ui.bindrows
+            self.update_bindlist(self.binddisp)
+        except AttributeError:
+            pass
+        return
+
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         bindlist = self.get_bindlist()
-        self.update_bindlist(bindlist)
+        #self.update_bindlist(bindlist)
+        self.binddisp = bindlist
     def on_group_changed (self, hiaview, newgrp):
         bindlist = self.get_bindlist()
-        self.update_bindlist(bindlist)
+        #self.update_bindlist(bindlist)
+        self.binddisp = bindlist
     def on_layer_changed (self, hiaview, newlyr):
         bindlist = self.get_bindlist()
-        self.update_bindlist(bindlist)
+        #self.update_bindlist(bindlist)
+        self.binddisp = bindlist
     def on_vislayers_changed (self, hiavia, vislayers):
         bindlist = self.get_bindlist()
-        self.update_bindlist(bindlist)
+        #self.update_bindlist(bindlist)
+        self.binddisp = bindlist
 
     def setup_dnd (self):
         """Set up Drag-and-Drop for key top."""
@@ -1395,7 +1358,7 @@ class HiaSurface (Gtk.Grid):
     }
 
 
-class HiaCluster (Gtk.Frame, HiaBindable):
+class HiaCluster (Gtk.Frame):
     """
 Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 """
