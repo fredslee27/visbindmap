@@ -209,15 +209,19 @@ class TestHiaWidgets (skel.TestSkel):
             self.assertEqual(self.hiaview.layer, 2)
             self.assertEqual(box.dlyr, 1)
             yield 0.5
-            devsel.ui.dropbox.popup()
+            devsel.ui.inp_dev.popup()
             yield 0.5
-            devsel.ui.dropbox.set_active(4)
+            devsel.ui.inp_dev.set_active(4)
             yield 0.5
-            devsel.ui.dropbox.popdown()
-            self.assertEqual(self.hiaview.device, "SteamController")
+            devsel.ui.inp_dev.popdown()
+            self.assertEqual(self.hiaview.device_name, "SteamController")
             self.assertEqual(box.ddev, 1)
             dd = self.hiaview.device_details
             self.assertTrue(len(dd) > 1)
+            yield 0.5
+            # Ensure widget updates based on setting plan model.
+            self.hiaview.layer = 1
+            self.assertTrue(lyrsel.buttons[1].get_active())
             yield 1
 
         self.runloop(script)
@@ -236,8 +240,8 @@ class TestHiaWidgets (skel.TestSkel):
         def script ():
             self.w.show()
             yield 1
-            picker.ui.sel_device.ui.dropbox.set_active(1)
-            self.assertEqual(self.hiaview.device, "keypad")
+            picker.ui.sel_device.ui.inp_dev.set_active(1)
+            self.assertEqual(self.hiaview.device_name, "keypad")
             probe = picker.ui.sel_bind.get_child_at(0,2)
             self.assertIsNotNone(probe)
             self.assertEqual(probe.hiasym, "KP_4")
