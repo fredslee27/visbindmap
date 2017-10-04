@@ -422,6 +422,59 @@ class BindStore (GObject.GObject):
 
 
 
+class BitVector (object):
+    def __init__ (self, initval):
+        self.count = 8
+        self.encoded = 0
+        try:
+            self.encoded = int(initval)
+        except TypeError:
+            iter(initval)
+            boolvec = [ bool(x) for x in initval ]
+            self.count = len(initval)
+            for i in range(self.count):
+                self.encoded |= (1 << i) if boolvec[i] else 0
+
+    def __iter__ (self):
+        for i in range(self.count):
+            yield ((self.encoded & (1 << i)) != 0)
+    def __getitem__ (self, idx):
+        if idx >= self.count:
+            raise IndexError("vector index out of range")
+        return ( (self.encoded & (1 << idx)) != 0 )
+    def __setitem__ (self, idx, val):
+        if val:
+            self.encoded |= (1 << idx)
+        else:
+            self.encoded &= ~(1 << idx)
+        if idx >= self.count:
+            self.count = idx+1
+    def __len__ (self):
+        return self.count
+    def __int__ (self):
+        return self.encoded
+    def set_bit (self, bitidx):
+        self.encoded |= (1 << bitidx)
+    def clear_bit (self, bitidx):
+        self.encoded &= ~(1 << bitidx)
+    def mask_bits (self, bitmask):
+        self.encoed &= bitmask
+    def __add__ (self, bitidx):
+        """set bit"""
+        self.set_bit(bitidx)
+        return self
+    def __sub__ (self, bitidx):
+        """clear bit"""
+        self.clear_bit(bitidx)
+        return self
+    def __mul__ (self, bitmask):
+        """binary and (mask bits, clear multiple bits)"""
+        self.mask_bits(bitmask)
+        return self
+    def __repr__ (self):
+        return "{}(initval=%r)".format(self.__class__.__name__, self.encoded)
+
+
 
 
 ################################
@@ -430,78 +483,79 @@ class BindStore (GObject.GObject):
 # originally "keytops", but some devices don't have keys.
 # They are, nonetheless, elements of Human-Computer Interface.
 
-class HiaView (GObject.GObject):  # HiaViewModel
-    """state information for binds views."""
-    def __init__ (self, bindstore=None):
-        GObject.GObject.__init__(self)
-        self._device = None         # Active device id (layout)
-        self._group = 0             # Active group
-        self._layer = 0             # Active layer
-        self._vislayers = [True]    # Visible layers (list of bool)
 
-        n = bindstore.nlayers
-        while len(self._vislayers) < n:
-            self._vislayers.append(False)
+class HiaView (GObject.Object):
+    device_name = GObject.Property(type=str, default="")
+    device_details = GObject.Property(type=object)
+    device = GObject.Property(type=object)   # tuple of (name:str,layout:HiaLayoutStore)
+    group = GObject.Property(type=int, default=0)
+    layer = GObject.Property(type=int, default=0)
+    _vislayers = BitVector(1)
+    #vislayers = GObject.Property(type=int)      # bit vector.
+    bindstore = GObject.Property(type=object)   # instance of BindStore.
+    layouts = GObject.Property(type=object)     # ListStore(name:st,LayoutStore:object)
 
-        self._bindstore = bindstore
-        if self._bindstore is None:
-            self._bindstore = BindStore()
-        self._bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
-        self._bindstore.connect("bind-changed", self.on_bind_changed)
+    def __init__ (self, bindstore=None, layouts=None):
+        GObject.Object.__init__(self)
+        self.setup_properties()
+        self.bindstore = bindstore
+        self.layouts = layouts
+        self.setup_signals()
 
-    def get_device (self): return self._device
-    def set_device (self, val):
-        self._device = val
-        self.emit("device-changed", val)
-    device = property(get_device, set_device)
+    def setup_properties (self):
+        self.connect('notify::device', self.on_notify_device)
+        self.connect('notify::group', self.on_notify_group)
+        self.connect('notify::layer', self.on_notify_layer)
+        #self.connect('notify::vislayers', self.on_notify_vislayers)
+        self.connect('notify::bindstore', self.on_notify_bindstore)
+        self.connect('notify::device-name', self.on_notify_device_name)
+        self.connect('notify::device-details', self.on_notify_device_details)
+        self.connect('notify::layouts', self.on_notify_layouts)
 
-    def get_group (self): return self._group
-    def set_group (self, val):
-        self._group = val
-        self.emit("group-changed", val)
-    group = property(get_group, set_group)
+    def setup_signals (self):
+        pass
 
-    def get_layer (self): return self._layer
-    def set_layer (self, val):
-        self._layer = val
-        self.emit("layer-changed", val)
-    layer = property(get_layer, set_layer)
+    @GObject.Property(type=object)
+    def vislayers (self):
+        return list(self._vislayers)
+    @vislayers.setter
+    def set_vislayers (self, list_bool):
+        vbl = len(list_bool)
+        for i in range(vbl):
+            self._vislayers.set_bit(i)
+        self._vislayers.count = vbl
+        self.emit("vislayers-changed", list(self._vislayers))
 
-    def get_vislayers (self): return self._vislayers
-    def set_vislayers (self, val_iterable):
-        resize = 1
-        try:
-            iter(val_iterable)
-            # is iterable.
-            resize = len(val_iterable)
-        except:
-            # not iterable, expect int.
-            resize = int(val_iterable)
-        if len(self.vislayers) < resize:
-            delta = resize - len(self.vislayers)
-            self.vislayers.extend([False] * delta)
-        if len(self.vislayers) > resize:
-            del self.vislayers[resize:]
-        try:
-            # Try copy.
-            self.vislayers[:] = val_iterable[:]
-        except:
-            # Nothing to copy, keep to simple resize.
-            pass
-        # use copy of list to suppress back-propagation of mutations.
-        self.emit("vislayers-changed", self._vislayers[:])
+    def on_notify_device (self, inst, param):
+        self.emit("device-changed", self.device[0])
+    def on_notify_group (self, inst, param):
+        self.emit("group-changed", self.group)
+    def on_notify_layer (self, inst, param):
+        self.emit("layer-changed", self.layer)
+    def on_notify_bindstore (self, inst, param):
+        bindstore = self.bindstore
+        bindstore.connect("bind-changed", self.on_bindstore_bind_changed)
+        bindstore.connect("ngroups-changed", self.on_bindstore_ngroups_changed)
+        bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
+    def on_notify_device_name (self, inst, param):
+        details = None
+        for row in self.layouts:
+            if row[0] == self.device_name:
+                details = row[1]
+                break
+        self.device_details = details
+    def on_notify_device_details (self, inst, param):
+        return
+    def on_notify_layouts (self, inst, param):
+        def asciisort (mdl, iterA, iterB, *args):
+            return cmp(mdl[iterA][0], mdl[iterB][0])
+        self.layouts.set_sort_func(0, asciisort)
+        self.layouts.set_sort_column_id(0, Gtk.SortType.ASCENDING)
 
-    vislayers = property(get_vislayers, set_vislayers)
-
-    def get_bindstore (self): return self._bindstore
-    def set_bindstore (self, val):
-        self._bindstore = val
-        self.emit("bindstore-changed", val)
-    bindstore = property(get_bindstore, set_bindstore)
-
-    def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
+    def on_bindstore_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         self.emit("bind-changed", hiasym, newtitle, newcode)
-
+    def on_bindstore_ngroups_changed (self, bindstore, ngroups):
+        self.emit("ngroups-changed", ngroups)
     def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
         # Auto-resize vislayers to new number of layers.
         vislayers = self.vislayers[:]
@@ -510,8 +564,9 @@ class HiaView (GObject.GObject):  # HiaViewModel
             vislayers.extend([False] * delta)
         if len(vislayers) > nlayers:
             vislayers = vislayers[:nlayers]
-        self.set_vislayers(vislayers)
-        return
+        #self.set_vislayers(vislayers)
+        self.vislayers = vislayers
+        self.emit("nlayers-changed", groupid, nlayers)
 
     __gsignals__ = {
         str("device-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str,)),
@@ -597,14 +652,15 @@ For HiaCluster, affects what layout to use.
 
     def __init__ (self, view, hiasym, label=None):
         Gtk.HBox.__init__(self)
+
+        self.connect("notify::binddisp", self.on_notify_binddisp)
+        self.connect("notify::view", self.on_notify_view)
+
         self.view = view
         self.hiasym = hiasym
         self.label = str(label if label is not None else self.hiasym)
         class ui: pass   # Plain data.
         self.ui = ui
-
-        self.connect("notify::binddisp", self.on_notify_binddisp)
-        self.connect("notify::view", self.on_notify_view)
 
     binddisp = GObject.Property(type=object)
     hiasym = GObject.Property(type=str, default=None)
@@ -613,7 +669,7 @@ For HiaCluster, affects what layout to use.
 
     def get_view (self): return self.view
     def set_view (self, val): self.view = val
-    def on_notify_view (self, inst, propobj):
+    def on_notify_view (self, inst, param):
         val = self.view
         val.connect("bind-changed", self.on_bind_changed)
         val.connect("bindstore-changed", self.on_bindstore_changed)
@@ -623,7 +679,7 @@ For HiaCluster, affects what layout to use.
 
     def get_binddisp (self): return self.binddisp
     def set_bindstore (self, val): self.binddisp = val
-    def on_notify_binddisp (self, inst, propobj):
+    def on_notify_binddisp (self, inst, param):
         self.emit("binddisp-changed", self.binddisp)
 
     def get_bindstore (self): return self.view.bindstore
@@ -693,9 +749,10 @@ Drag-and-Drop
     def __init__ (self, view, hiasym, label=None):
         HiaBindable.__init__(self, view, hiasym, label)
 
-        self.binddisp = [ HiaBind(-1, ""), ]
         if self.bindstore:
             self.binddisp = self.get_bindlist()
+        else:
+            self.binddisp = [ HiaBind(-1, ""), ]
         self.hiasym = str(hiasym)
         self.label = str(label if label is not None else hiasym)
 
@@ -779,7 +836,8 @@ Drag-and-Drop
                 bb.delete(bb.get_start_iter(), bb.get_end_iter())
                 markup = bd.get_markup_str()
                 bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
-                if self.view.vislayers[bi]:
+                # vislayers may have shrunk; treat the extras as invisible.
+                if (bi < len(self.view.vislayers)) and (self.view.vislayers[bi]):
                     br.show()
                     bv.show()
                     lyr.show()
@@ -808,12 +866,12 @@ Drag-and-Drop
         self.binddisp = binddisp
         self.update_widgets(binddisp)
 
-    def on_notify_binddisp (self, inst, propobj):
+    def on_notify_binddisp (self, inst, param):
         try:
             self.ui.bindrows
-            self.update_bindlist(self.binddisp)
         except AttributeError:
-            pass
+            return
+        self.update_widgets()
         return
 
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
@@ -1268,24 +1326,47 @@ class ClusteredLayouts (HiaLayouts):
         return
 
 
-class HiaSurface (Gtk.Grid):
+class HiaSelectorSym (Gtk.Grid):
     """Display of a HiaLayout."""
+
+    layout = GObject.Property(type=object)      # instance of LayoutStore
+    children = GObject.Property(type=object)    # dict, hiasym => hiatop
+    view = GObject.Property(type=object)        # instance of HiaView
+    _view = None        # Previously known instance.
+
     def __init__ (self, view):
         Gtk.Grid.__init__(self)
         self.set_row_homogeneous(True)
         self.set_column_homogeneous(True)
         self.set_row_spacing(1)
         self.set_column_spacing(1)
-        self.view = view
-        self._layout = None
-        self.children = {}   # map hiasym to hiatop
 
-    def get_layout (self):
-        return self._layout
-    def set_layout (self, layout):
-        self._layout = layout
+        self.connect("notify::layout", self.on_notify_layout)
+        self.connect("notify::children", self.on_notify_children)
+        self.connect("notify::view", self.on_notify_view)
+
+        self._view = None
+        self.view = view
+        #self.layout = layout
+        self.children = {}
+
+#    def get_layout (self):
+#        return self._layout
+#    def set_layout (self, layout):
+#        self._layout = layout
+#        self.rebuild_surface()
+#    layout = property(get_layout, set_layout)
+    def on_notify_layout (self, inst, param):
         self.rebuild_surface()
-    layout = property(get_layout, set_layout)
+
+    def on_notify_children (self, inst, param):
+        return
+
+    def on_notify_view (self, inst, param):
+        return
+
+    def on_notify_view_device_details (self, inst, param):
+        self.layout = self.view.device_details
 
     def disown_children (self):
         chlist = self.get_children()
@@ -1358,44 +1439,68 @@ class HiaSurface (Gtk.Grid):
     }
 
 
-class HiaCluster (Gtk.Frame):
+class HiaCluster (HiaBindable):
     """
 Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 """
+
+    hiachildren = GObject.Property(type=object)     # list of nested HiaBindable
+    layout_name = GObject.Property(type=str)     # active clustered_layout name
+
     def __init__ (self, view, hiasym, label=None):
         HiaBindable.__init__(self, view, hiasym, label)
-        Gtk.Frame.__init__(self)
-        self.hiachildren = []   # List of nested HiaBindable
+        #Gtk.Frame.__init__(self)
+#        self.hiachildren = []   # List of nested HiaBindable
+#        self._clustered_layouts = ClusteredLayouts(self.hiasym)
+#        bindlist = self.get_bindlist()
+#        layoutname = bindlist[self.view.layer].cmdtitle
+#        try:
+#            self._layout = self._clustered_layouts[layoutname][1]
+#        except TypeError:
+#            self._layout = None
+
+        self.connect("notify::hiachildren", self.on_notify_hiachildren)
+        self.connect("notify::layout-name", self.on_notify_layout_name)
+
+        self.hiachildren = []
+        # Instantiated per HiaCluster instance due to self.hiasym prefix.
         self._clustered_layouts = ClusteredLayouts(self.hiasym)
+        # Initial layout.
         bindlist = self.get_bindlist()
         layoutname = bindlist[self.view.layer].cmdtitle
-        try:
-            self._layout = self._clustered_layouts[layoutname][1]
-        except TypeError:
-            self._layout = None
+        self.layout_name = layoutname
+#        self._layout = self._clustered_layouts[layoutname][1]
+
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
 
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""
-        self.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
+        self.ui.frame = Gtk.Frame()
+        self.ui.frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
         self.ui.frame_title = Gtk.HBox()
         self.ui.frame_menu = Gtk.Button(label="=")
         self.ui.frame_label = Gtk.Label(label=self.label)
         self.ui.frame_title.pack_start(self.ui.frame_menu, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
-        self.set_label_widget(self.ui.frame_title)
+        self.ui.frame.set_label_widget(self.ui.frame_title)
         #self.ui.frame_title.show_all()
 
-        self.ui.planar = HiaSurface(self.view)
-        self.ui.planar.layout = self._layout
+        self.ui.planar = HiaSelectorSym(self.view)
+        #self.ui.planar.layout = self._layout
+        try:
+            self.ui.planar.layout = self._clustered_layouts[self.layout_name][1]
+        except TypeError:
+            pass
         self.ui.tabular = None
 
         self.ui.top = Gtk.Stack()
         self.ui.top.add_named(self.ui.planar, "planar")
 
-        self.add(self.ui.top)
+        #self.add(self.ui.top)
+        self.ui.frame.add(self.ui.top)
+        self.add(self.ui.frame)
 
         self.show_all()
 
@@ -1407,20 +1512,30 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         """Set up Drag-and-Drop for clustered control."""
         return
 
-    def get_layout (self):
-        return self._layout
-    def set_layout (self, val):
-        self._layout = val
-        self.ui.planar.layout = val
-    layout = property(get_layout, set_layout)
+    def on_notify_hiachildren (self, inst, param):
+        pass
+
+#    def get_layout (self):
+#        return self._layout
+#    def set_layout (self, val):
+#        self._layout = val
+#        self.ui.planar.layout = val
+#    layout = property(get_layout, set_layout)
+    def on_notify_layout_name (self, inst, param):
+        layoutname = self.layout_name
+        try:
+            layout = self._clustered_layouts[layoutname][1]
+        except TypeError:
+            layout = None
+        try:
+            self.ui.planar
+            self.ui.planar.layout = layout
+        except AttributeError:
+            pass
 
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
-        layoutname = newtitle
-        try:
-            layoutinfo = self._clustered_layouts[layoutname][1]
-        except TypeError:
-            layoutinfo = None
-        self.layout = layoutinfo
+        if hiasym == self.hiasym:
+            self.layout_name = newtitle
         return
     def on_group_changed (self, hiaview, newgrp):
         return
@@ -1429,7 +1544,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_vislayers_changed (self, hiavia, vislayers):
         return
 
-    __gsignals__ = dict(HiaBindable._gsignals)
+#    __gsignals__ = dict(HiaBindable._gsignals)
 
 
 
@@ -1443,22 +1558,50 @@ Row of RadioButton (one-of-many pressed)
 """
     EXPAND_MEMBERS = False
     PADDING = 0
+
+    view = GObject.Property(type=object)        # Instance of HiaView
+    title = GObject.Property(type=str)
+    namelist = GObject.Property(type=object)    # Instance of ListStore
+
     def __init__ (self, title, view, names_iterable):
         Gtk.Frame.__init__(self)
+
+        self.connect("notify::view", self.on_notify_view)
+        self.connect("notify::title", self.on_notify_title)
+        self.connect("notify::namelist", self.on_notify_namelist)
+
         self.view = view
-        self._title = title
-        self._namelist = Gtk.ListStore(str)
+        self.title = title
+        self.namelist = Gtk.ListStore(str)
+
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
         self.set_names(names_iterable)
+
+    def get_names (self):
+        return [ x[0] for x in self.namelist ]
+    def set_names (self, names_iterable):
+        self.namelist.clear()
+        for name in names_iterable:
+            self.namelist.append( (name,) )
+        self.update_widgets()
+    names = property(get_names, set_names)
+
+    def on_notify_view (self, inst, param):
+        pass
+    def on_notify_title (self, inst, param):
+        self.set_label(self.title)
+    def on_notify_namelist (self, inst, param):
+        pass
 
     def setup_widgets (self):
         """Set up Gtk widgets within radio-button selector base class."""
         class ui: pass
         self.ui = ui
         #self.update_widgets()
-        self.set_label(self._title)
+        #self.set_label(self._title)
+        self.set_label(self.title)
         self.ui.top = Gtk.HBox()
 
         self.add(self.ui.top)
@@ -1479,7 +1622,7 @@ Row of RadioButton (one-of-many pressed)
             self.ui.top.remove(ch)
         self.buttons = []
         group = None
-        for listrow in self._namelist:
+        for listrow in self.namelist:
             name = listrow[0]
             b = Gtk.RadioButton(group=group, label=name)
             if not self.buttons:
@@ -1492,20 +1635,20 @@ Row of RadioButton (one-of-many pressed)
             self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
         return
 
-    def get_names (self):
-        return [ x[0] for x in self._namelist ]
-    def set_names (self, names_iterable):
-        self._namelist.clear()
-        for name in names_iterable:
-            self._namelist.append( (name,) )
-        self.update_widgets()
-    names = property(get_names, set_names)
-
-    def get_title (self): return self._title
-    def set_title (self, val):
-        self._title = None
-        self.set_label(self._title)
-    title = property(get_title, set_title)
+#    def get_names (self):
+#        return [ x[0] for x in self._namelist ]
+#    def set_names (self, names_iterable):
+#        self._namelist.clear()
+#        for name in names_iterable:
+#            self._namelist.append( (name,) )
+#        self.update_widgets()
+#    names = property(get_names, set_names)
+#
+#    def get_title (self): return self._title
+#    def set_title (self, val):
+#        self._title = None
+#        self.set_label(self._title)
+#    title = property(get_title, set_title)
 
     def on_button_clicked (self, w, ofs=None):
         return
@@ -1539,17 +1682,51 @@ class HiaSelectorLayer (HiaSelectorRadio):
 
 # Intended to be named HiaSelectorLayout, but spelling too similar to *Layer
 class HiaSelectorDevice (Gtk.HBox):
-    def __init__ (self, view, layouts):
+    view = GObject.Property(type=object)    # instance of HiaView
+#    layouts = GObject.Property(type=object) # dict of str=>HiaLayoutStore
+
+    def __init__ (self, view):
         Gtk.HBox.__init__(self)
-        self.view = view
-        self._layouts = layouts
+
+        self.connect("notify::view", self.on_notify_view)
+#        self.connect("notify::layouts", self.on_notify_layouts)
+
         self._model = Gtk.ListStore(str)
-        layoutnames = sorted(self.layouts.keys())
-        for i in range(len(layoutnames)):
-            layoutname = layoutnames[i]
-            self._model.append( (layoutname,) )
+        self.view = view
+#        self.layouts = layouts
+
+#        layoutnames = sorted(self.layouts.keys())
+#        for i in range(len(layoutnames)):
+#            layoutname = layoutnames[i]
+#            self._model.append( (layoutname,) )
+        self._model = self.view.layouts
+
         self.setup_widgets()
         self.setup_signals()
+
+    def on_notify_view (self, inst, param):
+        # Watch for changes in .device
+        #self.view.connect("notify::device", self.on_notify_device)
+        self.view.connect("device-changed", self.on_device_changed)
+
+    def on_device_changed (self, view, devname):
+        try:
+            self.ui.dropbox
+        except AttributeError:
+            return
+        devname = self.view.device
+        selid = self.ui.dropbox.get_active()
+        if selid < 0:
+            return
+        selname = self._model[selid][0]
+        if devname == selname:
+            return
+
+#    def on_notify_layouts (self, inst, param):
+#        self._model.clear()
+#        for i in range(len(self.layouts)):
+#            layoutname = self.layouts[i]
+#            self._model.append( (layoutname,) )
 
     def setup_widgets (self):
         """Set up Gtk widgets within device selector."""
@@ -1566,6 +1743,8 @@ class HiaSelectorDevice (Gtk.HBox):
         dropbox.add_attribute(self.ui.render0, 'text', 0)
         dropbox.set_active(0)
         self.view.device = ('(none)', None)
+        #self.view.device = '(none)'
+        self.view.device_name = '(none)'
         self.ui.dropbox = dropbox
 
         self.pack_start(self.ui.lbl, False, False, 0)
@@ -1577,21 +1756,24 @@ class HiaSelectorDevice (Gtk.HBox):
         """Set up widget signals within device selector."""
         self.ui.dropbox.connect("changed", self.on_selection_changed)
 
-    def get_layouts (self):
-        return self._layouts
-    def set_layouts (self, val):
-        self._layouts = val
-        try:
-            self.ui.dropbox.set_model(val)
-        except AttributeError:
-            pass
-    layouts = property(get_layouts, set_layouts)
+#    def get_layouts (self):
+#        return self._layouts
+#    def set_layouts (self, val):
+#        self._layouts = val
+#        try:
+#            self.ui.dropbox.set_model(val)
+#        except AttributeError:
+#            pass
+#    layouts = property(get_layouts, set_layouts)
 
     def on_selection_changed (self, w):
         ofs = w.get_active()
+        if ofs < 0:
+            return
         layoutname = self._model[ofs][0]
         #layoutinfo = self.layouts[layoutname]
         self.view.device = layoutname
+        self.view.device_name = layoutname
 
 
 
@@ -1935,46 +2117,82 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 # |         |     }
 # +---------+--------------------
 class HiaPlanner (Gtk.HPaned):
-    def __init__ (self, cmdpack=None, view=None, layouts=None):
+    cmdpack = GObject.Property(type=object)
+    view = GObject.Property(type=object)
+
+    def __init__ (self, cmdpack=None, view=None):
         Gtk.HPaned.__init__(self)
+
+        self.setup_properties()
+
         if cmdpack is None:
+            # Fall back to builtin command pack.
             feed = CommandPackFeed.open(None)
             cmdpack = feed.read()
         if view is None:
+            # Build default view.
             bindstore = BindStore()
-            view = HiaView(bindstore)
-        if layouts is None:
             layouts = HiaLayouts()
             layouts.build_from_legacy_store()
+            view = HiaView(bindstore, layouts)
         self.view = view
-        self._layouts = layouts
-        self._cmdpack = cmdpack
+        self.cmdpack = cmdpack
         self.setup_widgets()
         self.setup_signals()
+
+    def setup_properties (self):
+        self.connect("notify::cmdpack", self.on_notify_cmdpack)
+        self.connect("notify::view", self.on_notify_view)
+
+    def on_notify_cmdpack (self, inst, param):
+        # TODO: re-populate HiaSelectorCommand.
+        pass
+
+    def on_notify_view (self, inst, param):
+        self.view.connect("notify::device-details", self.on_notify_view_device_details)
+        try:
+            self.ui.sel_device
+        except AttributeError:
+            return
+        for children in [
+                # self.ui.sel_cmd,
+                self.ui.sel_device,
+                self.ui.sel_group,
+                self.ui.sel_layer,
+                self.ui.sel_bind,
+                ]:
+            children.view = self.view
+
+    def on_notify_view_device_details (self, inst, param):
+        details = self.view.device_details
+        try:
+            self.ui.sel_bind.layout = details
+        except AttributeError:
+            pass
 
     def get_bindstore (self):
         return self.view.bindstore
     bindstore = property(get_bindstore)
 
-    def get_layouts (self):
-        return self._layouts
-    def set_layouts (self, val):
-        self._layouts = val
-        try:
-            self.ui.sel_device.set_model(val)
-        except AttributeError:
-            pass
-    layouts = property(get_layouts, set_layouts)
+#    def get_layouts (self):
+#        return self._layouts
+#    def set_layouts (self, val):
+#        self._layouts = val
+#        try:
+#            self.ui.sel_device.set_model(val)
+#        except AttributeError:
+#            pass
+#    layouts = property(get_layouts, set_layouts)
 
-    def get_cmdpack (self):
-        return self._cmdpack
-    def set_cmdpack (self, val):
-        self._cmdpack = val
-        try:
-            self.ui.sel_cmd.set_model(val)
-        except AttributeError:
-            pass
-    cmdpack = property(get_cmdpack, set_cmdpack)
+#    def get_cmdpack (self):
+#        return self._cmdpack
+#    def set_cmdpack (self, val):
+#        self._cmdpack = val
+#        try:
+#            self.ui.sel_cmd.set_model(val)
+#        except AttributeError:
+#            pass
+#    cmdpack = property(get_cmdpack, set_cmdpack)
 
     def setup_widgets (self):
         """Set up Gtk widgets within binds planner."""
@@ -1982,10 +2200,10 @@ class HiaPlanner (Gtk.HPaned):
         self.ui = ui
 
         self.ui.sel_cmd = HiaSelectorCommand(self.cmdpack)
-        self.ui.sel_device = HiaSelectorDevice(self.view, self.layouts)
+        self.ui.sel_device = HiaSelectorDevice(self.view)
         self.ui.sel_group = HiaSelectorGroup(self.view, None)
         self.ui.sel_layer = HiaSelectorLayer(self.view, None)
-        self.ui.sel_bind = HiaSurface(self.view)
+        self.ui.sel_bind = HiaSelectorSym(self.view)
 
         self.ui.lhs = Gtk.VBox()
         self.ui.lhs.pack_start(self.ui.sel_cmd, True, True, 0)
@@ -2008,18 +2226,18 @@ class HiaPlanner (Gtk.HPaned):
 
     def setup_signals (self):
         """Set up signals within binds planner."""
-        self.view.connect("device-changed", self.on_device_changed)
+#        self.view.connect("device-changed", self.on_device_changed)
         self.ui.sel_bind.connect("bind-assigned", self.on_bind_assigned)
         self.ui.sel_bind.connect("bind-swapped", self.on_bind_swapped)
         self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
         #self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
         return
 
-    def on_device_changed (self, w, newdev):
-        layoutinfo = self.layouts[newdev]
-        layoutname, layoutdata = layoutinfo
-        self.ui.sel_bind.set_layout(layoutdata)
-        return
+#    def on_device_changed (self, w, newdev):
+#        layoutinfo = self.layouts[newdev]
+#        layoutname, layoutdata = layoutinfo
+#        self.ui.sel_bind.set_layout(layoutdata)
+#        return
 
     def on_bind_assigned (self, w, hiasym, bindvalue):
         groupid = self.view.group
@@ -2058,13 +2276,15 @@ class HiaPlanner (Gtk.HPaned):
 class HiaWindow (Gtk.Window):
     def __init__ (self):
         Gtk.Window.__init__(self)
-        bindstore = BindStore()
-        view = HiaView(bindstore)
-        feed = CommandPackFeed.open(None)
-        cmdpack = feed.read()
-        layouts = HiaLayouts()
-        layouts.build_from_legacy_store()
-        planner = HiaPlanner(cmdpack, view, layouts)
+        self.set_size_request(640, 480)
+        #bindstore = BindStore()
+        #layouts = HiaLayouts()
+        #layouts.build_from_legacy_store()
+        #view = HiaView(bindstore, layouts)
+        #feed = CommandPackFeed.open(None)
+        #cmdpack = feed.read()
+        #planner = HiaPlanner(cmdpack, view, layouts)
+        planner = HiaPlanner()
         self.add(planner)
         self.show_all()
 

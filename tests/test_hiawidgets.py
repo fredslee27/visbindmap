@@ -12,13 +12,14 @@ import hialayout
 class TestHiaWidgets (skel.TestSkel):
     def setUp (self):
         #GObject.threads_init()  # earlier python may need this.
-        self.bindstore = hialayout.BindStore()
-        self.hiaview = hialayout.HiaView(self.bindstore)
         self.all_layouts = hialayout.HiaLayouts()
         self.all_layouts.build_from_legacy_store()
+        self.bindstore = hialayout.BindStore()
         self.layouts0 = hialayout.HiaLayouts()
         self.layouts0.append(("(None)", None))
         self.layouts0.append(("keypad", self._build_sample_layout1()))
+        #self.hiaview = hialayout.HiaView(self.bindstore, self.all_layouts)
+        self.hiaview = hialayout.HiaView(self.bindstore, self.layouts0)
         self.w = Gtk.Window(title="TestHiaWidget")
         return
 
@@ -32,6 +33,30 @@ class TestHiaWidgets (skel.TestSkel):
         bindstore.nlayers = 4
         bindstore.set_bind(0, 0, 'K_ESC', 'quit')
         return bindstore
+
+    def test_hiaview (self):
+        class box:
+            vislayers_delta = 0
+        def on_vislayers_changed (w, vislayers):
+            box.vislayers_delta += 1
+        def on_device_changed (w, devid):
+            pass
+        def on_group_changed (w, groupid):
+            pass
+        def on_layer_changed (w, groupid, layerid):
+            pass
+        def on_bind_changed (w, hiasym, newtitle, newcode):
+            pass
+
+        self.hiaview.connect("vislayers-changed", on_vislayers_changed)
+
+        def script ():
+            self.hiaview.vislayers = [ True, True, True, True ]
+            yield 0.1
+            self.assertEqual(len(self.hiaview.vislayers), 4)
+            self.assertEqual(self.hiaview.vislayers, [True,True,True,True])
+
+        self.runloop(script)
 
     def test_hiatop (self):
         self.hiaview.vislayers = [ True, True, True, True ]
@@ -97,7 +122,7 @@ class TestHiaWidgets (skel.TestSkel):
         layouts = hialayout.HiaLayouts()
         layouts.build_from_legacy_store()
         self._build_sample_binds1(self.hiaview.bindstore)
-        hiasurface = hialayout.HiaSurface(self.hiaview)
+        hiasurface = hialayout.HiaSelectorSym(self.hiaview)
         #hiasurface.layout = layouts['en_US (pc104)'][1]
         hiasurface.layout = self._build_sample_layout1()
 
@@ -124,7 +149,7 @@ class TestHiaWidgets (skel.TestSkel):
 
         hiacluster = hialayout.HiaCluster(self.hiaview, "CL#")
         #hiacluster.set_layout(layouts['en_US (pc104)'][1])
-        self.bindstore.set_bind(0,0,'CL','OneButton')
+        self.bindstore.set_bind(0,0,'CL#','OneButton')
 
         self.w.add(hiacluster)
 
@@ -136,10 +161,11 @@ class TestHiaWidgets (skel.TestSkel):
         self.w.destroy()
 
     def test_hiaselectors (self):
-        sel = hialayout.HiaSelector('Generic', self.hiaview, ['one', 'two', 'three'])
+        self.hiaview.layouts = self.all_layouts
+        sel = hialayout.HiaSelectorRadio('Generic', self.hiaview, ['one', 'two', 'three'])
         grpsel = hialayout.HiaSelectorGroup(self.hiaview, ['Menu', 'Game'])
         lyrsel = hialayout.HiaSelectorLayer(self.hiaview, ['0', '1', '2', '3'])
-        devsel = hialayout.HiaSelectorDevice(self.hiaview, self.all_layouts)
+        devsel = hialayout.HiaSelectorDevice(self.hiaview)
         box = Gtk.VBox()
         box.pack_start(sel, False, False, 0)
         box.pack_start(grpsel, False, False, 0)
@@ -190,18 +216,22 @@ class TestHiaWidgets (skel.TestSkel):
             devsel.ui.dropbox.popdown()
             self.assertEqual(self.hiaview.device, "SteamController")
             self.assertEqual(box.ddev, 1)
+            dd = self.hiaview.device_details
+            self.assertTrue(len(dd) > 1)
             yield 1
 
         self.runloop(script)
         self.w.destroy()
 
-    def test_hiapicker (self):
+    def test_hiaplanner (self):
+        self.hiaview.layouts = self.layouts0
         #self.hiaview.bindstore.nlayers = 2
         self.hiaview.vislayers = [ True, False ]
         self._build_sample_binds1(self.hiaview.bindstore)
-        picker = hialayout.HiaPicker(self.hiaview, self.layouts0)
+        picker = hialayout.HiaPlanner(cmdpack=None, view=self.hiaview)
         picker.ui.sel_layer.set_names(['base', '1'])
         self.w.add(picker)
+        self.w.set_size_request(640, 480)
 
         def script ():
             self.w.show()
