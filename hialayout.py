@@ -564,7 +564,9 @@ class HiaView (GObject.Object):
         self.emit("bindstore-changed", self.bindstore)
     def on_notify_layouts (self, inst, param):
         def asciisort (mdl, iterA, iterB, *args):
-            return cmp(mdl[iterA][0], mdl[iterB][0])
+            # No cmp() in python3; workaround.  Still valid in python2.
+            valA, valB = mdl[iterA][0], mdl[iterB][0]
+            return (valA > valB) - (valA < valB)
         self.layouts.set_sort_func(0, asciisort)
         self.layouts.set_sort_column_id(0, Gtk.SortType.ASCENDING)
         self.emit("layouts-changed", self.layouts)
