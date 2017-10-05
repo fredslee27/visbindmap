@@ -1059,13 +1059,13 @@ Drag-and-Drop
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         if info == HiaDnd.UNBIND:
             # dragged to command set.
-            seldata.set(seldata.get_target(), 8, str(self.hiasym))
+            seldata.set(seldata.get_target(), 8, self.hiasym.encode())
             #self.emit("bind-erased", self.hiasym)
             self.controller.erase_bind(self.hiasym)
         elif info == HiaDnd.SWAP:
             # dragged to HiaTop.
             val = self.hiasym
-            seldata.set(seldata.get_target(), 8, str(self.hiasym))
+            seldata.set(seldata.get_target(), 8, self.hiasym.encode())
         return False
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
@@ -1077,7 +1077,7 @@ Drag-and-Drop
             self.controller.assign_bind((self.hiasym, bv.cmdtitle, bv.cmdcode))
             ctx.finish(True, False, 0)
         elif info == HiaDnd.SWAP:
-            othersym = seldata.get_data()
+            othersym = seldata.get_data().decode()
             #self.emit("bind-swapped", self.hiasym, othersym)
             self.controller.exchange_binds((self.hiasym, othersym))
             ctx.finish(True, False, 0)
