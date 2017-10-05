@@ -20,6 +20,7 @@ class TestHiaWidgets (skel.TestSkel):
         self.layouts0.append(("keypad", self._build_sample_layout1()))
         #self.hiaview = hialayout.HiaView(self.bindstore, self.all_layouts)
         self.hiaview = hialayout.HiaView(self.bindstore, self.layouts0)
+        self.controller = hialayout.HiaControl(self.hiaview)
         self.w = Gtk.Window(title="TestHiaWidget")
         return
 
@@ -162,10 +163,10 @@ class TestHiaWidgets (skel.TestSkel):
 
     def test_hiaselectors (self):
         self.hiaview.layouts = self.all_layouts
-        sel = hialayout.HiaSelectorRadio('Generic', self.hiaview, ['one', 'two', 'three'])
-        grpsel = hialayout.HiaSelectorGroup(self.hiaview, ['Menu', 'Game'])
-        lyrsel = hialayout.HiaSelectorLayer(self.hiaview, ['0', '1', '2', '3'])
-        devsel = hialayout.HiaSelectorDevice(self.hiaview)
+        sel = hialayout.HiaSelectorRadio('Generic', self.controller, ['one', 'two', 'three'])
+        grpsel = hialayout.HiaSelectorGroup(self.controller, ['Menu', 'Game'])
+        lyrsel = hialayout.HiaSelectorLayer(self.controller, ['0', '1', '2', '3'])
+        devsel = hialayout.HiaSelectorDevice(self.controller)
         box = Gtk.VBox()
         box.pack_start(sel, False, False, 0)
         box.pack_start(grpsel, False, False, 0)
@@ -232,7 +233,7 @@ class TestHiaWidgets (skel.TestSkel):
         #self.hiaview.bindstore.nlayers = 2
         self.hiaview.vislayers = [ True, False ]
         self._build_sample_binds1(self.hiaview.bindstore)
-        picker = hialayout.HiaPlanner(cmdpack=None, view=self.hiaview)
+        picker = hialayout.HiaPlanner(cmdpack=None, controller=self.controller)
         picker.ui.sel_layer.set_names(['base', '1'])
         self.w.add(picker)
         self.w.set_size_request(640, 480)
