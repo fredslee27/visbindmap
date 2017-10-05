@@ -16,88 +16,6 @@ import kbd_desc
 
 
 
-
-###########
-# Actions #
-###########
-
-r""""
-Actions:
-  choose_command
-  choose_device
-  choose_group
-  choose_layer
-  choose_sym
-
-  swap_bind
-"""
-
-# GUI Actions, which can be triggered by more than one source, e.g. button and keyboard shortcut.
-class HiaActions (Gio.SimpleActionGroup):
-    # Descriptions of GActions to instantiate.
-    DESC = [
-        # Restrict name to valid python identifiers, for __getattr__() use.
-        # (name, param_GLib, initState_tuple_GLib, label, tooltip, stock_id)
-        # action swap_bind_explicit((hiasymA, hiasymB))
-
-        ## Operations on arbitrary HiaSyms.
-        # Two-syllable verbs for specifying the hiasym (explicit target).
-        ("exchange_binds", "(ss)", None, "Swap Binds", "Swap binds between HiaSyms in current group and layer.", None),
-        # action swap_bind_explicit((groupA,layerA,hiasymA, grpB,lyrB,symB))
-        ("exchange_binds_explicit", "(xxsxxs)", None, "Swap Binds Compleat", "Swap binds between HiaSyms in specified groups and layers.", None),
-        # action erase_bind(hiasym)
-        ("erase_bind", "s", None, "Erase Bind", "Erase bind from HiaSym", None),
-        # action assign_bind((hiasym, cmdtitle, cmdcode))
-        ("assign_bind", "(sss)", None, "Assign Bind", "Assign bind to HiaSym", None),
-        # action assign_bind_explicit((group, layer, hiasym, cmdtitle, cmdcode))
-        ("assign_bind_explicit", "(xxsss)", None, "Assign Bind Compleat", "Assign bind to HiaSym in specified group and layer.", None),
-
-        ## Operations on currently-selected HiaSym.
-        # One-syllable verbs for using selected hiasym (implicit target).
-        ("push_bind", "x", None, "Inject Command Pack binding", "Inject bind from selected command pack entry into selected HiaSym", None),
-        ("swap_bind", "s", None, "Exchange binds with HiaSym", "Swap binds between specified HiaSym and currently selected HiaSym", None),
-        ("drop_bind", None, None, "Erase bind", "Erase bind for selected HiaSym", None),
-        ("dup_bind", "s", None, "Copy bind from HiaSym", "Copy bind from another HiaSym.", None),
-        ("move_bind", "s", None, "Move bind to HiaSym", "Move bind to another HiaSym, removing from the selected HiaSym.", None),
-
-        ## Operations on bindstore.
-        ("reset_bindstore", None, None, "Reset all binds", "Erase all bindings and return bindstore to default values.", None),
-
-        ## Operations on viewer state.
-        ("pick_sym", "s", ('s',str("")), "Pick HiaSym", "Specify HiaSym for HiaTop operations.", None),
-        ("pick_layer", "x", ('x',0), "Pick HiaLayer", "Specify HiaLayer to make focus.", None),
-        ("pick_group", "x", ('x',0), "Pick HiaGroup", "Specify HiaGroup to make focus.", None),
-        ("pick_device", "x", ('x',0), "Pick HiaDevice", "Specify HiaDevice to lay out key tops.", None),
-        ("pick_command", "x", ('x',0), "Pick HiaCommand", "Specify HiaCommand for HiaTop oeprations.", None),
-
-        ]
-    def __init__ (self):
-        Gio.SimpleActionGroup.__init__(self)
-        self._lookup = {}
-        self.setup_actions()
-
-    def setup_actions (self):
-        """Use action descriptions to generate instances of GAction."""
-        for actdata in self.DESC:
-            name, param, init_state, label, tooltip, stock_id = actdata
-            gparam, gstate = None, None
-            if param is not None:
-                gparam = GLib.VariantType(str(param))
-            if init_state is not None:
-                fmt, val = init_state
-                gstate = GLib.Variant(str(fmt), val)
-            action = Gio.SimpleAction(name=str(name), parameter_type=gparam, state=gstate)
-            self.add_action(action)
-            self._lookup[name] = action
-
-    def __getattr__ (self, k):
-        if k in self._lookup:
-            return self._lookup[k]
-        raise AttributeError("No such action '{}'.".format(k))
-
-#actions = HiaActions()
-
-
 ########################
 # BindStore data model #
 ########################
@@ -612,23 +530,22 @@ class HiaControl (GObject.Object):
     """Controller wrapper to HiaView."""
 
     view = GObject.Property(type=object)    # Instance of HiaView.
-    actions = None      # Instance of HiaActions
     _registry = None    # map str => Gio.Action (typ. Gio.SimpleAction)
+    actions = None      # Instance Gio.SimpleActionGroup
 
     def __init__ (self, hiaview):
         GObject.Object.__init__(self)
         self.connect("notify::view", self.on_notify_view)
         self.view = hiaview
-        self.actions = HiaActions()
-        self._registry = {}
+        self.actions = Gio.SimpleActionGroup()
         self.setup_signals()
 
     def on_notify_view (self, inst, param):
         pass
 
     def setup_signals (self):
-        registry = {}
-        def make_proxy (action, param_type):
+        def make_closure (action, param_type):
+            # Create an action activation closure.
             def f (arg):
                 action.activate(GLib.Variant(param_type, arg))
             return f
@@ -646,16 +563,16 @@ class HiaControl (GObject.Object):
             tooltip = actdesc['tooltip']
             action = Gio.SimpleAction(name=name, parameter_type=gparam, state=gstate)
             action.connect('activate', o)
-            registry[name] = action
+            self.actions.add_action(action)
 
+            # Create an aliased method, with the leading 'act_' removed.
             if gparam:
                 param_type = gparam.dup_string()
-                proxy = make_proxy(action, param_type)
-                self.__dict__[name] = proxy
+                closure = make_closure(action, param_type)
+                self.__dict__[name] = closure
             else:
-                proxy = lambda: action.activate()
-                self.__dict__[name] = proxy
-        self._registry = registry
+                closure = lambda: action.activate()
+                self.__dict__[name] = closure
         return
 
     def HiaSimpleAction (param_type=None, init_state=None, stock_id=None):
@@ -665,6 +582,7 @@ The first line, delimited to a newline, is the tooltip's label.
 Subsequent lines constitute the action's tooltip text (with Pango markup).
 """
         def wrapper (funcobj):
+            # Given a class method, add introspection fields for GAction.
             name = funcobj.__name__
             if name.startswith("act_"):
                 name = name[4:]
@@ -683,10 +601,6 @@ Subsequent lines constitute the action's tooltip text (with Pango markup).
             if init_state is not None:
                 fmt, val = init_state
                 gstate = GLib.Variant(str(fmt), val)
-#            action = Gio.SimpleAction(name=str(name), parameter_type=gparam, state=gstate)
-#            action.hia_label = label
-#            action.hia_tooltip = tooltip
-            #HiaControl.registry[name] = action
             funcobj.__gaction__ = dict(
                 name=name,
                 gparam=gparam,
@@ -967,7 +881,7 @@ Drag-and-Drop
   * from CmdPackView = set/copy bind
   * from other HiaTop = swap bind
 """
-    # Inherited GProperties: binddisp, view, hiasym, label
+    # Inherited GProperties: binddisp, view, controller, hiasym, label
 
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
@@ -1930,26 +1844,6 @@ class HiaSelectorDevice (Gtk.HBox):
 
     def on_notify_controller (self, inst, param):
         self.view = self.controller.view
-
-#    def on_notify_view_device_name (self, inst, param):
-#        devname = self.view.device_name
-#        try:
-#            self.ui.inp_dev
-#        except AttributeError:
-#            return
-#        if self.ui.inp_dev.get_property('popup_shown'):
-#            return
-#        chkname = self.view.layouts[self.ui.inp_dev.get_active()][0]
-#        if (devname == chkname):
-#            return
-#        # find index of the name.
-#        devofs = -1
-#        for i in range(len(self.view.layouts)):
-#            probe = self.view.layouts[i][0]
-#            if devname == probe:
-#                devofs = i
-#        self.ui.inp_dev.set_active(devofs)
-#        return
 
     def on_notify_view_layouts (self):
         self.ui.inp_sel.set_model(self.view.layouts)
