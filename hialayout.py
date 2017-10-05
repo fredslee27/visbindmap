@@ -771,6 +771,8 @@ Drag-and-Drop
   * from CmdPackView = set/copy bind
   * from other HiaTop = swap bind
 """
+    # Inherited GProperties: binddisp, view, hiasym, label
+
     def __init__ (self, view, hiasym, label=None):
         HiaBindable.__init__(self, view, hiasym, label)
 
@@ -886,15 +888,6 @@ Drag-and-Drop
             self.ui.bindrows[bi].hide()
         return
 
-    def update_bindlist (self, bindlist):
-        binddisp = []
-        for lid in range(len(self.view.vislayers)):
-            if self.view.vislayers[lid]:
-                hiabind = bindlist[lid]
-                binddisp.append(hiabind)
-        self.binddisp = binddisp
-        self.update_widgets(binddisp)
-
     def on_notify_binddisp (self, inst, param):
         try:
             self.ui.bindrows
@@ -905,19 +898,15 @@ Drag-and-Drop
 
     def on_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
         bindlist = self.get_bindlist()
-        #self.update_bindlist(bindlist)
         self.binddisp = bindlist
     def on_group_changed (self, hiaview, newgrp):
         bindlist = self.get_bindlist()
-        #self.update_bindlist(bindlist)
         self.binddisp = bindlist
     def on_layer_changed (self, hiaview, newlyr):
         bindlist = self.get_bindlist()
-        #self.update_bindlist(bindlist)
         self.binddisp = bindlist
     def on_vislayers_changed (self, hiavia, vislayers):
         bindlist = self.get_bindlist()
-        #self.update_bindlist(bindlist)
         self.binddisp = bindlist
 
     def setup_dnd (self):
