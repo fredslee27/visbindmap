@@ -792,6 +792,7 @@ For HiaCluster, affects what layout to use.
 
         self.connect("notify::binddisp", self.on_notify_binddisp)
         self.connect("notify::view", self.on_notify_view)
+        self.connect("notify::label", self.on_notify_label)
         self.connect("notify::controller", self.on_notify_controller)
 
         #self.view = view
@@ -826,6 +827,11 @@ For HiaCluster, affects what layout to use.
     def set_bindstore (self, val): self.binddisp = val
     def on_notify_binddisp (self, inst, param):
         self.emit("binddisp-changed", self.binddisp)
+
+    def get_label (self): return self.label
+    def set_label (self, val): self.label = val
+    def on_notify_label (self, inst, param):
+        return
 
     def get_bindstore (self): return self.view.bindstore
     def set_bindstore (self, val): pass
@@ -1064,7 +1070,7 @@ Drag-and-Drop
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         if info == HiaDnd.BIND:
-            seltext = seldata.get_data()
+            seltext = seldata.get_data().decode()
             #self.emit("bind-assigned", self.hiasym, seltext)
             bv = BindValue(lambda: False)
             bv.restore(ast.literal_eval(seltext))
@@ -1681,6 +1687,13 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.setup_signals()
         self.setup_dnd()
 
+    def get_extended_label (self):
+        if not self.layout_name:
+            layoutname = self._clustered_layouts[0][0]  # "Empty".
+        else:
+            layoutname = self.layout_name
+        return "{} <{}>".format(self.hiasym, layoutname)
+
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""
         menudesc = [
@@ -1698,7 +1711,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.ui.frame_arranger = Gtk.MenuButton()
         self.ui.frame_arranger.set_use_popover(False)  # TODO: GSettings.
         self.ui.frame_arranger.set_menu_model(self.ui.mnu_layout)
-        self.ui.frame_label = Gtk.Label(label=self.label)
+        label = self.get_extended_label()
+        self.ui.frame_label = Gtk.Label(label=label)
         self.ui.frame_title.pack_start(self.ui.frame_arranger, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
         self.ui.frame.set_label_widget(self.ui.frame_title)
@@ -1741,6 +1755,13 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         except AttributeError:
             pass
 
+    def on_notify_label (self, inst, param):
+        try:
+            self.ui.frame_label
+        except AttributeError:
+            return
+        self.ui.frame_label.set_label(self.get_extended_label())
+
     def on_menu_activate_layout (self, *args):
         pass
 
@@ -1748,6 +1769,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         # TODO: check current group and layer.
         if hiasym == self.hiasym:
             self.layout_name = newtitle
+            self.label = "{} <{}>".format(self.hiasym, self.layout_name)
         return
     def on_group_changed (self, hiaview, newgrp):
         return
@@ -2313,8 +2335,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         bindvalue = repr(bv.snapshot())
         if info == HiaDnd.BIND:
             # dragged from command set.
-            # TODO: encode BindValue
-            seldata.set(seldata.get_target(), 8, bindvalue)
+            seldata.set(seldata.get_target(), 8, bindvalue.encode())
         return False
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         if info == HiaDnd.UNBIND:
