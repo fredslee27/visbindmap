@@ -22,6 +22,7 @@ class TestHiaWidgets (skel.TestSkel):
         self.hiaview = hialayout.HiaView(self.bindstore, self.layouts0)
         self.controller = hialayout.HiaControl(self.hiaview)
         self.w = Gtk.Window(title="TestHiaWidget")
+        self.controller.insert_actions_into_widget(self.w)
         return
 
     @staticmethod
@@ -156,6 +157,22 @@ class TestHiaWidgets (skel.TestSkel):
 
         def script ():
             self.w.show_all()
+            yield 1
+            hiacluster.ui.frame_arranger.set_use_popover(False)
+            hiacluster.ui.frame_arranger.clicked()
+            yield 0.2
+            menu = hiacluster.ui.frame_arranger.get_property("popup")
+            menu.set_active(4)  # ButtonQuad
+            menuitem = menu.get_active()
+            menuitem.activate()
+            yield 0.2
+            menu.popdown()
+            hiacluster.ui.frame_arranger.clicked()
+            occupied_scan = [ (0,0), (0,1), (0,2),
+                              (1,0), (1,1), (1,2),
+                              (2,0), (2,1), (2,2), ]
+            occupied_report = [ bool(hiacluster.ui.planar.get_child_at(x,y)) for (x,y) in occupied_scan ]
+            self.assertTrue(occupied_report, [ False,True,False,  True,False,True,  False,True,False ])
             yield 2
 
         self.runloop(script)

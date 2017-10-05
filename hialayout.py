@@ -543,6 +543,9 @@ class HiaControl (GObject.Object):
     def on_notify_view (self, inst, param):
         pass
 
+    def insert_actions_into_widget (self, parent_widget):
+        parent_widget.insert_action_group("hia", self.actions)
+
     def setup_signals (self):
         def make_closure (action, param_type):
             # Create an action activation closure.
@@ -1223,6 +1226,77 @@ class ClusteredLayouts (HiaLayouts):
 
     # onebutton, scroll, dpad, bquad, mouse, trackpad, js, gyro, touchmenu, radialmenu
 
+    def make_menu (self):
+        # Return a Gio.Menu describing a menu choosing an available layout.
+        MENUDESC = [
+            # (displayed_label, bind_value)  =>  menuitem set layout
+            # || (displayed_label, [ nested_MENUDESC ] )  =>  submenu
+            ("_Empty", "Empty"),
+            ("One _Button", "OneButton"),
+            ("Scroll _Wheel", "ScrollWheel"),
+            ("_D-Pad", "DirectionPad"),
+            ("Button _Quad", "ButtonQuad"),
+            ("Tr_ackpad", "MousePad"),
+            ("_Mouse Region", "MouseRegion"),
+            ("_Joystick", "Joystick"),
+            ("_Gyro", "GyroTilt"),
+            ("_Touch Menu", [
+                ("_2 items", "TouchMenu02"),
+                ("_4 items", "TouchMenu04"),
+                ("_7 items", "TouchMenu07"),
+                ("_9 items", "TouchMenu09"),
+                ("1_2 items", "TouchMenu12"),
+                ("1_3 items", "TouchMenu13"),
+                ("1_6 items", "TouchMenu16"),
+                ]),
+            ("_Radial Menu", [
+                ("_01..09 items", [
+                    ("_1 item", "RadialMenu01"),
+                    ("_2 items", "RadialMenu02"),
+                    ("_3 items", "RadialMenu03"),
+                    ("_4 items", "RadialMenu04"),
+                    ("_5 items", "RadialMenu05"),
+                    ("_6 items", "RadialMenu06"),
+                    ("_7 items", "RadialMenu07"),
+                    ("_8 items", "RadialMenu08"),
+                    ("_9 items", "RadialMenu09"),
+                    ]),
+                ("_10.._19 items", [
+                    ("1_1 items", "RadialMenu11"),
+                    ("1_2 items", "RadialMenu12"),
+                    ("1_3 items", "RadialMenu13"),
+                    ("1_4 items", "RadialMenu14"),
+                    ("1_5 items", "RadialMenu15"),
+                    ("1_6 items", "RadialMenu16"),
+                    ("1_7 items", "RadialMenu17"),
+                    ("1_8 items", "RadialMenu18"),
+                    ("1_9 items", "RadialMenu19"),
+                    ]),
+                ("_20 items", "RadialMenu20"),
+                ]),
+            ]
+        def make_from_desc (menudesc):
+            menu = Gio.Menu()
+            for itemdesc in menudesc:
+                label, detail = itemdesc if itemdesc is not None else (None,None)
+                if type(detail) == list:
+                    submenu = make_from_desc(detail)
+                    menuitem = Gio.MenuItem.new_submenu(label=label, submenu=submenu)
+                    menu.append_item(menuitem)
+                elif label is None and detail is None:
+                    # separator.
+                    pass
+                else:
+                    menuitem = Gio.MenuItem()
+                    menuitem.set_label(label)
+                    # Whatever the detail is, conform to "assign_bind" action.
+                    detailed_action = 'hia.assign_bind(("{}","{}","{}"))'.format(self.symprefix, detail, detail)
+                    menuitem.set_detailed_action(detailed_action)
+                    menu.append_item(menuitem)
+            return menu
+        menu = make_from_desc(MENUDESC)
+        return menu
+
     def build_layouts (self):
         self._build_layout_empty()
         self._build_layout_one()
@@ -1609,12 +1683,23 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""
+        menudesc = [
+            ("One Button", self.on_menu_activate_layout, "OneButton"),
+            ("Scroll Wheel", self.on_menu_activate_layout, "ScrollWheel"),
+            ("Joystick", self.on_menu_activate_layout, "Joystick"),
+            ("D-Pad", self.on_menu_activate_layout, "DirectionPad"),
+            ]
+
+        self.ui.mnu_layout = self._clustered_layouts.make_menu()
+
         self.ui.frame = Gtk.Frame()
         self.ui.frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
         self.ui.frame_title = Gtk.HBox()
-        self.ui.frame_menu = Gtk.Button(label="=")
+        self.ui.frame_arranger = Gtk.MenuButton()
+        self.ui.frame_arranger.set_use_popover(False)  # TODO: GSettings.
+        self.ui.frame_arranger.set_menu_model(self.ui.mnu_layout)
         self.ui.frame_label = Gtk.Label(label=self.label)
-        self.ui.frame_title.pack_start(self.ui.frame_menu, False, False, 0)
+        self.ui.frame_title.pack_start(self.ui.frame_arranger, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
         self.ui.frame.set_label_widget(self.ui.frame_title)
 
@@ -1655,6 +1740,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             self.ui.planar.layout = layout
         except AttributeError:
             pass
+
+    def on_menu_activate_layout (self, *args):
+        pass
 
     def on_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
         # TODO: check current group and layer.
@@ -2253,7 +2341,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 # | CmdPick | [DeviceSelector  v]
 # |         |  ( ) Mode0   ( ) Mode1  ...
 # |         |  ( ) Layer0  ( ) Layer1 ...
-# |         | { HiaSelectorBind
+# |         | { HiaSelectorSym
 # |         |  .
 # |         |   .
 # |         |    .
@@ -2405,6 +2493,7 @@ class HiaWindow (Gtk.Window):
         planner = HiaPlanner()
         self.add(planner)
         self.show_all()
+        planner.controller.insert_actions_into_widget(self)
 
 
 if __name__ == "__main__":
