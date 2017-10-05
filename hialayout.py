@@ -546,9 +546,20 @@ class HiaControl (GObject.Object):
     def setup_signals (self):
         def make_closure (action, param_type):
             # Create an action activation closure.
-            def f (arg):
-                action.activate(GLib.Variant(param_type, arg))
-            return f
+            if not param_type:
+                # No parameter.
+                f = lambda: action.activate()
+                return f
+            elif param_type.startswith("("):
+                # turn arguments into tuple
+                def f (*args):
+                    action.activate(GLib.Variant(param_type, *args))
+                return f
+            elif param_type:
+                # singular argument?
+                def f (arg):
+                    action.activate(GLib.Variant(param_type, arg))
+                return f
         for a in dir(self):
             o = getattr(self, a)
             if not callable(o):
@@ -566,13 +577,9 @@ class HiaControl (GObject.Object):
             self.actions.add_action(action)
 
             # Create an aliased method, with the leading 'act_' removed.
-            if gparam:
-                param_type = gparam.dup_string()
-                closure = make_closure(action, param_type)
-                self.__dict__[name] = closure
-            else:
-                closure = lambda: action.activate()
-                self.__dict__[name] = closure
+            param_type = gparam.dup_string() if gparam else None
+            closure = make_closure(action, param_type)
+            self.__dict__[name] = closure
         return
 
     def HiaSimpleAction (param_type=None, init_state=None, stock_id=None):
@@ -2133,6 +2140,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
             self._model = self.make_model()
         self._packname = None
         self.setup_widgets()
+        self.setup_signals()
         self.setup_dnd()
 
     def get_model (self):
@@ -2155,7 +2163,10 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 
         self.ui.sclwin = Gtk.ScrolledWindow()
 
+        # TreeView
         self.ui.treeview = Gtk.TreeView(model=self._model)
+        self.ui.treeview.set_search_column(2)
+        # TreeViewColumns
         self.ui.treecols = []
         self.ui.treecelltxt = Gtk.CellRendererText()
         colname = "command"
@@ -2179,6 +2190,9 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
             self.ui.treecols[0].set_title(self.packname)
         else:
             self.ui.treecols[0].set_title("command")
+        return
+
+    def setup_signals (self):
         return
 
     def setup_dnd (self):
@@ -2283,9 +2297,7 @@ class HiaPlanner (Gtk.HPaned):
 
     def on_notify_controller (self, inst, param):
         self.view = self.controller.view
-
-    def on_notify_view (self, inst, param):
-        self.view.connect("notify::device-details", self.on_notify_view_device_details)
+        self.controller.view.connect("device-changed", self.on_device_changed)
         try:
             self.ui.sel_device
         except AttributeError:
@@ -2297,7 +2309,11 @@ class HiaPlanner (Gtk.HPaned):
                 self.ui.sel_layer,
                 self.ui.sel_bind,
                 ]:
-            children.view = self.view
+            children.controller = self.controller
+
+    def on_notify_view (self, inst, param):
+        #self.view.connect("notify::device-details", self.on_notify_view_device_details)
+        pass
 
     def on_notify_view_device_details (self, inst, param):
         # top-level HiaSelectorSym.
@@ -2349,6 +2365,15 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
         #self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
         return
+
+    def on_device_changed (self, view, devname):
+        # Top-level HiaSelectorSym.
+        try:
+            self.ui.sel_bind
+        except AttributeError:
+            return
+        details = self.controller.view.device_details
+        self.ui.sel_bind.layout = details
 
     def on_bind_assigned (self, w, hiasym, bindvalue):
         self.emit("bind-assigned", hiasym, bindvalue)

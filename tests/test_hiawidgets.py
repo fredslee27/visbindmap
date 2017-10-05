@@ -62,7 +62,7 @@ class TestHiaWidgets (skel.TestSkel):
     def test_hiatop (self):
         self.hiaview.vislayers = [ True, True, True, True ]
         self._build_sample_binds0(self.hiaview.bindstore)
-        hiatop = hialayout.HiaTop(self.hiaview, "K_ESC")
+        hiatop = hialayout.HiaTop(self.controller, "K_ESC")
         self.w.add(hiatop)
         #self.bindstore.nlayers = 4
 
@@ -123,7 +123,7 @@ class TestHiaWidgets (skel.TestSkel):
         layouts = hialayout.HiaLayouts()
         layouts.build_from_legacy_store()
         self._build_sample_binds1(self.hiaview.bindstore)
-        hiasurface = hialayout.HiaSelectorSym(self.hiaview)
+        hiasurface = hialayout.HiaSelectorSym(self.controller)
         #hiasurface.layout = layouts['en_US (pc104)'][1]
         hiasurface.layout = self._build_sample_layout1()
 
@@ -148,7 +148,7 @@ class TestHiaWidgets (skel.TestSkel):
         self._build_sample_binds1(self.hiaview.bindstore)
         #self.hiaview.vislayers = [ True, False ]
 
-        hiacluster = hialayout.HiaCluster(self.hiaview, "CL#")
+        hiacluster = hialayout.HiaCluster(self.controller, "CL#")
         #hiacluster.set_layout(layouts['en_US (pc104)'][1])
         self.bindstore.set_bind(0,0,'CL#','OneButton')
 
@@ -156,7 +156,7 @@ class TestHiaWidgets (skel.TestSkel):
 
         def script ():
             self.w.show_all()
-            yield 5
+            yield 2
 
         self.runloop(script)
         self.w.destroy()
