@@ -742,37 +742,32 @@ Specify HiaLayer to make focus."""
     @HiaSimpleAction(param_type="(xxsss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
         (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
+        self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
     @HiaSimpleAction(param_type="(sss)", init_state=None, stock_id=None)
     def act_assign_bind (self, action, param):
         (hiasym, cmdtitle, cmdcode) = param
         (groupid, layerid) = (self.view.group, self.view.layer)
-        self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
+        self.assign_bind_explicit((groupid, layerid, hiasym, cmdtitle, cmdcode))
         return
 
     @HiaSimpleAction("(xxs)")
     def act_erase_bind_explicit (self, action, param):
         (groupid, layerid, hiasym) = param
+        self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
         return
 
     @HiaSimpleAction("s")
     def act_erase_bind (self, action, param):
         hiasym = param.get_string()
         (groupid, layerid) = (self.view.group, self.view.layer)
-        self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
+        self.erase_bind_explicit((groupid, layerid, hiasym))
         return
 
     @HiaSimpleAction("(xxsxxs)")
     def act_exchange_binds_explicit (self, action, param):
         (groupA, layerA, symA, groupB, layerB, symB) = param
-        return
-
-    @HiaSimpleAction("(ss)")
-    def act_exchange_binds (self, action, param):
-        symA, symB = param
-        groupA = groupB = self.view.group
-        layerA = layerB = self.view.layer
         bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
         bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
         cmdtitleA, cmdtitleB, cmdcodeA, cmdcodeB = "", "", "", ""
@@ -782,6 +777,14 @@ Specify HiaLayer to make focus."""
             cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
         self.view.bindstore.set_bind(groupA, layerA, symA, cmdtitleB, cmdcodeB)
         self.view.bindstore.set_bind(groupB, layerB, symB, cmdtitleA, cmdcodeA)
+        return
+
+    @HiaSimpleAction("(ss)")
+    def act_exchange_binds (self, action, param):
+        symA, symB = param
+        groupA = groupB = self.view.group
+        layerA = layerB = self.view.layer
+        self.exchange_binds_explicit((groupA,layerA,symA, groupB,layerB,symB))
         return
 
     @HiaSimpleAction()
