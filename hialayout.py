@@ -28,6 +28,8 @@ class BindValue (object):
     def __init__ (self, observer, cmdtitle=None, cmdcode=None):
         self._cmdtitle = cmdtitle
         self._cmdcode = cmdcode if (not cmdcode is None) else cmdtitle
+        if observer is None:
+            observer = lambda: False
         self.observers = [ observer ]
 
     def get_cmdtitle (self): return self._cmdtitle
@@ -415,12 +417,16 @@ class HiaView (GObject.Object):
     #vislayers = GObject.Property(type=int)      # bit vector.
     @GObject.Property(type=object)
     def vislayers (self):
+        retval = list(self._vislayers)
         return list(self._vislayers)
     @vislayers.setter
     def set_vislayers (self, list_bool):
         vbl = len(list_bool)
         for i in range(vbl):
-            self._vislayers.set_bit(i)
+            if list_bool[i]:
+                self._vislayers.set_bit(i)
+            else:
+                self._vislayers.clear_bit(i)
         self._vislayers.count = vbl
         self.emit("vislayers-changed", list(self._vislayers))
 
@@ -1020,6 +1026,9 @@ Drag-and-Drop
                 if self.view.vislayers[bi]:
                     hrule.show()
                     br.show_all()
+                else:
+                    hrule.hide()
+                    br.hide()
             else:
                 # Update extant row.
                 hr = self.ui.hrules[bi]
@@ -1907,17 +1916,23 @@ Convenience property 'names' to access/mutate with python list-of-str.
             # TODO: disconnect signals.
             self.ui.top.remove(ch)
         self.buttons = []
+        self.labels = []
         group = None
         for listrow in self.namelist:
             name = listrow[0]
-            b = Gtk.RadioButton(group=group, label=name)
+            #b = Gtk.RadioButton(group=group, label=name)
+            b = Gtk.RadioButton(group=group)
+            d = Gtk.Label()
+            d.set_markup(name)
+            b.add(d)
             if not self.buttons:
                 group = b
             #b.connect("clicked", self.on_button_clicked)
             b.connect("clicked", self.on_button_clicked, len(self.buttons))
             #b.connect("toggled", self.on_button_clicked, len(self.buttons))
-            b.show()
+            b.show_all()
             self.buttons.append(b)
+            self.labels.append(d)
             self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
         return
 
@@ -1956,6 +1971,8 @@ class HiaSelectorLayer (HiaSelectorRadio):
         if names_iterable is None:
             names_iterable = [ 'base' ]
         HiaSelectorRadio.__init__(self, "Layer", controller, names_iterable)
+    def setup_signals (self):
+        self.view.bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
     def on_notify_view (self, inst, param):
         self.view.connect("layer-changed", self.on_layer_changed)
     def on_layer_changed (self, view, layerid):
@@ -1965,6 +1982,50 @@ class HiaSelectorLayer (HiaSelectorRadio):
         if w.get_active():
             #self.view.layer = int(ofs)
             self.controller.pick_layer(int(ofs))
+        return
+    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
+        namelist = []
+        draggable = []
+        for i in range(nlayers):
+            shifters = []
+            n = i
+            j = 0
+            while n > 0:
+                if (n & 1):
+                    shifters.append(j)
+                n >>= 1
+                j += 1
+            if not shifters:
+                namelist.append("base")
+            else:
+                lbl_chord = [ "^{}".format(b+1) for b in shifters ]
+                lbl_chord = " + ".join(lbl_chord)
+                lbl_chord = GLib.markup_escape_text(str(lbl_chord))
+                if not "+" in lbl_chord:
+                    namelist.append("{} (<b>{}</b>)".format(i, lbl_chord))
+                    draggable.append((i, str(lbl_chord)))
+                else:
+                    namelist.append("{} ({})".format(i, lbl_chord))
+        self.names = namelist
+
+        # Set up DnD for layer buttons.
+        drag_targets = [
+            HiaDnd.BIND.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+        for (draggableidx, bindval) in draggable:
+            btn = self.buttons[draggableidx]
+            btn.drag_source_set(drag_buttons, drag_targets, drag_actions)
+            btn.connect("drag-data-get", self.on_drag_data_get, bindval)
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        btn = w
+        bindval = str(args[0])
+        if info == HiaDnd.BIND:
+            bv = BindValue(None, bindval, bindval)
+            bindvalue = repr(bv.snapshot()).encode()
+            seldata.set(seldata.get_target(), 8, bindvalue)
         return
 
 
@@ -2554,6 +2615,7 @@ class HiaWindow (Gtk.Window):
         #cmdpack = feed.read()
         #planner = HiaPlanner(cmdpack, view, layouts)
         planner = HiaPlanner()
+        planner.controller.view.bindstore.nlayers = 4
         self.add(planner)
         self.show_all()
         planner.controller.insert_actions_into_widget(self)

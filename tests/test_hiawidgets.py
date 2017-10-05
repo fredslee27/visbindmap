@@ -240,6 +240,12 @@ class TestHiaWidgets (skel.TestSkel):
             # Ensure widget updates based on setting plan model.
             self.hiaview.layer = 1
             self.assertTrue(lyrsel.buttons[1].get_active())
+            yield 0.5
+            # Expand layers.
+            self.hiaview.bindstore.nlayers = 8
+            yield 2
+            self.assertEqual(len(lyrsel.buttons), 8)
+            self.assertEqual(lyrsel.labels[7].get_label(), "7 (^1 + ^2 + ^3)")
             yield 1
 
         self.runloop(script)
