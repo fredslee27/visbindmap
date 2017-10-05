@@ -746,8 +746,9 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction(param_type="(sss)", init_state=None, stock_id=None)
     def act_assign_bind (self, action, param):
-        (groupid, layerid) = (self.view.group, self.view.layer)
         (hiasym, cmdtitle, cmdcode) = param
+        (groupid, layerid) = (self.view.group, self.view.layer)
+        self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
     @HiaSimpleAction("(xxs)")
@@ -757,8 +758,9 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction("s")
     def act_erase_bind (self, action, param):
-        (groupid, layer) = (self.view.group, self.view.layer)
-        hiasym = str(param)
+        hiasym = param.get_string()
+        (groupid, layerid) = (self.view.group, self.view.layer)
+        self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
         return
 
     @HiaSimpleAction("(xxsxxs)")
@@ -768,9 +770,18 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction("(ss)")
     def act_exchange_binds (self, action, param):
+        symA, symB = param
         groupA = groupB = self.view.group
         layerA = layerB = self.view.layer
-        symA, symB = param
+        bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
+        bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
+        cmdtitleA, cmdtitleB, cmdcodeA, cmdcodeB = "", "", "", ""
+        if bvA:
+            cmdtitleA, cmdcodeA = bvA.cmdtitle, bvA.cmdcode
+        if bvB:
+            cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
+        self.view.bindstore.set_bind(groupA, layerA, symA, cmdtitleB, cmdcodeB)
+        self.view.bindstore.set_bind(groupB, layerB, symB, cmdtitleA, cmdcodeA)
         return
 
     @HiaSimpleAction()
@@ -1116,7 +1127,8 @@ Drag-and-Drop
         if info == HiaDnd.UNBIND:
             # dragged to command set.
             seldata.set(seldata.get_target(), 8, str(self.hiasym))
-            self.emit("bind-erased", self.hiasym)
+            #self.emit("bind-erased", self.hiasym)
+            self.controller.erase_bind(self.hiasym)
         elif info == HiaDnd.SWAP:
             # dragged to HiaTop.
             val = self.hiasym
@@ -1126,11 +1138,15 @@ Drag-and-Drop
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         if info == HiaDnd.BIND:
             seltext = seldata.get_data()
-            self.emit("bind-assigned", self.hiasym, seltext)
+            #self.emit("bind-assigned", self.hiasym, seltext)
+            bv = BindValue(lambda: False)
+            bv.restore(ast.literal_eval(seltext))
+            self.controller.assign_bind((self.hiasym, bv.cmdtitle, bv.cmdcode))
             ctx.finish(True, False, 0)
         elif info == HiaDnd.SWAP:
             othersym = seldata.get_data()
-            self.emit("bind-swapped", self.hiasym, othersym)
+            #self.emit("bind-swapped", self.hiasym, othersym)
+            self.controller.exchange_binds((self.hiasym, othersym))
             ctx.finish(True, False, 0)
         return False
 
@@ -2437,36 +2453,11 @@ class HiaPlanner (Gtk.HPaned):
         #self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
         return
 
-#    def on_device_changed (self, w, newdev):
-#        layoutinfo = self.layouts[newdev]
-#        layoutname, layoutdata = layoutinfo
-#        self.ui.sel_bind.set_layout(layoutdata)
-#        return
-
     def on_bind_assigned (self, w, hiasym, bindvalue):
-        groupid = self.view.group
-        layerid = self.view.layer
-        bvo = ast.literal_eval(bindvalue)
-        cmdtitle = bvo['cmdtitle']
-        cmdcode = bvo['cmdcode']
-        self.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
         self.emit("bind-assigned", hiasym, bindvalue)
     def on_bind_swapped (self, w, hiasym, othersym):
-        groupA, layerA = self.view.group, self.view.layer
-        groupB, layerB = groupA, layerA
-        bvA = self.bindstore.get_bind(groupA, layerA, hiasym)
-        bvB = self.bindstore.get_bind(groupB, layerB, othersym)
-        cmdtitleA, cmdtitleB, cmdcodeA, cmdcodeB = "", "", "", ""
-        if bvA:
-            cmdtitleA, cmdcodeA = bvA.cmdtitle, bvA.cmdcode
-        if bvB:
-            cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
-        self.bindstore.set_bind(groupA, layerA, hiasym, cmdtitleB, cmdcodeB)
-        self.bindstore.set_bind(groupB, layerB, othersym, cmdtitleA, cmdcodeA)
         self.emit("bind-swapped", hiasym, othersym)
     def on_bind_erased (self, w, hiasym):
-        groupid, layerid = self.view.group, self.view.layer
-        self.bindstore.set_bind(groupid, layerid, hiasym, "", "")
         self.emit("bind-erased", hiasym)
 
     __gsignals__ = {
