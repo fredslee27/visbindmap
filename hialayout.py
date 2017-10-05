@@ -953,6 +953,42 @@ Drag-and-Drop
         self.binddisp = self.view.bindstore.get_bindlist()
         self.update_widgets()
 
+    def make_binddispline_textview (self):
+        bb, bv = Gtk.TextBuffer(), Gtk.TextView()
+        bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+        bv.set_buffer(bb)
+        bv.set_editable(False)
+        return bb, bv
+
+    def make_binddispline_label (self):
+        bb, bv = None, Gtk.Label()
+        bv.set_halign(Gtk.Align.FILL)   # to fill the rest of box with bg.
+        bv.set_xalign(0.0)              # to force glyphs start at far left.
+        ref = Gtk.TextView()
+        # Copy style background-color from TextView().
+        ctx0 = ref.get_style_context()
+        refrgba = ctx0.get_background_color(Gtk.StateFlags.NORMAL)
+        bgcolor = refrgba.to_string()
+        style_provider = Gtk.CssProvider()
+        style_provider.load_from_data((r"""
+.binddisp {
+    background-color: %s
+}
+""" % (bgcolor,)).encode())
+        stylectx = bv.get_style_context()
+        stylectx.add_class("binddisp")
+        #stylectx.add_class("entry")
+        #stylectx.add_class("flat")
+        stylectx.add_provider(style_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        return bb, bv
+
+    def update_binddispline_textview (self, bb, bv, markup):
+        bb.delete(bb.get_start_iter(), bb.get_end_iter())
+        bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+
+    def update_binddispline_label (self, bb, bv, markup):
+        bv.set_markup(markup)
+
     def update_widgets (self, binddisp=None):
         if binddisp is None:
             binddisp = self.binddisp
@@ -960,10 +996,12 @@ Drag-and-Drop
             bd = binddisp[bi]
             if len(self.ui.bindrows) <= bi:
                 # Add another row.
-                bb, bv = Gtk.TextBuffer(), Gtk.TextView()
+
                 markup = bd.get_markup_str()
-                bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
-                bv.set_buffer(bb)
+                #bb, bv = self.make_binddispline_textview()
+                bb, bv = self.make_binddispline_label()
+                bv.set_markup(markup)
+
                 br = Gtk.HBox()
                 lyr = Gtk.Label(label="{}:".format(bi))
                 # track the composited widgets.
@@ -990,9 +1028,10 @@ Drag-and-Drop
                 bb = self.ui.bindbufs[bi]
                 lyr = self.ui.layernums[bi]
                 # Replace text content.
-                bb.delete(bb.get_start_iter(), bb.get_end_iter())
                 markup = bd.get_markup_str()
-                bb.insert_markup(iter=bb.get_end_iter(), markup=markup, len=-1)
+                # self.update_binddispline_textview(bb, bv, markup)
+                self.update_binddispline_label(bb, bv, markup)
+
                 # vislayers may have shrunk; treat the extras as invisible.
                 if (bi < len(self.view.vislayers)) and (self.view.vislayers[bi]):
                     br.show()
@@ -1057,6 +1096,7 @@ Drag-and-Drop
         self.ui.button.connect("drag-data-received", self.on_drag_data_received)
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # Drag from HiaTop
         if info == HiaDnd.UNBIND:
             # dragged to command set.
             seldata.set(seldata.get_target(), 8, self.hiasym.encode())
@@ -1069,6 +1109,7 @@ Drag-and-Drop
         return False
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # Drop on HiaTop
         if info == HiaDnd.BIND:
             seltext = seldata.get_data().decode()
             #self.emit("bind-assigned", self.hiasym, seltext)
@@ -1237,13 +1278,13 @@ class ClusteredLayouts (HiaLayouts):
         MENUDESC = [
             # (displayed_label, bind_value)  =>  menuitem set layout
             # || (displayed_label, [ nested_MENUDESC ] )  =>  submenu
-            ("_Empty", "Empty"),
-            ("One _Button", "OneButton"),
+            ("_None", "Empty"),
+            ("_Single Button", "OneButton"),
             ("Scroll _Wheel", "ScrollWheel"),
             ("_D-Pad", "DirectionPad"),
             ("Button _Quad", "ButtonQuad"),
             ("Tr_ackpad", "MousePad"),
-            ("_Mouse Region", "MouseRegion"),
+            ("Mouse R_egion", "MouseRegion"),
             ("_Joystick", "Joystick"),
             ("_Gyro", "GyroTilt"),
             ("_Touch Menu", [
@@ -2325,7 +2366,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         treeview.enable_model_drag_dest(drop_targets, drop_actions)
         treeview.connect("drag-data-received", self.on_drag_data_received)
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
-        # is DnD source.
+        # TreeView is DnD source.
         treesel = w.get_selection()
         mdl, pathsels = treesel.get_selected_rows()
         firstsel = pathsels[0]
@@ -2338,6 +2379,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
             seldata.set(seldata.get_target(), 8, bindvalue.encode())
         return False
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # TreeView is DnD destination.
         if info == HiaDnd.UNBIND:
             hiasym = seldata.get_data()
         return False
