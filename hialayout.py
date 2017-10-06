@@ -9,7 +9,7 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, GObject, GLib, Gio
 
 import ast
-import math
+import os, sys, math
 
 import kbd_desc
 
@@ -2856,7 +2856,95 @@ class HiaWindow (Gtk.Window):
         planner.controller.view_nlayers(2)
 
 
+
+##################
+# GtkApplication #
+##################
+
+class HiaAppWindow (Gtk.ApplicationWindow):
+
+    controller = GObject.Property(type=object)
+
+    def __init__ (self, app, controller=None):
+        Gtk.ApplicationWindow.__init__(self, application=app)
+        self.set_size_request(640,480)
+        self.vbox = Gtk.VBox()
+
+        planner = HiaPlanner(controller=controller)
+        planner.controller.insert_actions_into_widget(self)
+        #planner.controller.view.bindstore.nlayers = 4
+        #planner.controller.view.bindstore.ngroups = 3
+        planner.controller.use_group_names([('Menu',''),('Game','')])
+        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+        self.planner = planner
+
+        self.statusbar = Gtk.Statusbar()
+        self.statusbar.push(self.statusbar.get_context_id("status"), "Ready...")
+
+        self.vbox.pack_start(self.planner, True, True, 0)
+        self.vbox.pack_start(self.statusbar, False, False, 0)
+        self.add(self.vbox)
+        self.show_all()
+
+
+class HiaApplication (Gtk.Application):
+    APP_ID = "localhost.vismapper"
+
+    controller = GObject.Property(type=object)
+
+    def __init__ (self, *args, **kwargs):
+        flags = 0
+        flags |= Gio.ApplicationFlags.NON_UNIQUE
+        #flags |= Gio.ApplicationFlags.HANDLES_COMMAND_LINE
+        #flags |= Gio.ApplicationFlags.HANDLES_OPEN
+        Gtk.Application.__init__(self, *args, application_id=self.APP_ID, flags=flags, **kwargs)
+        self.connect("activate", self.on_activate)
+        self.connect("command-line", self.on_command_line)
+        self.connect("handle-local-options", self.on_handle_local_options)
+        self.connect("open", self.on_open)
+        self.connect("shutdown", self.on_shutdown)
+        self.connect("startup", self.on_startup)
+        self.mainw = None
+
+    def on_startup (self, app):
+        # app:Gio.Application
+        # just after registration (app name with GNOME?)
+        print("STARTUP")
+        bindstore = BindStore()
+        layouts = HiaLayouts()
+        layouts.build_from_legacy_store()
+        hiaview = HiaView(bindstore, layouts)
+        self.controller = HiaControl(hiaview)
+        return True
+    def on_shutdown (self, app):
+        print("SHUTDOWN")
+        return True
+    def on_open (self, app, files, hint):
+        # file:Gio.File
+        # file:str
+        return False
+    def on_handle_local_options (self, app, options):
+        # options:GLib.VariantDict
+        PLEASE_RESUME = -1
+        PLEASE_EXIT_SUCCESS = 0
+        PLEASE_EXIT_ERROR = 1  # any positive integer.
+        return PLEASE_RESUME
+    def on_command_line (self, app, command_line):
+        # command_line:Gio.ApplicationCommandLine
+        PLEASE_RESUME = 0
+        self.activate()
+        return PLEASE_RESUME
+    def on_activate (self, app):
+        print("ACTIVATE")
+        if not self.mainw:
+            self.mainw = HiaAppWindow(self, self.controller)
+        self.mainw.present()
+        return
+
+
 if __name__ == "__main__":
-    w = HiaWindow()
-    Gtk.main()
+    #w = HiaWindow()
+    #Gtk.main()
+    a = HiaApplication()
+    a.run(sys.argv)
 
