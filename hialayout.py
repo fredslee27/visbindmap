@@ -1140,17 +1140,18 @@ Drag-and-Drop
         bv.set_halign(Gtk.Align.FILL)   # to fill the rest of box with bg.
         bv.set_xalign(0.0)              # to force glyphs start at far left.
         ref = Gtk.TextView()
-        # Copy style background-color from TextView().
+        # Copy-ish style background-color from TextView().
         ctx0 = ref.get_style_context()
         refrgba = ctx0.get_background_color(Gtk.StateFlags.NORMAL)
         bgcolor1 = refrgba.to_string()
+        # Copy-ish style insensitive-color from Label()
         bgcolor2 = bv.get_style_context().get_color(Gtk.StateFlags.INSENSITIVE).to_string()
         style_provider = Gtk.CssProvider()
         style_provider.load_from_data((r"""
 .binddisp {
     background-color: %s
 }
-.binddisp-dull {
+.binddisp:insensitive {
     background-color: %s
 }
 """ % (bgcolor1,bgcolor2)).encode())
@@ -1227,13 +1228,9 @@ Drag-and-Drop
             #self.ui.bindviews[bi].set_sensitive(bi == self.view.layer)
             bv = self.ui.bindviews[bi]
             if bi == self.view.layer:
-#                bv.set_state_flags(Gtk.StateFlags.ACTIVE, False)
-                bv.get_style_context().add_class("binddisp")
-                #bv.get_style_context().remove_class("binddisp-dull")
+                bv.get_style_context().set_state(Gtk.StateFlags.NORMAL)
             else:
-#                bv.set_state_flags(Gtk.StateFlags.NORMAL, False)
-                bv.get_style_context().remove_class("binddisp")
-                #bv.get_style_context().add_class("binddisp-dull")
+                bv.get_style_context().set_state(Gtk.StateFlags.INSENSITIVE)
         for bi in range(len(binddisp), len(self.ui.bindrows)):
             self.ui.hrules[bi].hide()
             self.ui.bindrows[bi].hide()
