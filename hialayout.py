@@ -2874,8 +2874,8 @@ class HiaAppWindow (Gtk.ApplicationWindow):
         planner.controller.insert_actions_into_widget(self)
         #planner.controller.view.bindstore.nlayers = 4
         #planner.controller.view.bindstore.ngroups = 3
-        planner.controller.use_group_names([('Menu',''),('Game','')])
-        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+#        planner.controller.use_group_names([('Menu',''),('Game','')])
+#        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.planner = planner
 
         self.statusbar = Gtk.Statusbar()
@@ -2914,7 +2914,10 @@ class HiaApplication (Gtk.Application):
         layouts = HiaLayouts()
         layouts.build_from_legacy_store()
         hiaview = HiaView(bindstore, layouts)
-        self.controller = HiaControl(hiaview)
+        controller = HiaControl(hiaview)
+        controller.use_group_names([('Menu',''),('Game','')])
+        controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+        self.controller = controller
         return True
     def on_shutdown (self, app):
         print("SHUTDOWN")
@@ -2937,7 +2940,7 @@ class HiaApplication (Gtk.Application):
     def on_activate (self, app):
         print("ACTIVATE")
         if not self.mainw:
-            self.mainw = HiaAppWindow(self, self.controller)
+            self.mainw = HiaAppWindow(self, controller=self.controller)
         self.mainw.present()
         return
 
