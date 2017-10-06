@@ -237,7 +237,9 @@ class BindStore (GObject.GObject):
 
     def observe_groupbind (self, groupid, layerid, hiasym):
         bindval = self.groups[groupid][layerid][hiasym]
-        (cmdtitle, cmdcode) = (bindval.cmdtitle, bindval.cmdcode)
+        (cmdtitle, cmdcode) = (None,None)
+        if bindval:
+            (cmdtitle, cmdcode) = (bindval.cmdtitle, bindval.cmdcode)
         self.emit("bind-changed", groupid, layerid, hiasym, cmdtitle, cmdcode)
 
     def get_group (self, groupid):
@@ -280,7 +282,7 @@ class BindStore (GObject.GObject):
     nlayers = property(get_nlayers, set_nlayers)
 
     def resolve_bindview (self, hiasym, groupid=0):
-        return
+        pass
 
     def snapshot (self):
         """Serialize to Python primitives (toplevel dict)."""
@@ -414,6 +416,8 @@ class HiaView (GObject.Object):
     bindstore = GObject.Property(type=object)   # instance of BindStore.
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
 
+    axes = GObject.Property(type=object)        # TreeStore(name:str, detail:str): groups, layers.
+
     #vislayers = GObject.Property(type=int)      # bit vector.
     @GObject.Property(type=object)
     def vislayers (self):
@@ -436,7 +440,25 @@ class HiaView (GObject.Object):
         self.setup_properties()
         self.bindstore = bindstore
         self.layouts = layouts
+        self.axes = self.make_axes_store()
         self.setup_signals()
+
+    def make_axes_store (self, group_names=None, layer_names=None):
+        """make_axes_store(group_names:list, layer_names:list)
+Generate GtkTreeStore suitable for assigning to property "axes".
+Group "GLOBAL" always starts the TreeStore, and populate with the additional groups listed in 'group_names'
+Use layer names as listed in 'layer_names', or ['base'] by default.
+"""
+        retval = Gtk.TreeStore(str,str)
+        iter0 = retval.append( None, ("GLOBAL", "GLOBAL") )
+        if not layer_names:
+            layer_names = [ 'base' ]
+        if group_names:
+            for gn in group_names:
+                retval.append( None, (gn, "") )
+        for ln in layer_names:
+            retval.append( iter0, (ln, "") )
+        return retval
 
     def setup_properties (self):
         self.connect('notify::device-name', self.on_notify_device_name)
@@ -446,6 +468,7 @@ class HiaView (GObject.Object):
         #self.connect('notify::vislayers', self.on_notify_vislayers)
         self.connect('notify::bindstore', self.on_notify_bindstore)
         self.connect('notify::layouts', self.on_notify_layouts)
+        self.connect('notify::axes', self.on_notify_axes)
 
     def setup_signals (self):
         pass
@@ -494,6 +517,22 @@ class HiaView (GObject.Object):
         self.layouts.set_sort_func(0, asciisort)
         self.layouts.set_sort_column_id(0, Gtk.SortType.ASCENDING)
         self.emit("layouts-changed", self.layouts)
+    def on_notify_axes (self, inst, param):
+        self.axes.connect("row-changed", self.on_axes_row_changed)
+        self.emit("group-names-changed", self.axes)
+        self.emit("layer-names-changed", self.axes, self.group)
+
+    def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
+        depth = treepath.get_depth()
+        if depth == 1:
+            # Group depth.
+            self.emit("group-names-changed", mdl)
+        elif depth == 2:
+            # Layer depth.
+            grouppath = treepath.up()
+            groupid = int(grouppath)
+            self.emit("layer-names-changed", mdl, groupid) 
+        return
 
     def on_bindstore_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
         self.emit("bind-changed", groupid, layerid, hiasym, newtitle, newcode)
@@ -529,6 +568,9 @@ class HiaView (GObject.Object):
         str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int, int, str, str, str)),
         str("ngroups-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
         str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
+
+        str("group-names-changed"): (GObject.SIGNAL_RUN_FIRST, None, (object,) ),
+        str("layer-names-changed"): (GObject.SIGNAL_RUN_FIRST, None, (object, int) ),
     }
 
 
@@ -562,12 +604,15 @@ class HiaControl (GObject.Object):
             elif param_type.startswith("("):
                 # turn arguments into tuple
                 def f (*args):
-                    action.activate(GLib.Variant(param_type, *args))
+                    v = GLib.Variant(param_type, *args)
+                    action.activate(v)
                 return f
             elif param_type:
                 # singular argument?
+                encparm = param_type.replace('m',"")
                 def f (arg):
-                    action.activate(GLib.Variant(param_type, arg))
+                    v = GLib.Variant(param_type, arg)
+                    action.activate(v)
                 return f
         for a in dir(self):
             o = getattr(self, a)
@@ -721,6 +766,52 @@ Specify HiaLayer to make focus."""
     def act_clear_bindstore (self, action, param):
         return
 
+    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
+    def act_use_layer_names (self, action, param):
+        nodelist = param
+        # erase children of GLOBAL.
+        mdl = self.view.axes
+        iter_global = mdl.get_iter_first()
+        path_global = mdl.get_path(iter_global)
+        treeiter = mdl.iter_children(iter_global)
+        while treeiter:
+            res = mdl.remove(treeiter)
+            if not res:
+                break
+        lastiter = None
+        nlayers = 0
+        for nodeitem in nodelist:
+            (label, code) = nodeitem
+            lastiter = mdl.append( iter_global, (label,code) )
+            nlayers += 1
+        #mdl.emit("row-changed", path_global, iter_global)
+        lastpath = mdl.get_path(lastiter)
+        mdl.emit("row-changed", lastpath, lastiter)
+        self.view.nlayers = nlayers
+
+    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
+    def act_use_group_names (self, action, param):
+        nodelist = param
+        # start from GLOBAL
+        mdl = self.view.axes
+        iter_global = mdl.get_iter_first()
+        # erase siblings of GLOBAL.
+        sibling = mdl.iter_next(iter_global)
+        while sibling:
+            res = mdl.remove(sibling)
+            if not res:
+                break
+        # rebuild siblings.
+        lastiter = None
+        ngroups = 1
+        if nodelist:
+            for nodeitem in nodelist:
+                (label, code) = nodeitem
+                lastiter = mdl.append( None, (label,code) )
+            lastpath = mdl.get_path(lastiter)
+            mdl.emit("row-changed", lastpath, lastiter)
+        else:
+            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
 
 
 
@@ -775,8 +866,23 @@ class HiaBind (object):
     def get_markup_str (self):
         """Return string intended for display to user."""
         dispval = self.cmdtitle
+        # self.cmdcode ...
         if self.cmdcode is not None:
-            dispval = self.cmdcode
+            lbl = GLib.markup_escape_text(str(self.cmdtitle))
+            if self.redirects == 0:
+                # on point
+                dispval = lbl
+            elif self.redirects == 1:
+                # defer to first layer
+                dispval = "<i>{}</i>".format(lbl)
+            elif self.redirects == 2:
+                # deferred to first group, current layer.
+                dispval = "<b>{}</b>".format(lbl)
+            elif self.redirects == 3:
+                # deferred to first group, first layer.
+                dispval = "<b><i>{}</i></b>".format(lbl)
+            else:
+                dispval = "<small><b>{}</b></small>".format(lbl)
         return dispval
 
     def __repr__ (self):
@@ -860,11 +966,26 @@ For HiaCluster, affects what layout to use.
         retval = []
         for lid in range(self.bindstore.nlayers):
             grpid = self.view.group
-            bv = self.bindstore.get_bind(grpid, lid, self.hiasym)
-            cmdtitle = bv.cmdtitle if bv else ""
-            cmdcode = bv.cmdcode if bv else ""
-            hb = HiaBind(-1, cmdtitle, cmdcode)
-            retval.append(hb)
+            redirections = [
+                (grpid, lid),
+                (grpid, 0),
+                (0, lid),
+                (0, 0) ]
+            hiabind = None
+            redirects = -1
+            cmdtitle = ""
+            cmdcode = ""
+            for ridx in range(len(redirections)):
+                (g, l) = redirections[ridx]
+                bv = self.bindstore.get_bind(g, l, self.hiasym)
+                if bv is not None:
+                    redirects = ridx
+                    cmdtitle = bv.cmdtitle
+                    cmdcode = bv.cmdcode
+                    break
+            if hiabind is None:
+                hiabind = HiaBind(redirects, cmdtitle, cmdcode)
+            retval.append(hiabind)
         return retval
 
     _gsignals = {
@@ -1849,34 +1970,25 @@ Convenience property 'names' to access/mutate with python list-of-str.
     view = GObject.Property(type=object)        # Instance of HiaView.
     controller = GObject.Property(type=object)  # Instance of HiaControl.
     title = GObject.Property(type=str)
-    namelist = GObject.Property(type=object)    # Instance of ListStore.
 
-    def __init__ (self, title, controller, names_iterable):
+    def __init__ (self, title, controller):
         Gtk.Frame.__init__(self)
 
         self.connect("notify::view", self.on_notify_view)
         self.connect("notify::controller", self.on_notify_controller)
         self.connect("notify::title", self.on_notify_title)
-        self.connect("notify::namelist", self.on_notify_namelist)
 
         self.controller = controller
         #self.view = controller.view
         self.title = title
-        self.namelist = Gtk.ListStore(str)
 
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
-        self.set_names(names_iterable)
 
     def get_names (self):
-        return [ x[0] for x in self.namelist ]
-    def set_names (self, names_iterable):
-        self.namelist.clear()
-        for name in names_iterable:
-            self.namelist.append( (name,) )
-        self.update_widgets()
-    names = property(get_names, set_names)
+        return [ x[0] for x in self.get_axislist ]
+    names = property(get_names)
 
     def on_notify_view (self, inst, param):
         pass
@@ -1885,18 +1997,24 @@ Convenience property 'names' to access/mutate with python list-of-str.
         pass
     def on_notify_title (self, inst, param):
         self.set_label(self.title)
-    def on_notify_namelist (self, inst, param):
-        self.namelist.connect("row-changed", self.on_namelist_row_changed)
-        pass
+
+    def get_axislist (self):
+        # overrride in subclass.
+        # returns list of tuple(str,str); typ. TreeStore(str,str)
+        return []
+    def get_axes (self):
+        return self.controller.view.axes
+    axes = property(get_axes)
 
     def setup_widgets (self):
         """Set up Gtk widgets within radio-button selector base class."""
         class ui: pass
         self.ui = ui
-        #self.update_widgets()
         #self.set_label(self._title)
         self.set_label(self.title)
         self.ui.top = Gtk.HBox()
+
+        self.update_widgets()
 
         self.add(self.ui.top)
         self.show_all()
@@ -1918,7 +2036,8 @@ Convenience property 'names' to access/mutate with python list-of-str.
         self.buttons = []
         self.labels = []
         group = None
-        for listrow in self.namelist:
+        namelist = self.get_axislist()
+        for listrow in namelist:
             name = listrow[0]
             #b = Gtk.RadioButton(group=group, label=name)
             b = Gtk.RadioButton(group=group)
@@ -1936,11 +2055,6 @@ Convenience property 'names' to access/mutate with python list-of-str.
             self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
         return
 
-    def on_namelist_row_changed (self):
-        # rebuild all child widgets on any model changes.
-        # TODO: kind of expensive.  Optimize later?
-        self.update_widget()
-
     def on_button_clicked (self, w, ofs=None):
         return
 
@@ -1948,16 +2062,28 @@ Convenience property 'names' to access/mutate with python list-of-str.
 class HiaSelectorGroup (HiaSelectorRadio):
     EXPAND_MEMBERS = False
     PADDING = 16
-    def __init__ (self, controller, names_iterable=None):
-        if names_iterable is None:
-            names_iterable = []
-        adjusted = [ "GLOBAL" ] + [ x for x in names_iterable ]
-        HiaSelectorRadio.__init__(self, "Mode", controller, adjusted)
+    def __init__ (self, controller):
+        HiaSelectorRadio.__init__(self, "Mode", controller)
+    def get_axislist (self):
+        # GtkTreeModelFilter with children removed.
+        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=None)
+        def filter_for_group (mdl, treeiter, userdata):
+            treepath = mdl.get_path(treeiter)
+            return (treepath.get_depth() == 1)
+        submodel.set_visible_func(filter_for_group)
+        return submodel
     def on_notify_view (self, inst, param):
         self.view.connect("group-changed", self.on_group_changed)
+        self.view.connect("group-names-changed", self.on_group_names_changed)
+        try:
+            self.update_widget()
+        except AttributeError:
+            pass
     def on_group_changed (self, view, groupid):
         w = self.buttons[groupid]
         w.set_active(True)
+    def on_group_names_changed (self, view, mdl):
+        self.update_widgets()
     def on_button_clicked (self, w, ofs=None):
         if w.get_active():
             #self.view.group = int(ofs)
@@ -1967,14 +2093,28 @@ class HiaSelectorGroup (HiaSelectorRadio):
 
 class HiaSelectorLayer (HiaSelectorRadio):
     EXPAND_MEMBERS = True
-    def __init__ (self, controller, names_iterable=None):
-        if names_iterable is None:
-            names_iterable = [ 'base' ]
-        HiaSelectorRadio.__init__(self, "Layer", controller, names_iterable)
+    def __init__ (self, controller):
+        HiaSelectorRadio.__init__(self, "Layer", controller)
+    def get_axislist (self):
+        # GtkTreeModelFilter with children of GLOBAL.
+        treeiter0 = self.axes.get_iter_first()  # "GLOBAL"
+        chroot = self.axes.get_path(treeiter0)
+        # all the children under "GLOBAL", one row per layer.
+        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=chroot)
+        def filter_for_layer (mdl, treeiter, userdata):
+            treepath = mdl.get_path(treeiter)
+            return (treepath.get_depth() == 2)
+        submodel.set_visible_func(filter_for_layer)
+        return submodel
     def setup_signals (self):
         self.view.bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
     def on_notify_view (self, inst, param):
         self.view.connect("layer-changed", self.on_layer_changed)
+        self.view.connect("layer-names-changed", self.on_layer_names_changed)
+        try:
+            self.update_widget()
+        except AttributeError:
+            pass
     def on_layer_changed (self, view, layerid):
         w = self.buttons[layerid]
         w.set_active(True)
@@ -1983,6 +2123,9 @@ class HiaSelectorLayer (HiaSelectorRadio):
             #self.view.layer = int(ofs)
             self.controller.pick_layer(int(ofs))
         return
+    def on_layer_names_changed (self, view, mdl, groupid):
+        # TODO: check groupid?
+        self.update_widgets()
     def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
         namelist = []
         draggable = []
@@ -2006,9 +2149,10 @@ class HiaSelectorLayer (HiaSelectorRadio):
                     draggable.append((i, str(lbl_chord)))
                 else:
                     namelist.append("{} ({})".format(i, lbl_chord))
-        self.names = namelist
+        self.controller.use_layer_names([ (n,'') for n in namelist ])
 
         # Set up DnD for layer buttons.
+        # orthogonal buttons are draggable -- assign shifter key.
         drag_targets = [
             HiaDnd.BIND.target_same_app(),
             ]
@@ -2019,6 +2163,16 @@ class HiaSelectorLayer (HiaSelectorRadio):
             btn.drag_source_set(drag_buttons, drag_targets, drag_actions)
             btn.connect("drag-data-get", self.on_drag_data_get, bindval)
 
+        # all button are destinations -- swap across binds.
+        drop_targets = [
+            HiaDnd.SWAP.target_same_app(),
+            ]
+        drop_dests = Gtk.DestDefaults.ALL
+        drop_actions = Gdk.DragAction.COPY
+        for btn in self.buttons:
+            btn.drag_dest_set(drop_dests, drop_targets, drop_actions)
+            btn.connect("drag-data-received", self.on_drag_data_received)
+
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         btn = w
         bindval = str(args[0])
@@ -2027,6 +2181,21 @@ class HiaSelectorLayer (HiaSelectorRadio):
             bindvalue = repr(bv.snapshot()).encode()
             seldata.set(seldata.get_target(), 8, bindvalue)
         return
+
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        btn = w
+        nth = self.buttons.index(btn)
+        if nth < 0:
+            # Invalid destination.
+            return
+        if info == HiaDnd.SWAP:
+            # Swap across layers.
+            hiasym = str(seldata.get_data().decode())
+            srclayer = self.controller.view.layer
+            dstlayer = nth
+            group = self.controller.view.group
+            self.controller.exchange_binds_explicit((group, srclayer, hiasym,  group, dstlayer, hiasym))
+            return
 
 
 # Intended to be named HiaSelectorLayout, but spelling too similar to *Layer
@@ -2510,6 +2679,7 @@ class HiaPlanner (Gtk.HPaned):
     def on_notify_controller (self, inst, param):
         self.view = self.controller.view
         self.controller.view.connect("device-changed", self.on_device_changed)
+        self.controller.view.connect("layer-changed", self.on_layer_changed)
         try:
             self.ui.sel_device
         except AttributeError:
@@ -2546,8 +2716,8 @@ class HiaPlanner (Gtk.HPaned):
 
         self.ui.sel_cmd = HiaSelectorCommand(self.cmdpack)
         self.ui.sel_device = HiaSelectorDevice(self.controller)
-        self.ui.sel_group = HiaSelectorGroup(self.controller, None)
-        self.ui.sel_layer = HiaSelectorLayer(self.controller, None)
+        self.ui.sel_group = HiaSelectorGroup(self.controller)
+        self.ui.sel_layer = HiaSelectorLayer(self.controller)
         self.ui.sel_bind = HiaSelectorSym(self.controller)
 
         self.ui.lhs = Gtk.VBox()
@@ -2587,6 +2757,12 @@ class HiaPlanner (Gtk.HPaned):
         details = self.controller.view.device_details
         self.ui.sel_bind.layout = details
 
+    def on_layer_changed (self, view, layerid):
+        # Top-level layer change -- update vislayers.
+        vislayers = [False] * view.bindstore.nlayers
+        vislayers[layerid] = True
+        self.controller.view.vislayers = vislayers
+
     def on_bind_assigned (self, w, hiasym, bindvalue):
         self.emit("bind-assigned", hiasym, bindvalue)
     def on_bind_swapped (self, w, hiasym, othersym):
@@ -2615,7 +2791,10 @@ class HiaWindow (Gtk.Window):
         #cmdpack = feed.read()
         #planner = HiaPlanner(cmdpack, view, layouts)
         planner = HiaPlanner()
-        planner.controller.view.bindstore.nlayers = 4
+        #planner.controller.view.bindstore.nlayers = 4
+        #planner.controller.view.bindstore.ngroups = 3
+        planner.controller.use_group_names([('Menu',''),('Game','')])
+        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.add(planner)
         self.show_all()
         planner.controller.insert_actions_into_widget(self)

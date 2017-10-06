@@ -180,12 +180,22 @@ class TestHiaWidgets (skel.TestSkel):
 
     def test_hiaselectors (self):
         self.hiaview.layouts = self.all_layouts
-        sel = hialayout.HiaSelectorRadio('Generic', self.controller, ['one', 'two', 'three'])
-        grpsel = hialayout.HiaSelectorGroup(self.controller, ['Menu', 'Game'])
-        lyrsel = hialayout.HiaSelectorLayer(self.controller, ['0', '1', '2', '3'])
+
+        axes = self.controller.view.make_axes_store(
+            [ 'Menu', 'Game' ],
+            [ "base", '1', '2', '3' ],
+            )
+        self.controller.view.axes = axes
+
+        gensel = hialayout.HiaSelectorRadio('Generic', self.controller)
+        gensel.get_axislist = lambda: [ ('one',''), ('two',''), ('three','') ]
+        gensel.update_widgets()
+
+        grpsel = hialayout.HiaSelectorGroup(self.controller)
+        lyrsel = hialayout.HiaSelectorLayer(self.controller)
         devsel = hialayout.HiaSelectorDevice(self.controller)
         box = Gtk.VBox()
-        box.pack_start(sel, False, False, 0)
+        box.pack_start(gensel, False, False, 0)
         box.pack_start(grpsel, False, False, 0)
         box.pack_start(lyrsel, False, False, 0)
         box.pack_start(devsel, False, False, 0)
@@ -246,6 +256,37 @@ class TestHiaWidgets (skel.TestSkel):
             yield 2
             self.assertEqual(len(lyrsel.buttons), 8)
             self.assertEqual(lyrsel.labels[7].get_label(), "7 (^1 + ^2 + ^3)")
+            yield 1
+
+        self.runloop(script)
+        self.w.destroy()
+
+    def test_hiaaxes (self):
+        self.hiaview.layouts = self.all_layouts
+
+        axes = self.controller.view.make_axes_store(
+            [ 'Menu', 'Game', 'Extra' ],
+            [ "base", '1', '2', '3' ],
+            )
+        self.controller.view.axes = axes
+
+        gensel = hialayout.HiaSelectorRadio('Generic', self.controller)
+        # Then hack apart the instance to override get_axislist()
+        gensel.get_axislist = lambda: [ ('one',''), ('two',''), ('three','') ]
+        gensel.update_widgets()
+
+        grpsel = hialayout.HiaSelectorGroup(self.controller)
+        lyrsel = hialayout.HiaSelectorLayer(self.controller)
+        devsel = hialayout.HiaSelectorDevice(self.controller)
+        box = Gtk.VBox()
+        box.pack_start(gensel, False, False, 0)
+        box.pack_start(grpsel, False, False, 0)
+        box.pack_start(lyrsel, False, False, 0)
+        box.pack_start(devsel, False, False, 0)
+        self.w.add(box)
+
+        def script ():
+            self.w.show_all()
             yield 1
 
         self.runloop(script)
