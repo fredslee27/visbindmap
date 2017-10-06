@@ -412,6 +412,7 @@ class HiaView (GObject.Object):
     device_details = GObject.Property(type=object)  # instance of LayoutStore, references self.layouts[].
     group = GObject.Property(type=int, default=0)
     layer = GObject.Property(type=int, default=0)
+    nvislayers = GObject.Property(type=int, default=1)
     _vislayers = BitVector(1)
     bindstore = GObject.Property(type=object)   # instance of BindStore.
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
@@ -433,6 +434,18 @@ class HiaView (GObject.Object):
                 self._vislayers.clear_bit(i)
         self._vislayers.count = vbl
         self.emit("vislayers-changed", list(self._vislayers))
+
+    @GObject.Property(type=object)
+    def nlayers (self):
+        groupid = 0
+        grouppath = Gtk.TreePath(str(groupid))
+        groupiter = self.axes.get_iter(grouppath)
+        return self.axes.iter_n_children(groupiter)
+
+    @GObject.Property(type=object)
+    def ngroups (self):
+        return self.axes.iter_n_children(None)
+
 
 
     def __init__ (self, bindstore=None, layouts=None):
@@ -469,6 +482,7 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
         self.connect('notify::bindstore', self.on_notify_bindstore)
         self.connect('notify::layouts', self.on_notify_layouts)
         self.connect('notify::axes', self.on_notify_axes)
+        self.connect('notify::nvislayers', self.on_notify_nvislayers)
 
     def setup_signals (self):
         pass
@@ -506,8 +520,8 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
     def on_notify_bindstore (self, inst, param):
         bindstore = self.bindstore
         bindstore.connect("bind-changed", self.on_bindstore_bind_changed)
-        bindstore.connect("ngroups-changed", self.on_bindstore_ngroups_changed)
-        bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
+        #bindstore.connect("ngroups-changed", self.on_bindstore_ngroups_changed)
+        #bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
         self.emit("bindstore-changed", self.bindstore)
     def on_notify_layouts (self, inst, param):
         def asciisort (mdl, iterA, iterB, *args):
@@ -521,6 +535,8 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
         self.axes.connect("row-changed", self.on_axes_row_changed)
         self.emit("group-names-changed", self.axes)
         self.emit("layer-names-changed", self.axes, self.group)
+    def on_notify_nvislayers (self, inst, param):
+        self.emit("layer-changed", self.layer)
 
     def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
         depth = treepath.get_depth()
@@ -539,6 +555,7 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
     def on_bindstore_ngroups_changed (self, bindstore, ngroups):
         self.emit("ngroups-changed", ngroups)
     def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
+        return
         # Auto-resize vislayers to new number of layers.
         vislayers = self.vislayers[:]
         if len(vislayers) < nlayers:
@@ -742,6 +759,8 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction("(xxsxxs)")
     def act_exchange_binds_explicit (self, action, param):
+        """Exchange binds between syms, compleat path specifications.
+"""
         (groupA, layerA, symA, groupB, layerB, symB) = param
         bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
         bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
@@ -756,6 +775,8 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction("(ss)")
     def act_exchange_binds (self, action, param):
+        """Exchange binds between syms.
+"""
         symA, symB = param
         groupA = groupB = self.view.group
         layerA = layerB = self.view.layer
@@ -764,10 +785,16 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction()
     def act_clear_bindstore (self, action, param):
+        """Clear BindStore.
+Erases all bindings.
+"""
         return
 
     @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
     def act_use_layer_names (self, action, param):
+        """Set layer names
+Sets the layers listed in the Layers selector.
+"""
         nodelist = param
         # erase children of GLOBAL.
         mdl = self.view.axes
@@ -787,10 +814,13 @@ Specify HiaLayer to make focus."""
         #mdl.emit("row-changed", path_global, iter_global)
         lastpath = mdl.get_path(lastiter)
         mdl.emit("row-changed", lastpath, lastiter)
-        self.view.nlayers = nlayers
+        self.view.bindstore.nlayers = nlayers
 
     @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
     def act_use_group_names (self, action, param):
+        """Set group names
+Sets the groups listed in the Groups selector.
+"""
         nodelist = param
         # start from GLOBAL
         mdl = self.view.axes
@@ -812,6 +842,24 @@ Specify HiaLayer to make focus."""
             mdl.emit("row-changed", lastpath, lastiter)
         else:
             mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
+        self.view.bindstore.ngroups = ngroups
+
+    @HiaSimpleAction("x")
+    def act_view_nlayers (self, action, param):
+        n_vis = param.get_int64()
+        self.view.nvislayers = n_vis
+
+    @HiaSimpleAction()
+    def act_readjust_vislayers (self, action, param):
+        """Readjust vislayers.
+"""
+        n_vis = self.view.nvislayers
+        a = self.view.layer
+        basis = int(a / n_vis) * n_vis
+        vislayers = [ False ] * self.view.nlayers
+        for i in range(n_vis):
+            vislayers[basis+i] = True
+        self.view.vislayers = vislayers
 
 
 
@@ -1095,13 +1143,17 @@ Drag-and-Drop
         # Copy style background-color from TextView().
         ctx0 = ref.get_style_context()
         refrgba = ctx0.get_background_color(Gtk.StateFlags.NORMAL)
-        bgcolor = refrgba.to_string()
+        bgcolor1 = refrgba.to_string()
+        bgcolor2 = bv.get_style_context().get_color(Gtk.StateFlags.INSENSITIVE).to_string()
         style_provider = Gtk.CssProvider()
         style_provider.load_from_data((r"""
 .binddisp {
     background-color: %s
 }
-""" % (bgcolor,)).encode())
+.binddisp-dull {
+    background-color: %s
+}
+""" % (bgcolor1,bgcolor2)).encode())
         stylectx = bv.get_style_context()
         stylectx.add_class("binddisp")
         #stylectx.add_class("entry")
@@ -1173,11 +1225,15 @@ Drag-and-Drop
                     hr.hide()
             # Sensitize to active layer.
             #self.ui.bindviews[bi].set_sensitive(bi == self.view.layer)
-#            bv = self.ui.bindviews[bi]
-#            if bi == self.view.layer:
+            bv = self.ui.bindviews[bi]
+            if bi == self.view.layer:
 #                bv.set_state_flags(Gtk.StateFlags.ACTIVE, False)
-#            else:
+                bv.get_style_context().add_class("binddisp")
+                #bv.get_style_context().remove_class("binddisp-dull")
+            else:
 #                bv.set_state_flags(Gtk.StateFlags.NORMAL, False)
+                bv.get_style_context().remove_class("binddisp")
+                #bv.get_style_context().add_class("binddisp-dull")
         for bi in range(len(binddisp), len(self.ui.bindrows)):
             self.ui.hrules[bi].hide()
             self.ui.bindrows[bi].hide()
@@ -2107,7 +2163,8 @@ class HiaSelectorLayer (HiaSelectorRadio):
         submodel.set_visible_func(filter_for_layer)
         return submodel
     def setup_signals (self):
-        self.view.bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
+        #self.view.bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
+        pass
     def on_notify_view (self, inst, param):
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("layer-names-changed", self.on_layer_names_changed)
@@ -2759,9 +2816,10 @@ class HiaPlanner (Gtk.HPaned):
 
     def on_layer_changed (self, view, layerid):
         # Top-level layer change -- update vislayers.
-        vislayers = [False] * view.bindstore.nlayers
-        vislayers[layerid] = True
-        self.controller.view.vislayers = vislayers
+        #vislayers = [False] * view.bindstore.nlayers
+        #vislayers[layerid] = True
+        #self.controller.view.vislayers = vislayers
+        self.controller.readjust_vislayers()
 
     def on_bind_assigned (self, w, hiasym, bindvalue):
         self.emit("bind-assigned", hiasym, bindvalue)
@@ -2791,13 +2849,14 @@ class HiaWindow (Gtk.Window):
         #cmdpack = feed.read()
         #planner = HiaPlanner(cmdpack, view, layouts)
         planner = HiaPlanner()
+        planner.controller.insert_actions_into_widget(self)
         #planner.controller.view.bindstore.nlayers = 4
         #planner.controller.view.bindstore.ngroups = 3
         planner.controller.use_group_names([('Menu',''),('Game','')])
         planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.add(planner)
         self.show_all()
-        planner.controller.insert_actions_into_widget(self)
+        planner.controller.view_nlayers(2)
 
 
 if __name__ == "__main__":
