@@ -2881,10 +2881,84 @@ class HiaAppWindow (Gtk.ApplicationWindow):
         self.statusbar = Gtk.Statusbar()
         self.statusbar.push(self.statusbar.get_context_id("status"), "Ready...")
 
+        self.setup_menubar()
+
+        self.vbox.pack_start(self.menubar, False, False, 0)
         self.vbox.pack_start(self.planner, True, True, 0)
         self.vbox.pack_start(self.statusbar, False, False, 0)
         self.add(self.vbox)
         self.show_all()
+
+    def setup_menubar (self):
+        MENU_DESC = [
+            ('_File', [
+                ('_New', 'app.file_new'),
+                ('_Open', 'app.file_open'),
+                ('_Save', 'app.file_save'),
+                ('Save _As', 'app.file_saveas'),
+                None,
+                ('_CommandPack', 'app.load_commandpack'),
+                None,
+                ('_Quit', 'app.quit'),
+                ]),
+            ('_Edit', [
+                ('_Copy', 'app.edit_copy'),
+                ('C_ut', 'app.edit_cut'),
+                ('_Paste', 'app.edit_paste'),
+                None,
+                ('Pr_eferences', 'app.preferences'),
+                ]),
+            ('_View', [
+                ('_1 Layer', 'app.view_layers(1)'),
+                ('_2 Layers', 'app.view_layers(2)'),
+                ('_4 Layers', 'app.view_layers(4)'),
+                ('_8 Layers', 'app.view_layers(8)'),
+                ]),
+            ('_Help', [
+                ('_Contents', 'app.help_help'),
+                None,
+                ('_About', 'app.about'),
+                ]),
+            ]
+        def make_menu (menudesc):
+            menu = Gio.Menu()
+            menusect = Gio.Menu()
+            sectsize = 0
+            for itemdesc in menudesc:
+                (lbl, detail) = itemdesc if itemdesc else (None,None)
+                if lbl is None:
+                    # separator/section.
+                    # wrap up old section into a 'section' menuitem.
+                    menuitem = Gio.MenuItem.new_section(None, section=menusect)
+                    menu.append_item(menuitem)
+                    # prepare new section.
+                    menusect = Gio.Menu()
+                    sectsize = 0
+                elif type(detail) == list:
+                    # submenu
+                    submenu = make_menu(detail)
+                    menuitem = Gio.MenuItem.new_submenu(label=lbl, submenu=submenu)
+                    menusect.append_item(menuitem)
+                    sectsize += 1
+                else:
+                    # normal item.
+                    menuitem = Gio.MenuItem()
+                    menuitem.set_label(lbl)
+                    detailed_action = None
+                    if detailed_action:
+                        menuitem.set_detailed_action(detailed_action)
+                    menusect.append_item(menuitem)
+                    sectsize += 1
+            if sectsize > 0:
+                # trailing section, attach at end.
+                menuitem = Gio.MenuItem.new_section(None, section=menusect)
+                menu.append_item(menuitem)
+            return menu
+        self.menu_main = make_menu(MENU_DESC)
+        print("init menubar with %r" % self.menu_main)
+        menubar = Gtk.MenuBar.new_from_model(self.menu_main)
+        self.menubar = menubar
+        return menubar
 
 
 class HiaApplication (Gtk.Application):
