@@ -949,6 +949,7 @@ class HiaControl (GObject.Object):
     view = GObject.Property(type=object)    # Instance of HiaView.
     _registry = None    # map str => Gio.Action (typ. Gio.SimpleAction)
     actions = None      # Instance Gio.SimpleActionGroup
+    groupwin = None     # Instance GtkWidget
 
     def __init__ (self, hiaview):
         GObject.Object.__init__(self)
@@ -962,6 +963,7 @@ class HiaControl (GObject.Object):
 
     def insert_actions_into_widget (self, parent_widget):
         parent_widget.insert_action_group("hia", self.actions)
+        self.groupwin = parent_widget
 
     def setup_signals (self):
         HiaSimpleActionInstall(self)
@@ -1373,7 +1375,6 @@ Drag-and-Drop
 
     def setup_signals (self):
         """Set up widget signals within key top."""
-#        self.connect("realize", self.on_realize)
         self.view.connect("group-changed", self.on_group_changed)
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("vislayers-changed", self.on_vislayers_changed)
@@ -2857,6 +2858,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 
     def setup_signals (self):
         self.connect("realize", self.on_realize)
+        return
 
     def on_realize (self, w, *args):
         toplevel = self.get_toplevel()
@@ -3118,6 +3120,7 @@ class AppControl (HiaControl):
 
     def insert_actions_into_widget (self, parent_widget):
         parent_widget.insert_action_group("app", self.actions)
+        self.groupwin = parent_widget
 
     @HiaSimpleAction()
     def act_ragequit (self, inst, param):
@@ -3145,7 +3148,18 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction()
     def act_ask_commandpack (self, inst, param):
-        pass
+        try:
+            dlg = self.groupwin.dlg_cmdpack
+        except AttributeError:
+            return
+        if not dlg:
+            return
+        response = dlg.run()
+        if response == Gtk.ResponseType.ACCEPT:
+            pathname = dlg.get_filename()
+            uri = "file://{}".format(pathname)
+            self.load_commandpack(pathname)
+        dlg.hide()
 
     @HiaSimpleAction("s")
     def act_load_commandpack (self, inst, param):
@@ -3187,17 +3201,24 @@ class HiaAppWindow (Gtk.ApplicationWindow):
 Holds app-wide GAction.
 """
 
-    controller = GObject.Property(type=object)
+    controller = GObject.Property(type=object)      # AppControl
+    dlg_cmdpack = GObject.Property(type=object)     # GtkFileChooserDialog
+    dlg_load = GObject.Property(type=object)        # GtkFileChooserDialog
+    dlg_save = GObject.Property(type=object)        # GtkFileChooserDialog
 
     def __init__ (self, app, controller=None):
         Gtk.ApplicationWindow.__init__(self, application=app)
 
         self.controller = controller
 
+        self.setup_widgets()
+        self.setup_signals()
+
+    def setup_widgets (self):
         self.set_size_request(640,480)
         self.vbox = Gtk.VBox()
         self.controller.insert_actions_into_widget(self)
-        planner = HiaPlanner(controller=controller)
+        planner = HiaPlanner(controller=self.controller)
         self.planner = planner
 
         self.statusbar = Gtk.Statusbar()
@@ -3211,7 +3232,15 @@ Holds app-wide GAction.
         self.add(self.vbox)
         self.show_all()
 
-        self.setup_signals()
+        title = "Load Command Pack"
+        action = Gtk.FileChooserAction.OPEN
+        buttons = [
+            Gtk.STOCK_APPLY, Gtk.ResponseType.ACCEPT,
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            ]
+        self.dlg_cmdpack = Gtk.FileChooserDialog(title=title, parent=self, action=action, buttons=buttons)
+
+        return
 
     def setup_menubar (self):
         def detail_transformer (raw):
@@ -3261,42 +3290,10 @@ Holds app-wide GAction.
         return menubar
 
     def setup_signals (self):
-        self.connect("map-event", self.on_map_event)
+        """signals for (main) application window."""
         return
 
-    def on_map_event (self, w, *args):
-        actions = self.get_action_group("app")
-        if actions:
-            act0 = actions.lookup_action("ask_commandpack")
-            if act0:
-                act0.connect("activate", self.on_ask_commandpack)
-        return False
-        
-    def ask_commandpack (self):
-        title = "Load Command Pack"
-        action = Gtk.FileChooserAction.OPEN
-        buttons = [
-            Gtk.STOCK_APPLY, Gtk.ResponseType.ACCEPT,
-            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
-            ]
-        dlg = Gtk.FileChooserDialog(title=title, parent=self, action=action, buttons=buttons)
-        response = dlg.run()
-        filepath = None
-        if response == Gtk.ResponseType.ACCEPT:
-            # load.
-            filepath = dlg.get_filename()
-            self.controller.load_commandpack(filepath)
-            dlg.close()
-            dlg.destroy()
-        elif response == Gtk.ResponseType.CANCEL:
-            dlg.close()
-            dlg.destroy()
-        else:
-            dlg.close()
-            dlg.destroy()
 
-    def on_ask_commandpack (self, action, paramval):
-        self.ask_commandpack()
 
 
 class HiaApplication (Gtk.Application):
