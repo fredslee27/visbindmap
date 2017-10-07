@@ -72,9 +72,11 @@ def pytypes_to_GVariantTypeEncoder (pyval):
 def to_GVariant (pyval):
     gformat = pytypes_to_GVariantTypeEncoder(pyval)
     #gparam = GLib.VariantType(gformat)
-    if type(pyval) is tuple and None in pyval:
+    if pyval is None:
+        retval = GLib.Variant.new_maybe(GLib.VariantType('s'),None)
+    elif type(pyval) is tuple and None in pyval:
         # Build it hard-core.
-        vlist = [ GLib.Variant.new_maybe(GLib.VariantType('s'),None) if x is None else to_GVariant(x) for x in pyval ]
+        vlist = [ to_GVariant(x) for x in pyval ]
         retval = GLib.Variant.new_tuple(*vlist)
     else:
         # Build it easy mode.
@@ -877,8 +879,12 @@ def HiaSimpleActionInstall (inst_or_class):
             t = action.get_parameter_type()
             if len(args) == 0:
                 if t:
-                    return False
-                action.activate()
+                    # Want arguments, given none.
+                    # TODO: tuples of None with param_type
+                    v = to_GVariant(None)
+                    action.activate(v)
+                else:
+                    action.activate()
             elif len(args) == 1:
                 v = to_GVariant(args[0])
                 if not v.is_of_type(t):
@@ -2681,16 +2687,16 @@ class CommandPackStore (Gtk.TreeStore):
 #  build(self)
 # 
 # Use case:
-#  CommandPackFeed.from_uri("file:///path/to/command/pack.csv")
+#  CommandPackFeed.open("file:///path/to/command/pack.csv")
 #  => searches REGISRY for an instance where is_acceptable(uri) returns true
 #  => instantiates that subclass with the specified URI
-#  => invokes build() to populate instance.cmdpack, instance.modelist, instance.packname
+#  => invoke read() to return an instance of CommandPackStore.
 #  
 # Implementation case:
 #  Subclass CommandPackFeed
 #  Decorate with @CommandPackFeed.register to automagically register with base class/factory method.
 #  Implement function @staticmethod is_acceptable(uri), returns bool.
-#  Implement build(), guided with self._path, to populate self._cmdpack
+#  Implement read(), guided with self._path, to create and return instance of CommandPackStore.
 class CommandPackFeed (object):
     """Base class for command pack source."""
     REGISTRY = {}   # class-scope, registry of specific command pack feeds.
@@ -2746,7 +2752,8 @@ class CommandPackFeed_builtin (CommandPackFeed):
     @staticmethod
     def is_acceptable (uri):
         # URI of None yields the hard-coded command pack feed.
-        return (uri is None)
+        #return (uri is None)
+        return (uri == "")
 
     def read (self):
         cmdpack = CommandPackStore("(builtin)")
@@ -2787,29 +2794,25 @@ class HiaSelectorCommand (Gtk.VBox):
 
 static method 'make_model()' for generating a suitable TreeStore expected by this widget.
 """
+    model = GObject.Property(type=object)       # CommandPackStore
+
     # Expected to rarely change, so model signals are ignored and instead set_model triggers refreshing view.
     def __init__ (self, mdl):
         Gtk.VBox.__init__(self)
-        self._model = mdl
-        if mdl is None:
-            self._model = self.make_model()
-        self._packname = None
+        self.connect("notify::model", self.on_notify_model)
+
+        if mdl:
+            self.model = mdl
+
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
 
-    def get_model (self):
-        return self._model
-    def set_model (self, mdl=None):
-        if mdl is not None:
-            self._model = mdl
-            self.ui.treeview.set_model(mdl)
-            try:
-                self._packname = self._model.packname
-            except AttributeError:
-                self._packname = None
+    def on_notify_model (self, inst, param):
+        if self.model:
+            #self.ui.treeview.set_model(self.model)
             self.update_widgets()
-    model = property(get_model, set_model)
+        return
 
     def setup_widgets (self):
         """Set up Gtk widgets within command selector."""
@@ -2819,14 +2822,14 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         self.ui.sclwin = Gtk.ScrolledWindow()
 
         # TreeView
-        self.ui.treeview = Gtk.TreeView(model=self._model)
+        self.ui.treeview = Gtk.TreeView(model=self.model)
         self.ui.treeview.set_search_column(2)
         # TreeViewColumns
         self.ui.treecols = []
         self.ui.treecelltxt = Gtk.CellRendererText()
         colname = "command"
-        if self._model:
-            colname = self._model.packname
+        if self.model:
+            colname = self.model.packname
         col0 = Gtk.TreeViewColumn(colname, self.ui.treecelltxt, text=2)
         self.ui.treecols.append(col0)
         for col in self.ui.treecols:
@@ -2840,14 +2843,26 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         self.knowwhat = "cmdpackview"
 
     def update_widgets (self):
-        self.ui.treeview.set_model(self._model)
-        if self.packname:
-            self.ui.treecols[0].set_title(self.packname)
+        self.ui.treeview.set_model(self.model)
+        packname = self.model.packname if self.model else None
+        if packname:
+            self.ui.treecols[0].set_title(packname)
         else:
             self.ui.treecols[0].set_title("command")
         return
 
     def setup_signals (self):
+        self.connect("map", self.on_map)
+
+    def on_map (self, w, *args):
+        print("cmdpack late_setup_signals")
+        toplevel = self.get_toplevel()
+        actions = toplevel.get_action_group("app")
+        print(" actiongroup %r : %r" % (actions,toplevel))
+        if actions:
+            act0 = actions.lookup_action("load_commandpack")
+            print("act0 : %r" % act0)
+            act0.connect("activate", self.on_act_load_commandpack)
         return
 
     def setup_dnd (self):
@@ -2888,6 +2903,15 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
             hiasym = seldata.get_data()
         return False
 
+    def on_act_load_commandpack (self, action, paramval):
+        if not paramval.is_of_type(GLib.VariantType('s')):
+            return
+        uri = paramval.get_string()
+        feed = CommandPackFeed.open(uri)
+        pack = feed.read()
+        self.model = pack
+        return
+
     @staticmethod
     def make_model ():
         # Data tuples = ( cmd_id_number, cmd_name, display_text, tooltip_text )
@@ -2926,8 +2950,9 @@ class HiaPlanner (Gtk.HPaned):
 
         if cmdpack is None:
             # Fall back to builtin command pack.
-            feed = CommandPackFeed.open(None)
-            cmdpack = feed.read()
+            #feed = CommandPackFeed.open(None)
+            #cmdpack = feed.read()
+            cmdpack = CommandPackStore()
         if controller is None:
             # Build default view.
             bindstore = BindStore()
@@ -3118,6 +3143,14 @@ class AppControl (HiaControl):
         pass
 
     @HiaSimpleAction()
+    def act_ask_commandpack (self, inst, param):
+        pass
+
+    @HiaSimpleAction("s")
+    def act_load_commandpack (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
     def act_edit_copy (self, inst, param):
         pass
 
@@ -3157,12 +3190,13 @@ Holds app-wide GAction.
 
     def __init__ (self, app, controller=None):
         Gtk.ApplicationWindow.__init__(self, application=app)
-        self.set_size_request(640,480)
-        self.vbox = Gtk.VBox()
 
         self.controller = controller
+
+        self.set_size_request(640,480)
+        self.vbox = Gtk.VBox()
+        self.controller.insert_actions_into_widget(self)
         planner = HiaPlanner(controller=controller)
-        planner.controller.insert_actions_into_widget(self)
         self.planner = planner
 
         self.statusbar = Gtk.Statusbar()
@@ -3175,6 +3209,8 @@ Holds app-wide GAction.
         self.vbox.pack_start(self.statusbar, False, False, 0)
         self.add(self.vbox)
         self.show_all()
+
+        self.setup_signals()
 
     def setup_menubar (self):
         def detail_transformer (raw):
@@ -3194,7 +3230,7 @@ Holds app-wide GAction.
                 ('_Save', "file_save"),
                 ('Save _As', "file_saveas"),
                 None,
-                ('_CommandPack', "load_commandpack"),
+                ('_CommandPack', "ask_commandpack"),
                 None,
                 ('_Quit', ("quit", "b", False)),
                 ('RageQuit', "ragequit"),
@@ -3222,6 +3258,40 @@ Holds app-wide GAction.
         menubar = Gtk.MenuBar.new_from_model(self.menu_main)
         self.menubar = menubar
         return menubar
+
+    def setup_signals (self):
+#        self.controller.actions.lookup_action("load_commandpack").connect("activate", self.on_act_load_commandpack)
+#        self.controller.actions.lookup_action("install_commandpack").connect("activate", self.on_act_install_commandpack)
+        pass
+
+#    def on_act_load_commandpack (self, action, garg):
+#        pass
+#    def on_act_install_commandpack (self, action, garg):
+#        pass
+        
+
+    def ask_commandpack (self):
+        title = "Load Command Pack"
+        action = Gtk.FileChooserAction.OPEN
+        buttons = [
+            "Load", Gtk.RESPONSE_ACCEPT,
+            Gtk.STOCK_CANCEL, Gtk.RESPONSE_CANCEL,
+            ]
+        dlg = Gtk.FileChooserDialog(title=title, parent=self, action=action, *buttons)
+        response = dlg.run()
+        filepath = None
+        if response == Gtk.RESPONSE_ACCEPT:
+            # load.
+            filepath = dlg.get_filename()
+            self.controller.load_commandpack(filepath)
+            dlg.close()
+            dlg.destroy()
+        elif response == Gtk.RESPONSE_CANCEL:
+            dlg.close()
+            dlg.destroy()
+        else:
+            dlg.close()
+            dlg.destroy()
 
 
 class HiaApplication (Gtk.Application):
@@ -3336,7 +3406,9 @@ Use command 'actions' for list of known actions.
             args = []
             for word in words[1:]:
                 v = None
-                if word[0].isdigit():
+                if len(word) == 0:
+                    v = str("")
+                elif word[0].isdigit():
                     try:
                         v = int(word)
                     except ValueError:
@@ -3379,16 +3451,17 @@ Use command 'actions' for list of known actions.
             GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, self.pump_stdin, extra)
             return
         pending = str(self.cmdbuf.decode())
+        g_print = print
         while "\n" in pending:
             oneline, pending = pending.split("\n", 1)
             # eval
             words = shlex.split(oneline)
             printable = self.on_interactive_command(words)
             # print
-            if printable is True: print("#t")
-            elif printable is False: print("#f")
-            elif printable is None: pass  # print("#n")
-            else: print(printable)
+            if printable is True: g_print("#t")
+            elif printable is False: g_print("#f")
+            elif printable is None: pass  # g_print("#n")
+            else: g_print(printable)
         self.cmdbuf = bytes(pending.encode())
         # loop.
         self.pump_stdin()
