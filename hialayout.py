@@ -142,338 +142,6 @@ def HiaMenu (menu_desc, detail_transformer=None):
         return build_menu_from_pylist(None, menu_desc, detail_transformer)
 
 
-
-
-########################
-# BindStore data model #
-########################
-
-class BindValue (object):
-    """
- cmdtitle:str = what is shown in bind value widget (and cmdpack view).
- cmdval:str = hint/indicator/value to exporter.
-"""
-    def __init__ (self, observer, cmdtitle=None, cmdcode=None):
-        self._cmdtitle = cmdtitle
-        self._cmdcode = cmdcode if (not cmdcode is None) else cmdtitle
-        if observer is None:
-            observer = lambda: False
-        self.observers = [ observer ]
-
-    def get_cmdtitle (self): return self._cmdtitle
-    def set_cmdtitle (self, val):
-        self._cmdtitle = val
-        for x in self.observers:
-            x()
-    cmdtitle = property(get_cmdtitle, set_cmdtitle)
-
-    def get_cmdcode (self): return self._cmdcode
-    def set_cmdcode (self, val):
-        self._cmdcode = val
-        for x in self.observers:
-            x()
-    cmdcode = property(get_cmdcode, set_cmdcode)
-
-    def __getitem__ (self, idx):
-        defer = [ self.get_cmdtitle,
-                    self.get_cmdcode ]
-        return defer[idx]()
-
-    def __setitem__ (self, idx, val):
-        defer = [ self.set_cmdtitle,
-                    self.set_cmdcode ]
-        defer[idx](val)
-
-    def snapshot (self):
-        retval = { "__class__": self.__class__.__name__ }
-        retval['cmdtitle'] = self.cmdtitle
-        retval['cmdcode'] = self.cmdcode
-        return retval
-
-    def restore (self, primitives):
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        self._cmdtitle = primitives['cmdtitle']
-        self._cmdcode = primitives['cmdcode']
-        self.notify_observers()
-        return self
-
-    def notify_observers (self):
-        for o in self.observers:
-            o()
-
-    def __repr__ (self):
-        return "{}(cmdtitle={!r}, cmdcode={!r})".format(
-            self.__class__.__name__,
-            self.cmdtitle,
-            self.cmdcode)
-
-# One layer consists of a dict mapping hiasym to bindvalues.
-class BindLayer (dict):
-    """
- keys are strings hiasym, to BindValue instance
-"""
-    def __init__ (self, observer, values=None):
-        self.observers = [ observer ]
-        if values is None:
-            dict.__init__(self)
-        else:
-            dict.__init__(self, values)
-        self.observers = [ observer ]
-
-    def __getitem__ (self, key):
-        if dict.__contains__(self, key):
-            return dict.__getitem__(self, key)
-        return None
-    def __setitem__ (self, key, val):
-        cmdtitle, cmdcode = None, None
-        cooked = None
-        cb = lambda: self.observe_bindvalue(key)
-        if isinstance(val, tuple):
-            # tuple, of (cmdtitle, cmdcode)
-            cooked = BindValue(cb,  val[0], val[1])
-        else:
-            try:
-                # assuming BindValue instance.
-                cooked = BindValue(cb, val.cmdtitle, val.cmdcode)
-            except AttributeError:
-                # assuming str or str-ish, as both title and cmdval.
-                valstr = str(val)
-                cooked = BindValue(cb, valstr, valstr)
-        dict.__setitem__(self, key, cooked)
-        self.observe_bindvalue(key)
-
-    def observe_bindvalue (self, hiasym):
-        self.notify_observers(hiasym)
-
-    def notify_observers (self, hiasym):
-        for o in self.observers:
-            o(hiasym)
-
-    def snapshot (self):
-        retval = { "__class__": self.__class__.__name__ }
-        retval['dict'] = dict()
-        for hiasym in self:
-            retval['dict'][hiasym] = self[hiasym].snapshot()
-        return retval
-
-    def restore (self, primitives):
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        dict.clear(self)
-        for k in primitives['dict']:
-            cb = lambda: self.observe_bindvalue(k)
-            pd = primitives['dict'][k]
-            v = BindValue(cb, None, None)
-            self[k] = v
-            self[k].restore(pd)
-        return self
-
-    def __repr__ (self):
-        return "{}(values={})".format(
-            self.__class__.__name__,
-            dict.__repr__(self))
-
-
-class BindGroup (list):
-    """
- list of BindLayer instances.
-"""
-    def __init__ (self, observer, layers=None):
-        try:
-            len(layers)
-            # Initialize from list.
-#            cb = lambda hiasym: self.observe_layerbind(0, hiasym)
-#            for x in layers:
-#                self.append(x)
-            for n in len(layers):
-                cb = lambda hiasym: self.observe_layerbind(0, hiasym)
-                self.append(BindLayer(cb), layers[n])
-        except TypeError:
-            if layers:
-                # assume integer.
-                self.set_nlayers(layers)
-            else:
-                # assume empty argument.
-                cb = lambda hiasym: self.observe_layerbind(0, hiasym)
-                self.append( BindLayer(cb) )
-        self.observers = [ observer ]
-
-    def get_nlayers (self):
-        return len(self)
-    def set_nlayers (self, n):
-        while len(self) < n:
-            i = len(self)
-            cb = lambda hiasym: self.observe_layerbind(i, hiasym)
-            self.append(BindLayer(cb))
-    nlayers = property(get_nlayers, set_nlayers)
-
-    def __getitem__ (self, idx):
-        return list.__getitem__(self, idx)
-    def __setitem__ (self, idx, val):
-        # Assign layer -> copy from another BindLayer.
-        cb = lambda hiasym: self.observe_layerbind(idx, hiasym)
-        local = BindLayer(cb)
-        other = val
-        list.__setitem__(self, idx, local)
-        for hiasym in other:
-            v = other[hiasym]
-            local[hiasym] = v
-
-    def observe_layerbind (self, layernum, hiasym):
-        self.notify_observers(layernum, hiasym)
-
-    def notify_observers (self, layernum, hiasym):
-        for o in self.observers:
-            o(layernum, hiasym)
-
-    def snapshot (self):
-        retval = { "__class__": self.__class__.__name__ }
-        retval['list'] = [None]*len(self)
-        for i in range(len(self)):
-            retval['list'][i] = self[i].snapshot()
-        return retval
-
-    def restore (self, primitives):
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        while len(self):
-            del self[0]
-        for i in range(len(primitives['list'])):
-            pl = primitives['list'][i]
-            cb = lambda hiasym: self.observe_layerbind(i, hiasym)
-            l = BindLayer(cb)
-            list.append(self, l)
-            l.restore(pl)
-        return self
-
-
-class BindStoreLegacy (GObject.GObject):
-    """
- groups = list of BindGroup instances
- resolve_bindview : list of tuple(redirects, BindValue)
-"""
-    def __init__ (self):
-        GObject.GObject.__init__(self)
-        self.groups = [BindGroup(self.make_cb(0))]
-
-    def clear (self):
-        self.groups = [ BindGroup(self.make_cb(0)) ]
-
-    def make_cb (self, grp):
-        return lambda lyr, sym: self.observe_groupbind(grp,lyr,sym)
-
-    def observe_groupbind (self, groupid, layerid, hiasym):
-        bindval = self.groups[groupid][layerid][hiasym]
-        (cmdtitle, cmdcode) = (None,None)
-        if bindval:
-            (cmdtitle, cmdcode) = (bindval.cmdtitle, bindval.cmdcode)
-        self.emit("bind-changed", groupid, layerid, hiasym, cmdtitle, cmdcode)
-
-    def get_group (self, groupid):
-        try:
-            grp = self.groups[groupid]
-            return grp
-        except IndexError:
-            return None
-
-    def get_layer (self, groupid, layerid):
-        grp = self.get_group(groupid)
-        if grp is None: return None
-        try:
-            lyr = grp[layerid]
-            return lyr
-        except (AttributeError, IndexError):
-            return None
-
-    def get_ngroups (self):
-        return len(self.groups)
-    def set_ngroups (self, n):
-        nlyr = self.get_nlayers()
-        while len(self.groups) < n:
-            cb = self.make_cb(len(self.groups))
-            g = BindGroup(cb)
-            g.set_nlayers(nlyr)
-            self.groups.append(g)
-        self.emit("ngroups-changed", n)
-    ngroups = property(get_ngroups, set_ngroups)
-
-    # This code section assumes all layers are the same size.
-    # Later revisions may support different layers per group.
-    def get_nlayers (self):
-        return self.groups[0].nlayers
-    def set_nlayers (self, n):
-        for g in self.groups:
-            g.set_nlayers(n)
-        # TODO: should also emit when invoking BindLayer.set_nlayers()
-        self.emit("nlayers-changed", 0, n)
-    nlayers = property(get_nlayers, set_nlayers)
-
-    def resolve_bindview (self, hiasym, groupid=0):
-        pass
-
-    def snapshot (self):
-        """Serialize to Python primitives (toplevel dict)."""
-        retval = { "__class__": self.__class__.__name__ }
-        retval['groups'] = [None]*len(self.groups)
-        for i in range(len(self.groups)):
-            retval['groups'][i] = self.groups[i].snapshot()
-
-    def restore (self, primitives):
-        """Restore BindStore from Python primitives (serialized)."""
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        self.groups = []
-        for i in range(len(primitives['groups'])):
-            pg = primitives['groups'][i]
-            g = BindGroup(self.make_cb(i))
-            self.groups.append(g)
-            g.restore(pg)
-        return self
-
-    def __repr__ (self):
-        return "{}(groups={!r})".format(
-            self.__class__.__name__,
-            self.groups,
-            )
-
-    def get_bind (self, groupid, layerid, hiasym):
-        """Main entry point: get binding for given group, layer, hiasym."""
-        lyr = self.get_layer(groupid, layerid)
-        if lyr is None: return None
-        val = lyr.get(hiasym, None)
-        return val
-
-    def set_bind (self, groupid, layerid, hiasym, hiaval, hiacmd=None):
-        """Main entry point: set binding for given group, layer, hiasym:
- set_bind(groupid, layerid, hiasym, instance_BindValue)
- set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
- set_bind(groupid, layerid, hiasym, cmdtitle)
-"""
-        cooked = None
-        if hiacmd is not None:
-            cooked = BindValue(lambda: False, hiaval, hiacmd)
-        else:
-            try:
-                hiaval.cmdtitle, hiaval.cmdcode  # quack-quack
-                cooked = hiaval
-            except AttributeError as e:
-                cooked = BindValue(lambda: False, hiaval, hiaval)
-        self.groups[groupid][layerid][hiasym] = cooked
-
-    __gsignals__ = {
-        # (groupid, layerid, hiasym, newtitle, newcode)
-        str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int, int, str, str, str) ),
-        # (ngroups)
-        str("ngroups-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
-        # (groupid, nlayers)
-        str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
-    }
-
-
-
-
-
 def AbbrevSignals (sigdescr, **full_desc):
     """Generate __gsignals__ accepted value from abbreviated description of signals that (try to) run first and return None:
 [
@@ -502,6 +170,13 @@ Also takes an optional dict acceptable for __gsignals__, added onto the return v
         retval[k] = full_desc[k]
     return retval
 
+
+
+
+########################
+# BindStore data model #
+########################
+
 # named tuple?
 class BindTreeValue (object):
     def __init__ (self, cmdtitle, cmdcode=None):
@@ -520,6 +195,8 @@ class BindTreeValue (object):
 
     def __repr__ (self):
         return "{}(cmdtitle={!r},cmdcode={!r})".format(self.__class__.__name__, self.cmdtitle, self.cmdcode)
+
+
 
 
 # TODO: layer.bindmap:dict for speeding up hiabind access.
@@ -545,12 +222,6 @@ class BindTreeStore (Gtk.TreeStore):
         if 0 == self.iter_n_children(self.get_iter_first()):
             self.add_layer("base")
 
-#    @GObject.Property(type=int)
-#    def ngroups (self):
-#        return len(self.groups)
-#    @GObject.Property(type=int)
-#    def nlayers (self):
-#        return len(self.layers)
     # nominal maximums; shorts are created on demand, excesses hidden.
     ngroups = GObject.Property(type=int, default=1)
     nlayers = GObject.Property(type=int, default=1)
@@ -894,6 +565,7 @@ returns BindValue."""
     ])
 
 
+# alias.
 BindStore = BindTreeStore
 
 
@@ -2760,52 +2432,6 @@ class HiaSelectorLayer (HiaSelectorRadio):
     def on_layer_names_changed (self, view, mdl, groupid):
         # TODO: check groupid?
         self.update_widgets()
-    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
-        namelist = []
-        draggable = []
-        for i in range(nlayers):
-            shifters = []
-            n = i
-            j = 0
-            while n > 0:
-                if (n & 1):
-                    shifters.append(j)
-                n >>= 1
-                j += 1
-            if not shifters:
-                namelist.append("base")
-            else:
-                lbl_chord = [ "^{}".format(b+1) for b in shifters ]
-                lbl_chord = " + ".join(lbl_chord)
-                lbl_chord = GLib.markup_escape_text(str(lbl_chord))
-                if not "+" in lbl_chord:
-                    namelist.append("{} (<b>{}</b>)".format(i, lbl_chord))
-                    draggable.append((i, str(lbl_chord)))
-                else:
-                    namelist.append("{} ({})".format(i, lbl_chord))
-        self.controller.use_layer_names([ (n,'') for n in namelist ])
-
-        # Set up DnD for layer buttons.
-        # orthogonal buttons are draggable -- assign shifter key.
-        drag_targets = [
-            HiaDnd.BIND.target_same_app(),
-            ]
-        drag_actions = Gdk.DragAction.COPY
-        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
-        for (draggableidx, bindval) in draggable:
-            btn = self.buttons[draggableidx]
-            btn.drag_source_set(drag_buttons, drag_targets, drag_actions)
-            btn.connect("drag-data-get", self.on_drag_data_get, bindval)
-
-        # all button are destinations -- swap across binds.
-        drop_targets = [
-            HiaDnd.SWAP.target_same_app(),
-            ]
-        drop_dests = Gtk.DestDefaults.ALL
-        drop_actions = Gdk.DragAction.COPY
-        for btn in self.buttons:
-            btn.drag_dest_set(drop_dests, drop_targets, drop_actions)
-            btn.connect("drag-data-received", self.on_drag_data_received)
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         btn = w

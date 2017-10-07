@@ -275,10 +275,10 @@ class TestHiaWidgets (skel.TestSkel):
     def test_hiaplanner (self):
         self.hiaview.layouts = self.layouts0
         #self.hiaview.bindstore.nlayers = 2
+        self.hiaview.bindstore.add_layer("1",None)
         self.hiaview.vislayers = [ True, False ]
         self._build_sample_binds1(self.hiaview.bindstore)
         picker = hialayout.HiaPlanner(cmdpack=None, controller=self.controller)
-        picker.ui.sel_layer.set_names(['base', '1'])
         self.w.add(picker)
         self.w.set_size_request(640, 480)
 
