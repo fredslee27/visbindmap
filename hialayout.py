@@ -33,7 +33,7 @@ def pytypes_to_GVariantTypeEncoder (pyval):
         list: (lambda v: "a?"),
         dict: (lambda v: "a{?*}"),
         float: (lambda v: "f"),
-        int: (lambda v: "x"),
+        int: (lambda v: "i"),
         bool: (lambda v: "b"),
         bytes: (lambda v: "ay"),
         str: (lambda v: "s"),
@@ -1283,25 +1283,25 @@ Specify HiaGroup to make focus"""
         # TODO: try interpret as int?
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
     def act_pick_group (self, action, param):
         """Pick HiaGroup
 Specify HiaGroup to make focus"""
-        self.view.group = param.get_int64()
+        self.view.group = param.get_int32()
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
     def act_pick_layer (self, action, param):
         """Pick HiaLayer
 Specify HiaLayer to make focus."""
-        self.view.layer = param.get_int64()
+        self.view.layer = param.get_int32()
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
     def act_pick_command (self, action, param):
         """Pick HiaCommand by id.
 """
-        cmdid = param.get_int64()
+        cmdid = param.get_int32()
         return
 
     @HiaSimpleAction(param_type="s", init_state=None, stock_id=None)
@@ -1311,14 +1311,14 @@ Specify HiaLayer to make focus."""
         hiasym = param.get_string()
         return
 
-#    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+#    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
 #    def act_push_bind (self, action, param):
 #        """Assign bind by command id.
 #Assign bind to selected hiasym by command id (from command pack).
 #"""
 #        return
 
-    @HiaSimpleAction(param_type="(xxsss)", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="(iisss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
         (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
@@ -1331,7 +1331,7 @@ Specify HiaLayer to make focus."""
         self.assign_bind_explicit(groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
-    @HiaSimpleAction("(xxs)")
+    @HiaSimpleAction("(iis)")
     def act_erase_bind_explicit (self, action, param):
         (groupid, layerid, hiasym) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
@@ -1344,7 +1344,7 @@ Specify HiaLayer to make focus."""
         self.erase_bind_explicit(groupid, layerid, hiasym)
         return
 
-    @HiaSimpleAction("(xxsxxs)")
+    @HiaSimpleAction("(iisiis)")
     def act_exchange_binds_explicit (self, action, param):
         """Exchange binds between syms, compleat path specifications.
 """
@@ -1388,7 +1388,7 @@ Erases all bindings.
         (groupid, group_name, group_code) = param
         self.view.bindstore.rename_group(groupid, group_name, group_code)
 
-    @HiaSimpleAction("x")
+    @HiaSimpleAction("i")
     def act_del_group (self, action, param):
         groupid = param
         self.view.bindstore.del_group(groupid)
@@ -1403,68 +1403,13 @@ Erases all bindings.
         (layerid, layer_name, layer_code) = param
         self.view.bindstore.rename_layer(layerid, layer_name, layer_code)
 
-    @HiaSimpleAction("x")
+    @HiaSimpleAction("i")
     def act_del_layer (self, action, param):
         self.view.bindstore.del_layer(param)
 
-# TODO: implement later?
-#    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
-#    def act_use_layer_names (self, action, param):
-#        """Set layer names
-#Sets the layers listed in the Layers selector.
-#"""
-#        nodelist = param
-#        # erase children of GLOBAL.
-#        mdl = self.view.axes
-#        iter_global = mdl.get_iter_first()
-#        path_global = mdl.get_path(iter_global)
-#        treeiter = mdl.iter_children(iter_global)
-#        while treeiter:
-#            res = mdl.remove(treeiter)
-#            if not res:
-#                break
-#        lastiter = None
-#        nlayers = 0
-#        for nodeitem in nodelist:
-#            (label, code) = nodeitem
-#            lastiter = mdl.append( iter_global, (label,code) )
-#            nlayers += 1
-#        #mdl.emit("row-changed", path_global, iter_global)
-#        lastpath = mdl.get_path(lastiter)
-#        mdl.emit("row-changed", lastpath, lastiter)
-#        self.view.bindstore.nlayers = nlayers
-#
-#    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
-#    def act_use_group_names (self, action, param):
-#        """Set group names
-#Sets the groups listed in the Groups selector.
-#"""
-#        nodelist = param
-#        # start from GLOBAL
-#        mdl = self.view.axes
-#        iter_global = mdl.get_iter_first()
-#        # erase siblings of GLOBAL.
-#        sibling = mdl.iter_next(iter_global)
-#        while sibling:
-#            res = mdl.remove(sibling)
-#            if not res:
-#                break
-#        # rebuild siblings.
-#        lastiter = None
-#        ngroups = 1
-#        if nodelist:
-#            for nodeitem in nodelist:
-#                (label, code) = nodeitem
-#                lastiter = mdl.append( None, (label,code) )
-#            lastpath = mdl.get_path(lastiter)
-#            mdl.emit("row-changed", lastpath, lastiter)
-#        else:
-#            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
-#        self.view.bindstore.ngroups = ngroups
-
-    @HiaSimpleAction("x")
+    @HiaSimpleAction("i")
     def act_view_nlayers (self, action, param):
-        n_vis = param.get_int64()
+        n_vis = param.get_int32()
         self.view.nvislayers = n_vis
 
     @HiaSimpleAction()
@@ -2698,6 +2643,22 @@ Convenience property 'names' to access/mutate with python list-of-str.
         group = None
         namelist = self.get_axislist()
         btn_id = 0
+
+        # Set up DnD for radio buttons.
+        # buttons with 'cmdcode' field are draggable.
+        drag_targets = [
+            HiaDnd.BIND.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+
+        # all button are destinations.
+        drop_targets = [
+            HiaDnd.SWAP.target_same_app(),
+            ]
+        drop_dests = Gtk.DestDefaults.ALL
+        drop_actions = Gdk.DragAction.COPY
+
         for listrow in namelist:
             #name = listrow[0]
             name = listrow[2]
@@ -2713,6 +2674,16 @@ Convenience property 'names' to access/mutate with python list-of-str.
             if btn_id == oldval:
                 # Restore old value.
                 b.set_active(True)
+
+            # DnD
+            if b.cmdcode:
+                # Buttons with cmdcode are drag sources.
+                b.drag_source_set(drag_buttons, drag_targets, drag_actions)
+                b.connect("drag-data-get", self.on_drag_data_get, b.cmdcode)
+            # all buttons are drag destinations.
+            b.drag_dest_set(drop_dests, drop_targets, drop_actions)
+            b.connect("drag-data-received", self.on_drag_data_received)
+
             b.connect("clicked", self.on_button_clicked, btn_id)
             b.show_all()
             self.buttons.append(b)
@@ -2722,6 +2693,10 @@ Convenience property 'names' to access/mutate with python list-of-str.
         return
 
     def on_button_clicked (self, w, ofs=None):
+        return
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        return
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         return
 
     def get_active_radio (self): # override
