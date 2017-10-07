@@ -3323,7 +3323,6 @@ class HiaApplication (Gtk.Application):
             'help': (lambda *a: r"""Commands are matched against action names, arguments are converted and grouped for action activation.  Command arguments are interpreted as int, bool (#t or #f), None (#n), str.
 Use command 'actions' for list of known actions.
 """),
-#            'actions': (lambda *a: "\n".join(sorted(self.controller.actions.list_actions()))),
             'actions': self.cmd_actions,
         }
         cmd = words[0]
@@ -3343,11 +3342,12 @@ Use command 'actions' for list of known actions.
                     except ValueError:
                         v = str(word)
                 elif word[0] == '#':
-                    if word[1] in ("t", "T"):
+                    ch1 = word[1] if len(word) > 1 else '\0'
+                    if ch1 in ("t", "T"):
                         v = True
-                    elif word[1] in ("f", "F"):
+                    elif ch1 in ("f", "F"):
                         v = False
-                    elif word[1] in ("n", "N"):
+                    elif ch1 in ("n", "N"):
                         v = None
                     else:
                         v = str(word)
@@ -3384,16 +3384,11 @@ Use command 'actions' for list of known actions.
             # eval
             words = shlex.split(oneline)
             printable = self.on_interactive_command(words)
-            if printable is not None:
-                if printable is True:
-                    print("#t")
-                elif printable is False:
-                    print("#f")
-                elif printable is None:
-                    pass
-                    print("#n")
-                else:
-                    print(printable)
+            # print
+            if printable is True: print("#t")
+            elif printable is False: print("#f")
+            elif printable is None: pass  # print("#n")
+            else: print(printable)
         self.cmdbuf = bytes(pending.encode())
         # loop.
         self.pump_stdin()
