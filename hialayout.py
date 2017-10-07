@@ -10,6 +10,8 @@ from gi.repository import Gtk, Gdk, GObject, GLib, Gio
 
 import ast
 import os, sys, math
+import threading
+import shlex
 
 import kbd_desc
 
@@ -3213,12 +3215,16 @@ Holds app-wide GAction.
 class HiaApplication (Gtk.Application):
     APP_ID = "localhost.vismapper"
 
-    controller = GObject.Property(type=object)
+    controller = GObject.Property(type=object)  # Instance AppControl
+    stdin = GObject.Property(type=object)       # Instance GInputStream
+    cmdline = GObject.Property(type=object)     # GApplicatCommandLine
+    cmdbuf = GObject.Property(type=object)      # bytes
+    repl = GObject.Property(type=object)        # GThread
 
     def __init__ (self, *args, **kwargs):
         flags = 0
         flags |= Gio.ApplicationFlags.NON_UNIQUE
-        #flags |= Gio.ApplicationFlags.HANDLES_COMMAND_LINE
+        flags |= Gio.ApplicationFlags.HANDLES_COMMAND_LINE
         #flags |= Gio.ApplicationFlags.HANDLES_OPEN
         Gtk.Application.__init__(self, *args, application_id=self.APP_ID, flags=flags, **kwargs)
         self.connect("activate", self.on_activate)
@@ -3227,6 +3233,7 @@ class HiaApplication (Gtk.Application):
         self.connect("open", self.on_open)
         self.connect("shutdown", self.on_shutdown)
         self.connect("startup", self.on_startup)
+        self.connect("notify::stdin", self.on_notify_stdin)
         self.mainw = None
 
     def on_startup (self, app):
@@ -3262,9 +3269,12 @@ class HiaApplication (Gtk.Application):
         PLEASE_EXIT_ERROR = 1  # any positive integer.
         return PLEASE_RESUME
     def on_command_line (self, app, command_line):
-        # command_line:Gio.ApplicationCommandLine
+        print("COMMAND_LINE: %r" % command_line)
         PLEASE_RESUME = 0
+        # command_line:Gio.ApplicationCommandLine
+        self.cmdline = command_line
         self.activate()
+        self.stdin = command_line.get_stdin()
         return PLEASE_RESUME
     def on_activate (self, app):
         print("ACTIVATE")
@@ -3272,6 +3282,60 @@ class HiaApplication (Gtk.Application):
             self.mainw = HiaAppWindow(self, controller=self.controller)
         self.mainw.present()
         return
+
+    def on_interactive_command (self, words):
+        g_print = print
+        dispatch = {
+            'quit': lambda *a: self.quit(),
+        }
+        cmd = words[0]
+        f = dispatch.get(cmd, None)
+        if f:
+            return f(words[1:])
+        else:
+            return "BAD_COMMAND({})".format(cmd)
+
+    def thread_repl (self, ginputstream):
+        pass
+
+    def on_stdin_async_ready (self, srcobj, res, extra):
+        # read
+        buf = srcobj.read_bytes_finish(res).get_data()
+        if buf:
+            self.cmdbuf += buf
+        pending = str(self.cmdbuf)
+        while "\n" in pending:
+            oneline, pending = pending.split("\n", 1)
+            # eval
+            words = shlex.split(oneline)
+            printable = self.on_interactive_command(words)
+            if printable is not None:
+                print(printable)
+        self.cmdbuf = bytes(pending)
+        # loop.
+        count = 1
+        ioprio = GLib.PRIORITY_DEFAULT
+        cancellable = None
+        callback = self.on_stdin_async_ready
+        extra = None
+        self.stdin.read_bytes_async(count, ioprio, cancellable, callback, extra)
+
+    def on_notify_stdin (self, inst, param):
+        print("spinning up stdin")
+        # Spin up stdin-reading and parsing thread.
+#        thread = threading.Thread(target=self.thread_repl, args=(self.stdin,))
+#        thread.start()
+#        self.repl = thread
+        #self.cmdbuf = bytes(4096)
+        #self.stdin.read_async(self.cmdbuf, len(self.cmdbuf), Gio.PRIORITY_DEFAULT, self.on_stdin_async_ready, None)
+        count = 1
+        ioprio = GLib.PRIORITY_DEFAULT
+        cancellable = None
+        callback = self.on_stdin_async_ready
+        extra = None
+        self.stdin.read_bytes_async(count, ioprio, cancellable, callback, extra)
+        self.cmdbuf = bytes()
+
 
 
 if __name__ == "__main__":
