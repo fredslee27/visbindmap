@@ -454,6 +454,34 @@ class BindStore (GObject.GObject):
 
 
 
+def AbbrevSignals (sigdescr, **full_desc):
+    """Generate __gsignals__ accepted value from abbreviated description of signals that (try to) run first and return None:
+[
+  (signal_name:str, *signal_param:tuple),
+  ...
+]
+
+e.g.
+[
+  ("custom-signal", int, int, int)
+]
+transforms into
+{
+    "custom-signal": (GObject.SIGNAL_RUN_FIRST, None, (int, int, int))
+}
+
+
+Also takes an optional dict acceptable for __gsignals__, added onto the return value after converting abbreviated descriptions (i.e. can overwrite abbreviated signals).
+"""
+    retval = dict()
+    for v in sigdescr:
+        signal_name = v[0]
+        signal_param = tuple(v[1:])
+        retval[str(signal_name)] = (GObject.SIGNAL_RUN_FIRST, None, signal_param)
+    for k in full_desc:
+        retval[k] = full_desc[k]
+    return retval
+
 # named tuple?
 class BindTreeValue (object):
     def __init__ (self, cmdtitle, cmdcode=None):
@@ -474,6 +502,8 @@ class BindTreeValue (object):
         return "{}(cmdtitle={!r},cmdcode={!r})".format(self.__class__.__name__, self.cmdtitle, self.cmdcode)
 
 
+# TODO: layer.bindmap:dict for speeding up hiabind access.
+#       or keep layer.children sorted by [1] (hiasym).
 class BindTreeStore (Gtk.TreeStore):
     def __init__ (self):
         # generic: (seq_id:int, key:str, label:str, code:str, ephemeral:object)
@@ -485,32 +515,104 @@ class BindTreeStore (Gtk.TreeStore):
 # at depth 2, correspond to Layer selector model
 # at depth 3, association list of (hiasym, cmdtitle, cmdcode), mapping of a unique keysym to an arbitrary display string and an output-specific coding value.
         Gtk.TreeStore.__init__(self, int,str,str,str,object)
+        self._slicetree_groups = None
+        self._slicetree_layers = None
         self.setup_sanity()
 
     def setup_sanity (self):
-        rootiter = self.get_iter_first()
-        iter_global = self.iter_children(rootiter)
-        # At least one group, default named 'GLOBAL'.
-        if not iter_global:
-            iter_global = self.append( None, (0,"", "GLOBAL", "GLOBAL", None) )
-        # At least one layer, default named 'base'.
-        iter_lbase = self.iter_children(iter_global)
-        if not iter_lbase:
-            iter_lbase = self.append( iter_global, (0,"", "base", "base", dict()) )
+        self.add_group("GLOBAL")
+        self.add_layer("base")
 
     @GObject.Property(type=int)
     def ngroups (self):
-        return 0
+        return len(self.groups)
     @GObject.Property(type=int)
     def nlayers (self):
-        return 0
+        return len(self.layers)
+
+    @staticmethod
+    def iter_depth (treemdl, treeiter):
+        retval = 0
+        while treeiter:
+            treeiter = treemdl.iter_parent(treeiter)
+            retval += 1
+        return retval
+
+    @staticmethod
+    def is_group_depth (treemdl, treeiter, *args):
+        return BindTreeStore.iter_depth(treemdl, treeiter) == 1
+
+    @staticmethod
+    def is_layer_depth (treemdl, treeiter, *args):
+        return BindTreeStore.iter_depth(treemdl, treeiter) == 2
+
+    @staticmethod
+    def is_bind_depth (treemdl, treeiter, *args):
+        return BindTreeStore.iter_depth(treemdl, treeiter) == 3
 
     @GObject.Property(type=object)
     def groups (self):
-        pass
+        """Get TreeModel representing available groups for selection."""
+        if not self._slicetree_groups:
+            self._slicetree_groups = Gtk.TreeStore.filter_new(self, None)
+            self._slicetree_groups.set_visible_func(self.is_group_depth)
+        return self._slicetree_groups
     @GObject.Property(type=object)
     def layers (self):
-        pass
+        """Get TreeModel representing available layers for selection."""
+        path_group = Gtk.TreePath.new_first()
+        def filter_layer (treemdl, treeiter, *args):
+            parentpath = treemdl.get_path(treemdl.iter_parent(treeiter))
+            return parentpath == path_group
+        if not self._slicetree_layers:
+            self._slicetree_layers = Gtk.TreeStore.filter_new(self, path_group)
+            self._slicetree_layers.set_visible_func(self.is_layer_depth)
+        return self._slicetree_layers
+
+    def add_group (self, group_name, group_code=None):
+        """Add another group available for selection."""
+        grp_id = len(self)
+        rowdata = (grp_id,"", group_name, group_code, None)
+        iter_group = self.append( None, rowdata )
+        return iter_group
+
+    def add_layer (self, layer_name=None, layer_code=None):
+        """Add another layer available for selection."""
+        path_global = Gtk.TreePath.new_first()
+        iter_global = self.get_iter(path_global)
+        lyr_id = self.iter_n_children(iter_global)
+        if layer_name is None:
+            layer_name = str(lyr_id)
+        bindmap = dict()
+        rowdata = (lyr_id,"", layer_name, layer_code, bindmap)
+        iter_layer = self.append( iter_global, rowdata )
+        return iter_layer
+
+    def _decompose_shifters (self, layernum):
+        shifters = []
+        val = layernum
+        n = 0
+        while val > 0:
+            if (val & 1):
+                shifters.append(n)
+            val >>= 1
+            n += 1
+        return shifters
+
+    def add_layershifter (self):
+        """Add layers to accomodate one more layer shifter key, automatically create names and bind codes."""
+        path_global = Gtk.TreePath.new_first()
+        iter_global = self.get_iter(path_global)
+        count = self.iter_n_children(iter_global)
+        layernum = count
+        for one_more in range(count):
+            shifters = self._decompose_shifters(layernum)
+            shiftertag = " + ".join([ "^{}".format(x+1) for x in shifters ])
+            label = "{} ({})".format(layernum, shiftertag)
+            code = shiftertag if not "+" in shiftertag else None
+            self.add_layer(label, code)
+            layernum += 1
+        return
 
     def get_bind (self, groupid, layerid, hiasym):
         row_group = self[groupid]
@@ -554,6 +656,28 @@ class BindTreeStore (Gtk.TreeStore):
             row_bind[3] = cmdcode
         return
 
+    def iter_binds (self):
+        grpid = 0
+        lyrid = 0
+        symid = 0
+        for row_group in self:
+            iter_group = row_group.iter
+            layers = self.iter_children(iter_group)
+            lyrid = 0
+            for row_layer in layers:
+                iter_layer = row_layer.iter
+                binds = self.iter_children(iter_layer)
+                symid = 0
+                for row_bind in binds:
+                    hiasym = row_bind[1]
+                    cmdtitle = row_bind[2]
+                    cmdcode = row_bind[3]
+                    yield (grpid, lyrid, hiasym, cmdtitle, cmdcode)
+                    symid += 1
+                lyrid += 1
+            grpid += 1
+        return
+
 
     def serialize_tree (self, treemodel, localrootiter=None):
         retval = []
@@ -591,6 +715,12 @@ class BindTreeStore (Gtk.TreeStore):
         retval['__class__'] = self.__class__.__name__
         retval['bindstore'] = self.serialize_tree(self, None)
         return retval
+
+    __gsignals__ = AbbrevSignals([
+        ("layers-changed",),
+        ("groups-changed",),
+        ("bind-changed", int, int, str),
+    ])
 
 
 
