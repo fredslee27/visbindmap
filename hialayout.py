@@ -2697,7 +2697,11 @@ class CommandPackStore (Gtk.TreeStore):
 #  Subclass CommandPackFeed
 #  Decorate with @CommandPackFeed.register to automagically register with base class/factory method.
 #  Implement function @staticmethod is_acceptable(uri), returns bool.
+#    May examine contents to determine validity (but should close handle before returning).
 #  Implement read(), guided with self._path, to create and return instance of CommandPackStore.
+#
+# Classes that return True for is_acceptable() will have their open() invoked.
+# If open() fails, factory function moves on to next factory class.
 class CommandPackFeed (object):
     """Base class for command pack source."""
     REGISTRY = {}   # class-scope, registry of specific command pack feeds.
@@ -2790,6 +2794,103 @@ class CommandPackFeed_builtin (CommandPackFeed):
         return cmdpack
 
 
+import sqlite3
+
+@CommandPackFeed.register
+class CommandPackFeed_sqlite3 (CommandPackFeed):
+    @staticmethod
+    def is_acceptable (uri):
+        # URI of None yields the hard-coded command pack feed.
+        #return (uri is None)
+        try:
+            conn = sqlite3.connect(uri)
+        except:
+            return False
+        if not conn:
+            return False
+        conn.close()
+        return True
+
+    def read (self):
+        dbname = self._path
+        conn = sqlite3.connect(dbname)
+        cursor = conn.cursor()
+
+        # Pack name: derived from dbname, then override with table content.
+        packname = os.path.basename(dbname)
+        try:
+            rows = cursor.execute('''SELECT packname FROM packname LIMIT 1;''')
+            row = rows.fetchone()
+            packname = row[0]
+        except sqlite3.OperationalError:
+            pass
+
+        cmdpack = CommandPackStore(packname)
+        cmdpack.uri = self._path
+
+        # Get modes.
+        try:
+            rows = cursor.execute('''SELECT name FROM modes ORDER BY id;''')
+            modelist = [ row[0] for row in rows ]
+        except sqlite3.OperationalError:
+            rows = []
+            modelist = []
+#        rows = []
+#        modelist = gtk.ListStore(str,str)
+#        modelist.append( ("Global", None) )
+#        for row in rows:
+#            modename = row[0]
+#            fallthrough = "Global"
+#            modelist.append( (modename, fallthrough) )
+        cmdpack.modelist = modelist
+
+        # Get groupings.
+        rows = cursor.execute('''SELECT grp FROM cmd GROUP BY grp ORDER BY id;''')
+        grpnames = [ row[0] for row in rows ]
+
+        grploc = {}
+        grptree = {}
+        for grpname in grpnames:
+            grpiter = None
+            grpnode = grptree
+            parts = grpname.split('/')
+            prefix = []
+            for k in parts:
+                prefix.append(k)
+                ancestorkey = '/'.join(prefix)
+                if not k in grpnode:
+                    # Create ancestor.
+                    grpiter = cmdpack.append(grpiter, (-1, "", k, ""))
+                    grploc[ancestorkey] = grpiter
+                    grpnode[k] = dict()
+                else:
+                    # Lookup ancestor.
+                    grpiter = grploc[ancestorkey]
+                # Keep drilling.
+                grpnode = grpnode[k]
+
+        # Iterate all rows.
+        stmt = '''SELECT id,layer,grp,cmd,label,hint FROM cmd;'''
+        try:
+            rows = cursor.execute(stmt)
+        except sqlite3.OperationalError:
+            rows = []
+        for row in rows:
+            cmdid, lyr, grp, cmd, lbl, hint = row
+            if lbl is None:
+                lbl = cmd
+            datum = (cmdid, cmd, lbl, hint)
+            # Find group, attach to group.
+            grpiter = grploc.get(grp, None)
+            cmdpack.append(grpiter, datum)
+
+        conn.close()
+
+        return cmdpack
+
+
+
+
 class HiaSelectorCommand (Gtk.VBox):
     """View of the command pack.
 
@@ -2813,6 +2914,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         if self.model:
             #self.ui.treeview.set_model(self.model)
             self.update_widgets()
+        self.emit("model-changed", self.model)
         return
 
     def setup_widgets (self):
@@ -2921,6 +3023,10 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         store = CommandPackStore()
         store.append(None, (0, "", "(unbind)", None))
         return store
+
+    __gsignals__ = AbbrevSignals([
+        ('model-changed', object),
+        ])
 
 
 
@@ -3163,6 +3269,7 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction("s")
     def act_load_commandpack (self, inst, param):
+        # also run in parallel: HiaSelectorCommand.on_act_load_commandpack
         pass
 
     @HiaSimpleAction()
@@ -3291,8 +3398,25 @@ Holds app-wide GAction.
 
     def setup_signals (self):
         """signals for (main) application window."""
+        self.planner.ui.sel_cmd.connect("model-changed", self.on_cmdpack_changed)
         return
 
+    def on_cmdpack_changed (self, w, cmdpackstore):
+        # get modelist
+        modelist = cmdpackstore.modelist
+        print("prep modelist: %r" % modelist)
+        modenum = 0
+        for modenum in range(len(modelist)):
+            modename = modelist[modenum]
+            if modenum < len(self.controller.view.bindstore.groups):
+                # rename
+                print('rename %d' % modenum)
+                self.controller.rename_group(modenum, modename, modename)
+            else:
+                # add.
+                self.controller.add_group(modename, modename)
+        self.planner.ui.sel_group.update_widgets()
+        return
 
 
 

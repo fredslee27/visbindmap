@@ -1,16 +1,13 @@
 import unittest
 import time
 
-import vismapping
-import hidlayout
+import hialayout
 import kbd_desc
-import gobject
-import gtk
 
 
 class TestCmdpack(unittest.TestCase):
     def setUp (self):
-        gtk.threads_init()
+        return
 
     def runloop (self, script=lambda: 0, pause_scale=0.1):
         """Run test script, coded as a coroutine.
@@ -28,22 +25,16 @@ Loop ends when coroutine ends (uses return instead of yield)
                 t = time.time()
             phase += 1
 
-    def dumptree (self, treemdl):
-        def visit (treemdl, treepath, treeiter, user_data):
-            indent = "  " * (len(treepath)-1)
-            rowdata = treemdl[treepath]
-            print("{}{!r}".format(indent, tuple(rowdata)))
-        treemdl.foreach(visit, None)
-
-    def test_sql0 (self):
-        cmdpack = vismapping.CommandSource.builtin()
-        self.assertTrue(len(cmdpack) > 0)
+    def test_builtin (self):
+        feed = hialayout.CommandPackFeed_builtin("")
+        cmdpack = feed.read()
 
         #print(len(cmdpack))
         #self.dumptree(cmdpack)
 
     def test_sql1 (self):
-        cmdpack = vismapping.CommandSource.sqlite3("cmdset/KerbalSpaceProgram.sqlite3")
+        feed = hialayout.CommandPackFeed_sqlite3("cmdset/KerbalSpaceProgram.sqlite3")
+        cmdpack = feed.read()
         self.assertEqual(cmdpack.packname, "Kerbal Space Program")
 
         #print(len(cmdpack))
