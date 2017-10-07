@@ -16,6 +16,79 @@ import kbd_desc
 
 
 
+
+
+
+
+####################
+# Helper functions #
+####################
+
+def HiaMenu (menu_desc):
+    """For use where Gio.Menu is needed (e.g. GtkMenu), loading menu description from various resources:
+ * python nestable list+tuples: [  (item1, detailed_action1), None, (item2, detailed_action2), (item2, [ (subitem1, subaction1), (subitem2, subaction2), ... ], ... ]
+"""
+#    def __init__ (self, menu_desc):
+#        Gio.Menu.__init__(self)
+#        if type(menu_desc) is list:
+#            self.build_menu_from_pylist(self, menu_desc)
+
+    def build_menu_from_pylist (menu, menudesc):
+        """Generate Gio.Menu from list+tuple simplified description.
+    Format is a list of tuples.
+    Each tuple is one of three forms:
+     None  -  separator/section
+     (str, list) - sub-menu, with recursive list-of-tuples for submenu.
+     (str, str)  -  menu item: (label, detailed)
+       of detailed:
+         str - assign directly to GAction as detailed_action
+         (str,GLib.GVariant) - assign as (action_name,target_value)
+
+"""
+        if menu is None:
+            menu = Gio.Menu()
+        menusect = Gio.Menu()
+        sectsize = 0
+        for itemdesc in menudesc:
+            (lbl, detail) = itemdesc if itemdesc else (None,None)
+            if lbl is None:
+                # separator/section.
+                # wrap up old section into a 'section' menuitem.
+                menuitem = Gio.MenuItem.new_section(None, section=menusect)
+                menu.append_item(menuitem)
+                # prepare new section.
+                menusect = Gio.Menu()
+                sectsize = 0
+            elif type(detail) == list:
+                # submenu
+                submenu = build_menu_from_pylist(None, detail)
+                menuitem = Gio.MenuItem.new_submenu(label=lbl, submenu=submenu)
+                menusect.append_item(menuitem)
+                sectsize += 1
+            else:
+                # normal item.
+                menuitem = Gio.MenuItem()
+                menuitem.set_label(lbl)
+                if type(detail) is tuple:
+                    (action,target) = detail
+                    menuitem.set_action_and_target_value(action,target)
+                else:
+                    detailed_action = detail
+                    menuitem.set_detailed_action(detailed_action)
+                menusect.append_item(menuitem)
+                sectsize += 1
+        if sectsize > 0:
+            # trailing section, attach at end.
+            menuitem = Gio.MenuItem.new_section(None, section=menusect)
+            menu.append_item(menuitem)
+        return menu
+
+    if type(menu_desc) is list:
+        return build_menu_from_pylist(None, menu_desc)
+
+
+
+
 ########################
 # BindStore data model #
 ########################
@@ -591,6 +664,118 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
     }
 
 
+
+# decorator for marking methods automagically tied to Gio.SimpleAction.
+def HiaSimpleAction (param_type=None, init_state=None, stock_id=None):
+    """Class-specific decorator.
+Label and tooltip are extracted from function's docstring, which is a plain string as the first (interpreted) line of a function.
+The first line, delimited to a newline, is the tooltip's label.
+Subsequent lines constitute the action's tooltip text (with Pango markup).
+"""
+    def wrapper (funcobj):
+        # Given a class method, add introspection fields for GAction.
+        name = funcobj.__name__
+        if name.startswith("act_"):
+            name = name[4:]
+        else:
+            return  # Force error.
+        gparam, gstate = None, None
+        label, tooltip = None, None
+        if funcobj.__doc__:
+            # label <- __doc__ until first newline
+            # tooltip <- __doc__ after first newline
+            label, tooltip = funcobj.__doc__.split("\n", 1)
+            # Strip whitespaces from start and end.
+            tooltip = tooltip.strip()
+        if param_type is not None:
+            gparam = GLib.VariantType(str(param_type))
+        if init_state is not None:
+            fmt, val = init_state
+            gstate = GLib.Variant(str(fmt), val)
+        funcobj.__gaction__ = dict(
+            name=name,
+            gparam=gparam,
+            gstate=gstate,
+            label=label,
+            tooltip=tooltip)
+        return funcobj
+    # curry.
+    return wrapper
+
+
+def HiaSimpleActionInstall (inst_or_class):
+    """1. decorator on class: automatically create pythonic wrapper methods to GAction activations, for methods decorated with HiaSimpleAction.  Where the GAction handler method is named 'act_FROB_FOOBAR', generates wrapper pythonic method 'FROB_FOOBAR'.  Pythonic in this sense meaning taking arguments in a typical function call manner, instead of wrapped in a one-argument tuple for Gio.Variant conversion.
+
+2. called within bound method (inside setup()) to install into self.actions the Gio.SimpleAction entries derived from bound methods of an object which are GAction handlers, wherein such methods were tagged by the 'HiaSimpleAction' decorator.  So handlers named 'act_FROB_FOOBAR' guide the creation of a GAction named 'FROB_FOOBAR' -- intended to be paired with class-decorator use such that instance.FROB_FOOBAR(..) is a convenience wrapper for invoking action FROB_FOOBAR.activate((...)).
+"""
+    def make_proxy (action_name, param_type):
+        if not param_type:
+            # No parameter.
+            def f (self):
+                action = self.actions.lookup(action_name)
+                action.activate()
+            return f
+        elif param_type.startswith("("):
+            # turn arguments into tuple
+            def f (self, *args):
+                action = self.actions.lookup(action_name)
+                v = GLib.Variant(param_type, *args)
+                action.activate(v)
+            return f
+        elif param_type:
+            # singular argument?
+            encparm = param_type.replace('m',"")
+            def f (self, arg):
+                action = self.actions.lookup(action_name)
+                v = GLib.Variant(param_type, arg)
+                action.activate(v)
+            return f
+
+    def decorate_class (classobj):
+        for a in dir(classobj):
+            if not a.startswith("act_"):
+                continue
+            o = getattr(classobj, a)
+            if not callable(o):
+                continue
+            if not hasattr(o, "__gaction__"):
+                continue
+            actdesc = o.__gaction__
+            name = actdesc['name']
+            gparam = actdesc['gparam']
+            param_type = gparam.dup_string() if gparam else None
+            proxyname = a[4:]
+            proxy = make_proxy(name, param_type)
+            setattr(classobj, proxyname, proxy)
+        return classobj
+
+    def install_actions (inst):
+        for a in dir(inst):
+            o = getattr(inst, a)
+            if not callable(o):
+                continue
+            if not hasattr(o, "__gaction__"):
+                continue
+            actdesc = o.__gaction__
+            name = actdesc['name']
+            gparam = actdesc['gparam']
+            gstate = actdesc['gstate']
+            label = actdesc['label']
+            tooltip = actdesc['tooltip']
+            action = Gio.SimpleAction(name=name, parameter_type=gparam, state=gstate)
+            action.connect('activate', o)
+            inst.actions.add_action(action)
+        return inst
+
+    if callable(inst_or_class):
+        # classes are callable to create instances.
+        return decorate_class(inst_or_class)
+    else:
+        # instances are not callable.
+        return install_actions(inst_or_class)
+    
+
+@HiaSimpleActionInstall
 class HiaControl (GObject.Object):
     """Controller wrapper to HiaView."""
 
@@ -612,81 +797,8 @@ class HiaControl (GObject.Object):
         parent_widget.insert_action_group("hia", self.actions)
 
     def setup_signals (self):
-        def make_closure (action, param_type):
-            # Create an action activation closure.
-            if not param_type:
-                # No parameter.
-                f = lambda: action.activate()
-                return f
-            elif param_type.startswith("("):
-                # turn arguments into tuple
-                def f (*args):
-                    v = GLib.Variant(param_type, *args)
-                    action.activate(v)
-                return f
-            elif param_type:
-                # singular argument?
-                encparm = param_type.replace('m',"")
-                def f (arg):
-                    v = GLib.Variant(param_type, arg)
-                    action.activate(v)
-                return f
-        for a in dir(self):
-            o = getattr(self, a)
-            if not callable(o):
-                continue
-            if not hasattr(o, "__gaction__"):
-                continue
-            actdesc = o.__gaction__
-            name = actdesc['name']
-            gparam = actdesc['gparam']
-            gstate = actdesc['gstate']
-            label = actdesc['label']
-            tooltip = actdesc['tooltip']
-            action = Gio.SimpleAction(name=name, parameter_type=gparam, state=gstate)
-            action.connect('activate', o)
-            self.actions.add_action(action)
+        HiaSimpleActionInstall(self)
 
-            # Create an aliased method, with the leading 'act_' removed.
-            param_type = gparam.dup_string() if gparam else None
-            closure = make_closure(action, param_type)
-            self.__dict__[name] = closure
-        return
-
-    def HiaSimpleAction (param_type=None, init_state=None, stock_id=None):
-        """Class-specific decorator.
-Label and tooltip are extracted from function's docstring, which is a plain string as the first (interpreted) line of a function.
-The first line, delimited to a newline, is the tooltip's label.
-Subsequent lines constitute the action's tooltip text (with Pango markup).
-"""
-        def wrapper (funcobj):
-            # Given a class method, add introspection fields for GAction.
-            name = funcobj.__name__
-            if name.startswith("act_"):
-                name = name[4:]
-            else:
-                return  # Force error.
-            gparam, gstate = None, None
-            label, tooltip = None, None
-            if funcobj.__doc__:
-                # label <- __doc__ until first newline
-                # tooltip <- __doc__ after first newline
-                label, tooltip = funcobj.__doc__.split("\n", 1)
-                # Strip whitespaces from start and end.
-                tooltip = tooltip.strip()
-            if param_type is not None:
-                gparam = GLib.VariantType(str(param_type))
-            if init_state is not None:
-                fmt, val = init_state
-                gstate = GLib.Variant(str(fmt), val)
-            funcobj.__gaction__ = dict(
-                name=name,
-                gparam=gparam,
-                gstate=gstate,
-                label=label,
-                tooltip=tooltip)
-            return funcobj
-        return wrapper
 
     @HiaSimpleAction(param_type="s", init_state=None, stock_id=None)
     def act_pick_device (self, action, param):
@@ -1458,73 +1570,61 @@ class ClusteredLayouts (HiaLayouts):
 
     def make_menu (self):
         # Return a Gio.Menu describing a menu choosing an available layout.
-        MENUDESC = [
+        def a(layoutname):
+            actname = "app.assign_bind"
+            hiasym = self.symprefix
+            cmdtitle = layoutname
+            cmdcode = layoutname
+            gvalue = GLib.Variant("(sss)", (hiasym, cmdtitle, cmdcode))
+            return (actname, gvalue)
+        MENU_DESC = [
             # (displayed_label, bind_value)  =>  menuitem set layout
             # || (displayed_label, [ nested_MENUDESC ] )  =>  submenu
-            ("_None", "Empty"),
-            ("_Single Button", "OneButton"),
-            ("Scroll _Wheel", "ScrollWheel"),
-            ("_D-Pad", "DirectionPad"),
-            ("Button _Quad", "ButtonQuad"),
-            ("Tr_ackpad", "MousePad"),
-            ("Mouse R_egion", "MouseRegion"),
-            ("_Joystick", "Joystick"),
-            ("_Gyro", "GyroTilt"),
+            ("_None", a("Empty")),
+            ("_Single Button", a("OneButton")),
+            ("Scroll _Wheel", a("ScrollWheel")),
+            ("_D-Pad", a("DirectionPad")),
+            ("Button _Quad", a("ButtonQuad")),
+            ("Tr_ackpad", a("MousePad")),
+            ("Mouse R_egion", a("MouseRegion")),
+            ("_Joystick", a("Joystick")),
+            ("_Gyro", a("GyroTilt")),
             ("_Touch Menu", [
-                ("_2 items", "TouchMenu02"),
-                ("_4 items", "TouchMenu04"),
-                ("_7 items", "TouchMenu07"),
-                ("_9 items", "TouchMenu09"),
-                ("1_2 items", "TouchMenu12"),
-                ("1_3 items", "TouchMenu13"),
-                ("1_6 items", "TouchMenu16"),
+                ("_2 items", a("TouchMenu02")),
+                ("_4 items", a("TouchMenu04")),
+                ("_7 items", a("TouchMenu07")),
+                ("_9 items", a("TouchMenu09")),
+                ("1_2 items", a("TouchMenu12")),
+                ("1_3 items", a("TouchMenu13")),
+                ("1_6 items", a("TouchMenu16")),
                 ]),
             ("_Radial Menu", [
                 ("_01..09 items", [
-                    ("_1 item", "RadialMenu01"),
-                    ("_2 items", "RadialMenu02"),
-                    ("_3 items", "RadialMenu03"),
-                    ("_4 items", "RadialMenu04"),
-                    ("_5 items", "RadialMenu05"),
-                    ("_6 items", "RadialMenu06"),
-                    ("_7 items", "RadialMenu07"),
-                    ("_8 items", "RadialMenu08"),
-                    ("_9 items", "RadialMenu09"),
+                    ("_1 item", a("RadialMenu01")),
+                    ("_2 items", a("RadialMenu02")),
+                    ("_3 items", a("RadialMenu03")),
+                    ("_4 items", a("RadialMenu04")),
+                    ("_5 items", a("RadialMenu05")),
+                    ("_6 items", a("RadialMenu06")),
+                    ("_7 items", a("RadialMenu07")),
+                    ("_8 items", a("RadialMenu08")),
+                    ("_9 items", a("RadialMenu09")),
                     ]),
                 ("_10.._19 items", [
-                    ("1_1 items", "RadialMenu11"),
-                    ("1_2 items", "RadialMenu12"),
-                    ("1_3 items", "RadialMenu13"),
-                    ("1_4 items", "RadialMenu14"),
-                    ("1_5 items", "RadialMenu15"),
-                    ("1_6 items", "RadialMenu16"),
-                    ("1_7 items", "RadialMenu17"),
-                    ("1_8 items", "RadialMenu18"),
-                    ("1_9 items", "RadialMenu19"),
+                    ("1_1 items", a("RadialMenu11")),
+                    ("1_2 items", a("RadialMenu12")),
+                    ("1_3 items", a("RadialMenu13")),
+                    ("1_4 items", a("RadialMenu14")),
+                    ("1_5 items", a("RadialMenu15")),
+                    ("1_6 items", a("RadialMenu16")),
+                    ("1_7 items", a("RadialMenu17")),
+                    ("1_8 items", a("RadialMenu18")),
+                    ("1_9 items", a("RadialMenu19")),
                     ]),
-                ("_20 items", "RadialMenu20"),
+                ("_20 items", a("RadialMenu20")),
                 ]),
             ]
-        def make_from_desc (menudesc):
-            menu = Gio.Menu()
-            for itemdesc in menudesc:
-                label, detail = itemdesc if itemdesc is not None else (None,None)
-                if type(detail) == list:
-                    submenu = make_from_desc(detail)
-                    menuitem = Gio.MenuItem.new_submenu(label=label, submenu=submenu)
-                    menu.append_item(menuitem)
-                elif label is None and detail is None:
-                    # separator.
-                    pass
-                else:
-                    menuitem = Gio.MenuItem()
-                    menuitem.set_label(label)
-                    # Whatever the detail is, conform to "assign_bind" action.
-                    detailed_action = 'hia.assign_bind(("{}","{}","{}"))'.format(self.symprefix, detail, detail)
-                    menuitem.set_detailed_action(detailed_action)
-                    menu.append_item(menuitem)
-            return menu
-        menu = make_from_desc(MENUDESC)
+        menu = HiaMenu(MENU_DESC)
         return menu
 
     def build_layouts (self):
@@ -2861,7 +2961,78 @@ class HiaWindow (Gtk.Window):
 # GtkApplication #
 ##################
 
+
+@HiaSimpleActionInstall
+class AppControl (HiaControl):
+
+    # Inherited properties: actions, hiaview
+
+    def __init__ (self, hiaview):
+        super().__init__(hiaview)
+        HiaSimpleActionInstall(self)
+
+    def insert_actions_into_widget (self, parent_widget):
+        parent_widget.insert_action_group("app", self.actions)
+
+    @HiaSimpleAction()
+    def act_ragequit (self, inst, param):
+        pass
+
+    @HiaSimpleAction("b")
+    def act_quit (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_file_new (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_file_open (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_file_save (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_file_saveas (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_edit_copy (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_edit_cut (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_edit_paste (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_preferences (self, inst, param):
+        pass
+
+    @HiaSimpleAction("i")
+    def act_view_layers (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_help_help (self, inst, param):
+        pass
+
+    @HiaSimpleAction()
+    def act_about (self, inst, param):
+        pass
+
+
+
+
 class HiaAppWindow (Gtk.ApplicationWindow):
+    """Main application window.
+Holds app-wide GAction.
+"""
 
     controller = GObject.Property(type=object)
 
@@ -2870,12 +3041,9 @@ class HiaAppWindow (Gtk.ApplicationWindow):
         self.set_size_request(640,480)
         self.vbox = Gtk.VBox()
 
+        self.controller = controller
         planner = HiaPlanner(controller=controller)
         planner.controller.insert_actions_into_widget(self)
-        #planner.controller.view.bindstore.nlayers = 4
-        #planner.controller.view.bindstore.ngroups = 3
-#        planner.controller.use_group_names([('Menu',''),('Game','')])
-#        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.planner = planner
 
         self.statusbar = Gtk.Statusbar()
@@ -2890,72 +3058,47 @@ class HiaAppWindow (Gtk.ApplicationWindow):
         self.show_all()
 
     def setup_menubar (self):
+        def a (actname, paramtype=None, targetval=None):
+            actprefix = "app."
+            cooked = actname
+            if paramtype is None:
+                cooked = "{}{}".format(actprefix, actname)
+            else:
+                v = GLib.Variant(paramtype, targetval)
+                cooked = ("{}{}".format(actprefix, actname), v)
+            return cooked
         MENU_DESC = [
             ('_File', [
-                ('_New', 'app.file_new'),
-                ('_Open', 'app.file_open'),
-                ('_Save', 'app.file_save'),
-                ('Save _As', 'app.file_saveas'),
+                ('_New', a("file_new")),
+                ('_Open', a("file_open")),
+                ('_Save', a("file_save")),
+                ('Save _As', a("file_saveas")),
                 None,
-                ('_CommandPack', 'app.load_commandpack'),
+                ('_CommandPack', a("load_commandpack")),
                 None,
-                ('_Quit', 'app.quit'),
+                ('_Quit', a("quit", "b", False)),
+                ('RageQuit', a("ragequit")),
                 ]),
             ('_Edit', [
-                ('_Copy', 'app.edit_copy'),
-                ('C_ut', 'app.edit_cut'),
-                ('_Paste', 'app.edit_paste'),
+                ('_Copy', a("edit_copy")),
+                ('C_ut', a("edit_cut")),
+                ('_Paste', a("edit_paste")),
                 None,
-                ('Pr_eferences', 'app.preferences'),
+                ('Pr_eferences', a("preferences")),
                 ]),
             ('_View', [
-                ('_1 Layer', 'app.view_layers(1)'),
-                ('_2 Layers', 'app.view_layers(2)'),
-                ('_4 Layers', 'app.view_layers(4)'),
-                ('_8 Layers', 'app.view_layers(8)'),
+                ('_1 Layer', a("view_layers", "i", 1)),
+                ('_2 Layers', a("view_layers", "i", 2)),
+                ('_4 Layers', a("view_layers", "i", 4)),
+                ('_8 Layers', a("view_layers", "i", 8)),
                 ]),
             ('_Help', [
-                ('_Contents', 'app.help_help'),
+                ('_Contents', a("help_help")),
                 None,
-                ('_About', 'app.about'),
+                ('_About', a("about")),
                 ]),
             ]
-        def make_menu (menudesc):
-            menu = Gio.Menu()
-            menusect = Gio.Menu()
-            sectsize = 0
-            for itemdesc in menudesc:
-                (lbl, detail) = itemdesc if itemdesc else (None,None)
-                if lbl is None:
-                    # separator/section.
-                    # wrap up old section into a 'section' menuitem.
-                    menuitem = Gio.MenuItem.new_section(None, section=menusect)
-                    menu.append_item(menuitem)
-                    # prepare new section.
-                    menusect = Gio.Menu()
-                    sectsize = 0
-                elif type(detail) == list:
-                    # submenu
-                    submenu = make_menu(detail)
-                    menuitem = Gio.MenuItem.new_submenu(label=lbl, submenu=submenu)
-                    menusect.append_item(menuitem)
-                    sectsize += 1
-                else:
-                    # normal item.
-                    menuitem = Gio.MenuItem()
-                    menuitem.set_label(lbl)
-                    detailed_action = None
-                    if detailed_action:
-                        menuitem.set_detailed_action(detailed_action)
-                    menusect.append_item(menuitem)
-                    sectsize += 1
-            if sectsize > 0:
-                # trailing section, attach at end.
-                menuitem = Gio.MenuItem.new_section(None, section=menusect)
-                menu.append_item(menuitem)
-            return menu
-        self.menu_main = make_menu(MENU_DESC)
-        print("init menubar with %r" % self.menu_main)
+        self.menu_main = HiaMenu(MENU_DESC)
         menubar = Gtk.MenuBar.new_from_model(self.menu_main)
         self.menubar = menubar
         return menubar
@@ -2988,10 +3131,13 @@ class HiaApplication (Gtk.Application):
         layouts = HiaLayouts()
         layouts.build_from_legacy_store()
         hiaview = HiaView(bindstore, layouts)
-        controller = HiaControl(hiaview)
+        controller = AppControl(hiaview)  # HiaControl(hiaview)
         controller.use_group_names([('Menu',''),('Game','')])
         controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.controller = controller
+
+        self.controller.actions.lookup('ragequit').connect("activate", lambda *a: self.quit())
+
         return True
     def on_shutdown (self, app):
         print("SHUTDOWN")
