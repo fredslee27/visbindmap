@@ -13,7 +13,7 @@ class TestBindStore (skel.TestSkel):
     def setUp (self):
         return
 
-    def test_bindstore (self):
+    def Xtest_bindstore (self):
         class box:
             a = 0
             a2 = 0
@@ -69,7 +69,7 @@ class TestBindStore (skel.TestSkel):
         self.runloop(script)
         self.assertNotEqual(box.a, 0)
 
-    def test_reprs (self):
+    def Xtest_reprs (self):
         # Test repr() and serialization.
         v = hialayout.BindValue("nop", "nop")
         r = repr(v)
@@ -128,7 +128,7 @@ class TestBindStore (skel.TestSkel):
         s = g.snapshot()
         self.assertEqual(s, expected)
 
-    def test_restore (self):
+    def Xtest_restore (self):
         # Test restore BindStore from serialization.
         s = {
             "__class__": hialayout.BindStore.__name__,
@@ -154,6 +154,78 @@ class TestBindStore (skel.TestSkel):
         b.restore(s)
         v = b.get_bind(0,0,'K_ESC')
         self.assertEqual(v.cmdtitle, "Immediate Quit")
+
+    def test_bindtreestore (self):
+        b = hialayout.BindTreeStore()
+
+        def script ():
+            b.put_bind(0,0,"K_ESC","Quit","quit")
+            b.put_bind(0,0,"K_SHIFT","nop","nop")
+            b.put_bind(0,0,"K_RETURN","Activate","activate")
+            #s = b.serialize_tree(b)
+            s = b.snapshot()
+            #print(s)
+            groups = s['bindstore']
+            self.assertTrue(isinstance(groups,list))
+            self.assertTrue(isinstance(groups[0],tuple))  # group
+            layers = groups[0][5]
+            self.assertTrue(isinstance(layers[0],tuple))  # layer
+            binds = layers[0][5]
+            bindmap = layers[0][4]
+            allsyms = [ x[2] for x in binds ]
+            self.assertEqual(len(allsyms), 3)
+
+            b.put_bind(0,0,'K_SHIFT','More','more')
+            probe = b.get_bind(0,0,'K_SHIFT')
+            self.assertEqual(probe.cmdtitle, "More")
+
+            b2 = hialayout.BindTreeStore()
+            b2.restore(s)
+            bv = b2.get_bind(0,0,'K_ESC')
+            #print(b2.snapshot())
+            self.assertIsNotNone(bv)
+            self.assertTrue(bv.cmdtitle, 'Quit')
+
+            grpmdl = b.groups
+            groupnames = [ x[2] for x in grpmdl ]
+            self.assertIn('GLOBAL', groupnames)
+
+            lyrmdl = b.layers
+            layernames = [ x[2] for x in lyrmdl ]
+            self.assertIn('base', layernames)
+
+            b.add_layershifter()
+            self.assertEqual(b.nlayers,2)
+            b.add_layershifter()
+            self.assertEqual(b.nlayers,4)
+            b.add_layershifter()
+            self.assertEqual(b.nlayers,8)
+            layernames = [ x[2] for x in lyrmdl ]
+            layercodes = [ x[3] for x in lyrmdl ]
+            #print(layernames)
+            self.assertEqual(len(layernames), 8)
+            self.assertEqual(layernames[0], "base")
+            self.assertEqual(layernames[7], "7 (^1 + ^2 + ^3)")
+            self.assertEqual(layernames[4], "4 (^3)")
+            self.assertEqual(layercodes, [ None, "^1", "^2", None, "^3", None, None, None ] )
+
+            b.add_group("Menu")
+            b.add_group("Game")
+            self.assertEqual(len(b), 3)
+
+            b.del_group(2)
+            self.assertEqual(len(b), 2)
+
+            b.clear_bindstore()
+            s = b.snapshot()
+            d = s['bindstore']
+            self.assertEqual(len(d),1)   # One group.
+            self.assertEqual(len(d[0][5]),1)  # One layer.
+            self.assertEqual(len(d[0][5][0][5]),0)  # No binds.
+            yield 0
+            return
+
+        self.runloop(script)
 
     @staticmethod
     def main ():

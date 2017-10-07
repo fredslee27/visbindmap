@@ -33,15 +33,16 @@ def pytypes_to_GVariantTypeEncoder (pyval):
         list: (lambda v: "a?"),
         dict: (lambda v: "a{?*}"),
         float: (lambda v: "f"),
-        int: (lambda v: "t"),
+        int: (lambda v: "i"),
         bool: (lambda v: "b"),
         bytes: (lambda v: "ay"),
         str: (lambda v: "s"),
-        any: (lambda v: "?"),  # technically a function object.
-        all: (lambda v: "*"),  # technically a function object.
+        any: (lambda v: "?"),  # technically a builtin function.
+        all: (lambda v: "*"),  # technically a builtin function.
     }
     # is an instance of ...
     predicated = [
+        (str, lambda v: "s"),
         (tuple, lambda v: "({})".format("".join([ recurse(x) for x in v ]))),
         # list-of-types (first as prototype), or list-of-anything if empty.
         (list, lambda v: "a?" if 0==len(v) else "a{}".format(recurse(v[0]))),
@@ -50,12 +51,31 @@ def pytypes_to_GVariantTypeEncoder (pyval):
         (bytes, lambda v: "ay" if len(v) > 1 else "y"),
     ]
 
+    if hasattr(pyval,"isalpha"):   # string-like.
+        return "s"
     for (typ,pred) in predicated:
         if isinstance(pyval,typ): return pred(pyval)
     if pyval in converter:
         return converter[pyval](pyval)
+    pytype = type(pyval)
+    if pytype in converter:
+        return converter[pytype](pytype)
     # fallback.
     return "s"
+
+def to_GVariant (pyval):
+    gformat = pytypes_to_GVariantTypeEncoder(pyval)
+    #gparam = GLib.VariantType(gformat)
+    if type(pyval) is tuple and None in pyval:
+        # Build it hard-core.
+        vlist = [ GLib.Variant.new_maybe(GLib.VariantType('s'),None) if x is None else to_GVariant(x) for x in pyval ]
+        retval = GLib.Variant.new_tuple(*vlist)
+    else:
+        # Build it easy mode.
+        retval = GLib.Variant(gformat, pyval)
+    #print("built GVariant %r <- %r" % (retval, pyval))
+    return retval
+
 
 
 def HiaMenu (menu_desc, detail_transformer=None):
@@ -122,333 +142,431 @@ def HiaMenu (menu_desc, detail_transformer=None):
         return build_menu_from_pylist(None, menu_desc, detail_transformer)
 
 
+def AbbrevSignals (sigdescr, **full_desc):
+    """Generate __gsignals__ accepted value from abbreviated description of signals that (try to) run first and return None:
+[
+  (signal_name:str, *signal_param:tuple),
+  ...
+]
+
+e.g.
+[
+  ("custom-signal", int, int, int)
+]
+transforms into
+{
+    "custom-signal": (GObject.SIGNAL_RUN_FIRST, None, (int, int, int))
+}
+
+
+Also takes an optional dict acceptable for __gsignals__, added onto the return value after converting abbreviated descriptions (i.e. can overwrite abbreviated signals).
+"""
+    retval = dict()
+    for v in sigdescr:
+        signal_name = v[0]
+        signal_param = tuple(v[1:])
+        retval[str(signal_name)] = (GObject.SIGNAL_RUN_FIRST, None, signal_param)
+    for k in full_desc:
+        retval[k] = full_desc[k]
+    return retval
+
+
 
 
 ########################
 # BindStore data model #
 ########################
 
-class BindValue (object):
-    """
- cmdtitle:str = what is shown in bind value widget (and cmdpack view).
- cmdval:str = hint/indicator/value to exporter.
-"""
-    def __init__ (self, observer, cmdtitle=None, cmdcode=None):
+# named tuple?
+class BindTreeValue (object):
+    def __init__ (self, cmdtitle, cmdcode=None):
         self._cmdtitle = cmdtitle
-        self._cmdcode = cmdcode if (not cmdcode is None) else cmdtitle
-        if observer is None:
-            observer = lambda: False
-        self.observers = [ observer ]
+        self._cmdcode = cmdcode if cmdcode is not None else cmdtitle
 
-    def get_cmdtitle (self): return self._cmdtitle
-    def set_cmdtitle (self, val):
-        self._cmdtitle = val
-        for x in self.observers:
-            x()
-    cmdtitle = property(get_cmdtitle, set_cmdtitle)
+    @property
+    def cmdtitle (self): return self._cmdtitle
+    @cmdtitle.setter
+    def set_cmdtitle (self, val): self._cmdtitle = val
 
-    def get_cmdcode (self): return self._cmdcode
-    def set_cmdcode (self, val):
-        self._cmdcode = val
-        for x in self.observers:
-            x()
-    cmdcode = property(get_cmdcode, set_cmdcode)
-
-    def __getitem__ (self, idx):
-        defer = [ self.get_cmdtitle,
-                    self.get_cmdcode ]
-        return defer[idx]()
-
-    def __setitem__ (self, idx, val):
-        defer = [ self.set_cmdtitle,
-                    self.set_cmdcode ]
-        defer[idx](val)
-
-    def snapshot (self):
-        retval = { "__class__": self.__class__.__name__ }
-        retval['cmdtitle'] = self.cmdtitle
-        retval['cmdcode'] = self.cmdcode
-        return retval
-
-    def restore (self, primitives):
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        self._cmdtitle = primitives['cmdtitle']
-        self._cmdcode = primitives['cmdcode']
-        self.notify_observers()
-        return self
-
-    def notify_observers (self):
-        for o in self.observers:
-            o()
+    @property
+    def cmdcode (self): return self._cmdcode
+    @cmdcode.setter
+    def set_cmdcode (self, val): self._cmdcode = val
 
     def __repr__ (self):
-        return "{}(cmdtitle={!r}, cmdcode={!r})".format(
-            self.__class__.__name__,
-            self.cmdtitle,
-            self.cmdcode)
-
-# One layer consists of a dict mapping hiasym to bindvalues.
-class BindLayer (dict):
-    """
- keys are strings hiasym, to BindValue instance
-"""
-    def __init__ (self, observer, values=None):
-        self.observers = [ observer ]
-        if values is None:
-            dict.__init__(self)
-        else:
-            dict.__init__(self, values)
-        self.observers = [ observer ]
-
-    def __getitem__ (self, key):
-        if dict.__contains__(self, key):
-            return dict.__getitem__(self, key)
-        return None
-    def __setitem__ (self, key, val):
-        cmdtitle, cmdcode = None, None
-        cooked = None
-        cb = lambda: self.observe_bindvalue(key)
-        if isinstance(val, tuple):
-            # tuple, of (cmdtitle, cmdcode)
-            cooked = BindValue(cb,  val[0], val[1])
-        else:
-            try:
-                # assuming BindValue instance.
-                cooked = BindValue(cb, val.cmdtitle, val.cmdcode)
-            except AttributeError:
-                # assuming str or str-ish, as both title and cmdval.
-                valstr = str(val)
-                cooked = BindValue(cb, valstr, valstr)
-        dict.__setitem__(self, key, cooked)
-        self.observe_bindvalue(key)
-
-    def observe_bindvalue (self, hiasym):
-        self.notify_observers(hiasym)
-
-    def notify_observers (self, hiasym):
-        for o in self.observers:
-            o(hiasym)
-
-    def snapshot (self):
-        retval = { "__class__": self.__class__.__name__ }
-        retval['dict'] = dict()
-        for hiasym in self:
-            retval['dict'][hiasym] = self[hiasym].snapshot()
-        return retval
-
-    def restore (self, primitives):
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        dict.clear(self)
-        for k in primitives['dict']:
-            cb = lambda: self.observe_bindvalue(k)
-            pd = primitives['dict'][k]
-            v = BindValue(cb, None, None)
-            self[k] = v
-            self[k].restore(pd)
-        return self
-
-    def __repr__ (self):
-        return "{}(values={})".format(
-            self.__class__.__name__,
-            dict.__repr__(self))
+        return "{}(cmdtitle={!r},cmdcode={!r})".format(self.__class__.__name__, self.cmdtitle, self.cmdcode)
 
 
-class BindGroup (list):
-    """
- list of BindLayer instances.
-"""
-    def __init__ (self, observer, layers=None):
-        try:
-            len(layers)
-            # Initialize from list.
-#            cb = lambda hiasym: self.observe_layerbind(0, hiasym)
-#            for x in layers:
-#                self.append(x)
-            for n in len(layers):
-                cb = lambda hiasym: self.observe_layerbind(0, hiasym)
-                self.append(BindLayer(cb), layers[n])
-        except TypeError:
-            if layers:
-                # assume integer.
-                self.set_nlayers(layers)
-            else:
-                # assume empty argument.
-                cb = lambda hiasym: self.observe_layerbind(0, hiasym)
-                self.append( BindLayer(cb) )
-        self.observers = [ observer ]
-
-    def get_nlayers (self):
-        return len(self)
-    def set_nlayers (self, n):
-        while len(self) < n:
-            i = len(self)
-            cb = lambda hiasym: self.observe_layerbind(i, hiasym)
-            self.append(BindLayer(cb))
-    nlayers = property(get_nlayers, set_nlayers)
-
-    def __getitem__ (self, idx):
-        return list.__getitem__(self, idx)
-    def __setitem__ (self, idx, val):
-        # Assign layer -> copy from another BindLayer.
-        cb = lambda hiasym: self.observe_layerbind(idx, hiasym)
-        local = BindLayer(cb)
-        other = val
-        list.__setitem__(self, idx, local)
-        for hiasym in other:
-            v = other[hiasym]
-            local[hiasym] = v
-
-    def observe_layerbind (self, layernum, hiasym):
-        self.notify_observers(layernum, hiasym)
-
-    def notify_observers (self, layernum, hiasym):
-        for o in self.observers:
-            o(layernum, hiasym)
-
-    def snapshot (self):
-        retval = { "__class__": self.__class__.__name__ }
-        retval['list'] = [None]*len(self)
-        for i in range(len(self)):
-            retval['list'][i] = self[i].snapshot()
-        return retval
-
-    def restore (self, primitives):
-        if primitives['__class__'] != self.__class__.__name__:
-            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        while len(self):
-            del self[0]
-        for i in range(len(primitives['list'])):
-            pl = primitives['list'][i]
-            cb = lambda hiasym: self.observe_layerbind(i, hiasym)
-            l = BindLayer(cb)
-            list.append(self, l)
-            l.restore(pl)
-        return self
 
 
-class BindStore (GObject.GObject):
-    """
- groups = list of BindGroup instances
- resolve_bindview : list of tuple(redirects, BindValue)
-"""
+# TODO: layer.bindmap:dict for speeding up hiabind access.
+#       or keep layer.children sorted by [1] (hiasym).
+class BindTreeStore (Gtk.TreeStore):
     def __init__ (self):
-        GObject.GObject.__init__(self)
-        self.groups = [BindGroup(self.make_cb(0))]
+        # generic: (seq_id:int, key:str, label:str, code:str, ephemeral:object)
+        # depth=1: (group_id:int, _:str, group_label:str, None:str, None:object)
+        # depth=2: (layer_id:int, _:str, layer_label:str, layer_bindable:str, bind_dict:object)
+        # depth=3: (_:int, hiasym:str, cmdtitle:str, cmdcode:str, None)
+# (depth 0 is tree root)
+# at depth 1, correspond to Group selector model
+# at depth 2, correspond to Layer selector model
+# at depth 3, association list of (hiasym, cmdtitle, cmdcode), mapping of a unique keysym to an arbitrary display string and an output-specific coding value.
+        Gtk.TreeStore.__init__(self, int,str,str,str,object)
+        self._slicetree_groups = None
+        self._slicetree_layers = None
+        self.setup_sanity()
+
+    def setup_sanity (self):
+        if 0 == len(self):
+            self.add_group("GLOBAL")
+        if 0 == self.iter_n_children(self.get_iter_first()):
+            self.add_layer("base")
+
+    # nominal maximums; shorts are created on demand, excesses hidden.
+    ngroups = GObject.Property(type=int, default=1)
+    nlayers = GObject.Property(type=int, default=1)
+
+    @staticmethod
+    def iter_depth (treemdl, treeiter):
+        retval = 0
+        while treeiter:
+            treeiter = treemdl.iter_parent(treeiter)
+            retval += 1
+        return retval
+
+    @staticmethod
+    def is_group_depth (treemdl, treeiter, *args):
+        return BindTreeStore.iter_depth(treemdl, treeiter) == 1
+
+    @staticmethod
+    def is_layer_depth (treemdl, treeiter, *args):
+        return BindTreeStore.iter_depth(treemdl, treeiter) == 2
+
+    @staticmethod
+    def is_bind_depth (treemdl, treeiter, *args):
+        return BindTreeStore.iter_depth(treemdl, treeiter) == 3
+
+    @GObject.Property(type=object)
+    def groups (self):
+        """Get TreeModel representing available groups for selection."""
+        if not self._slicetree_groups:
+            self._slicetree_groups = Gtk.TreeStore.filter_new(self, None)
+            self._slicetree_groups.set_visible_func(self.is_group_depth)
+        return self._slicetree_groups
+    @GObject.Property(type=object)
+    def layers (self):
+        """Get TreeModel representing available layers for selection."""
+        path_group = Gtk.TreePath.new_first()
+        def filter_layer (treemdl, treeiter, *args):
+            parentpath = treemdl.get_path(treemdl.iter_parent(treeiter))
+            return parentpath == path_group
+        if not self._slicetree_layers:
+            self._slicetree_layers = Gtk.TreeStore.filter_new(self, path_group)
+            self._slicetree_layers.set_visible_func(self.is_layer_depth)
+        return self._slicetree_layers
+
+    def get_group (self, group_id):
+        return self[group_id]
+
+    def get_layer (self, group_id, layer_id):
+        return self[(group_id,layer_id)]
+
+    def add_group (self, group_name, group_code=None):
+        """Add another group available for selection."""
+        grp_id = len(self)
+        rowdata = (grp_id,"", group_name, group_code, None)
+        iter_group = self.append( None, rowdata )
+        self.ngroups = grp_id+1
+        self._slicetree_groups = None  # Invalidate sliced tree.
+        self.emit("ngroups-changed", self.ngroups)
+        return grp_id
+
+    def add_layer (self, layer_name=None, layer_code=None):
+        """Add another layer available for selection."""
+        path_global = Gtk.TreePath.new_first()
+        iter_global = self.get_iter(path_global)
+        lyr_id = self.iter_n_children(iter_global)
+        if layer_name is None:
+            layer_name = str(lyr_id)
+        bindmap = dict()
+        rowdata = (lyr_id,"", layer_name, layer_code, bindmap)
+        iter_layer = self.append( iter_global, rowdata )
+        self.nlayers = lyr_id+1
+        self._slicetree_layers = None  # Invalidate sliced tree.
+        # TODO: handle 'row-added' to propagate to all other groups.
+
+        grpiter = self.get_iter_first()
+        grpiter = self.iter_next(grpiter)
+        while grpiter:
+            lyriter = self.append( grpiter, rowdata )
+            grpiter = self.iter_next(grpiter)
+
+        #self.emit("nlayers-changed", 0, self.nlayers)
+        self.emit("layer-names-changed", self.layers, 0)
+        return lyr_id
+
+    def rename_group (self, group_id, group_name, group_code=None):
+        path_target = Gtk.TreePath([group_id])
+        self[path_target][2] = group_name
+        self[path_target][3] = group_code
+
+    def rename_layer (self, layer_id, layer_name, layer_code=None):
+        path_global = Gtk.TreePath([0])
+        path_target = Gtk.TreePath([0, layer_id])
+        self[path_target][2] = layer_name
+        self[path_target][3] = layer_code
+
+    def del_group (self, group_id):
+        """Delete group by id; cannot delete 0."""
+        if group_id == 0:
+            raise ValueError("Cannot delete global group (consider clear_group()?)")
+        path_target = Gtk.TreePath([group_id])
+        iter_target = self.get_iter(path_target)
+        self.remove(iter_target)
+        self.ngroups -= 1
+        self._slicetree_groups = None  # Invalidate sliced tree.
+
+    def del_layer (self, layer_id):
+        """Delete layer by id; cannot delete last remaining layer."""
+        group_id = 0
+        layers = self.iter_n_children(Gkt.TreePath([group_id]))
+        if len(layers) == 1:
+            raise ValueError("Cannot delete final remaining layer (consider clear_layer()?)")
+        path_target = Gtk.TreePath([group_id,layer_id])
+        iter_target = self.get_iter(path_target)
+        self.remove(iter_target)
+        # TODO: handle 'row-deleted' to propagate to all other groups.
+        self.nlayers -= 1
+        self._slicetree_layers = None  # Invalidate sliced tree.
+
+    def clear_layer (self, group_id, layer_id):
+        """Remove all binds in layer."""
+        path_layer = Gtk.TreePath([group_id,layer_id])
+        iter_layer = self.get_iter(path_layer)
+        row_layer = self[path_layer]
+        # Delete all binds.
+        child = self.iter_children(iter_layer)
+        if child:
+            while self.remove(child):
+                pass
+        # Invalidate dict.
+        row_layer[4].clear()
+
+    def clear_group (self, group_id):
+        """Erase all binds, remove all non-first layers."""
+        path_group = Gtk.TreePath([group_id])
+        iter_group = self.get_iter(path_group)
+        row_group = self[path_group]
+        # Remove non-first layers.
+        iter_layer = self.iter_children(iter_group)
+        iter_target = self.iter_next(iter_layer)
+        if iter_target:
+            while self.remove(iter_target):
+                pass
+        # Clear first layer.
+        self.clear_layer(group_id, 0)
+        self._slicetree_layers = None  # Invalidate sliced tree.
+
+    def clear_bindstore (self):
+        """Erase everything, reset groups and layers."""
+        iter_first = self.get_iter_first()
+        if not iter_first:
+            self.setup_sanity()
+            return
+        # Remove non-first groups.
+        iter_target = self.iter_next(iter_first)
+        if iter_target:
+            while self.remove(iter_target):
+                pass
+        # Clear first group.
+        self.clear_group(0)
+        self._slicetree_groups = None  # Invalidate sliced tree.
+        # Rename first group and first layer.
+        try:
+            self[0] = (0,"", "GLOBAL", "GLOBAL", None)
+            self[(0,0)] = (0,"", "base", None, None)
+        except KeyError:
+            pass
+
+    def find_group (self, group_name):
+        """Convert group name to group id; returns -1 if no match."""
+        groupid = 0
+        groups = self.groups
+        for groupid in len(groups):
+            if groups[groupd][2] == group_name:
+                return groupid
+        return -1
+
+    def _decompose_shifters (self, layernum):
+        shifters = []
+        val = layernum
+        n = 0
+        while val > 0:
+            if (val & 1):
+                shifters.append(n)
+            val >>= 1
+            n += 1
+        return shifters
+
+    def add_layershifter (self):
+        """Add layers to accomodate one more layer shifter key, automatically create names and bind codes."""
+        path_global = Gtk.TreePath.new_first()
+        iter_global = self.get_iter(path_global)
+        count = self.iter_n_children(iter_global)
+        layernum = count
+        for one_more in range(count):
+            shifters = self._decompose_shifters(layernum)
+            shiftertag = " + ".join([ "^{}".format(x+1) for x in shifters ])
+            label = "{} ({})".format(layernum, shiftertag)
+            code = shiftertag if not "+" in shiftertag else None
+            self.add_layer(label, code)
+            layernum += 1
+        self.nlayers = layernum
+        self._slicetree_layers = None  # Invalidate sliced tree.
+        return
+
+    def get_bind (self, groupid, layerid, hiasym, default=None):
+        """Get bind specified by group, layer, and keysym,
+returns BindValue."""
+        try:
+            row_group = self[groupid]
+        except IndexError as e:
+            if groupid < self.ngroups:
+                return default
+            else:
+                raise e
+        try:
+            row_layer = self[[groupid,layerid]]
+        except IndexError as e:
+            if groupid < self.nlayers:
+                return default
+            else:
+                raise e
+        row_bind = None
+        for probe in row_layer.iterchildren():
+            if probe[1] == hiasym:
+                row_bind = probe
+                break
+        if not row_bind:
+            #raise KeyError(hiasym)
+            return default
+        return BindTreeValue(row_bind[2], row_bind[3])
+
+    def put_bind (self, groupid, layerid, hiasym, cmdtitle_or_bindvalue, cmdcode=None):
+        """Assign binding to hiasym in specified groupid and layerid."""
+        bindvalue = None
+        cmdtitle = None
+        if isinstance(cmdtitle_or_bindvalue, BindTreeValue):
+            bindvalue = cmdtitle_or_bindvalue
+            cmdtitle = bindvalue.cmdtitle
+            cmdcode = bindvalue.cmdcode
+        else:
+            cmdtitle = cmdtitle_or_bindvalue
+            bindvalue = BindTreeValue(cmdtitle_or_bindvalue, cmdcode)
+        row_group = self[groupid]
+        row_layer = self[[groupid,layerid]]
+        row_bind = None
+        for probe in row_layer.iterchildren():
+            if probe[1] == hiasym:
+                row_bind = probe
+                break
+        if cmdtitle is None:
+            cmdtitle = ""
+        if cmdcode is None:
+            cmdcode = ""
+        if not row_bind:
+            rowdata = (0,hiasym, cmdtitle, cmdcode, None)
+            iter_layer = row_layer.iter
+            row_bind = self.append( iter_layer, rowdata )
+        else:
+            row_bind[2] = cmdtitle
+            row_bind[3] = cmdcode
+        self.emit("bind-changed", groupid, layerid, hiasym, cmdtitle, cmdcode)
+        return
+
+    set_bind = put_bind
+
+    def iter_binds (self):
+        """Iterate through all binds in store, yielding tuples (group_id:int, layer_id:int, hiasym:str, cmdtitle:str, cmdcode:str)"""
+        grpid = 0
+        lyrid = 0
+        symid = 0
+        for row_group in self:
+            iter_group = row_group.iter
+            layers = self.iter_children(iter_group)
+            lyrid = 0
+            for row_layer in layers:
+                iter_layer = row_layer.iter
+                binds = self.iter_children(iter_layer)
+                symid = 0
+                for row_bind in binds:
+                    hiasym = row_bind[1]
+                    cmdtitle = row_bind[2]
+                    cmdcode = row_bind[3]
+                    yield (grpid, lyrid, hiasym, cmdtitle, cmdcode)
+                    symid += 1
+                lyrid += 1
+            grpid += 1
+        return
 
     def clear (self):
-        self.groups = [ BindGroup(self.make_cb(0)) ]
+        Gtk.TreeStore.clear(self)
+        self.setup_sanity()
 
-    def make_cb (self, grp):
-        return lambda lyr, sym: self.observe_groupbind(grp,lyr,sym)
+    def serialize_tree (self, treemodel, localrootiter=None):
+        retval = []
+        rowiter = treemodel.iter_children(localrootiter)
+        while rowiter:
+            row = treemodel[rowiter]
+            subtree = None
+            children = row.iterchildren()
+            if children:
+                subtree = self.serialize_tree(treemodel, rowiter)
+            ser_row = tuple(row) + (subtree,)
+            retval.append(ser_row)
+            rowiter = treemodel.iter_next(rowiter)
+        return retval
 
-    def observe_groupbind (self, groupid, layerid, hiasym):
-        bindval = self.groups[groupid][layerid][hiasym]
-        (cmdtitle, cmdcode) = (None,None)
-        if bindval:
-            (cmdtitle, cmdcode) = (bindval.cmdtitle, bindval.cmdcode)
-        self.emit("bind-changed", groupid, layerid, hiasym, cmdtitle, cmdcode)
-
-    def get_group (self, groupid):
-        try:
-            grp = self.groups[groupid]
-            return grp
-        except IndexError:
-            return None
-
-    def get_layer (self, groupid, layerid):
-        grp = self.get_group(groupid)
-        if grp is None: return None
-        try:
-            lyr = grp[layerid]
-            return lyr
-        except (AttributeError, IndexError):
-            return None
-
-    def get_ngroups (self):
-        return len(self.groups)
-    def set_ngroups (self, n):
-        nlyr = self.get_nlayers()
-        while len(self.groups) < n:
-            cb = self.make_cb(len(self.groups))
-            g = BindGroup(cb)
-            g.set_nlayers(nlyr)
-            self.groups.append(g)
-        self.emit("ngroups-changed", n)
-    ngroups = property(get_ngroups, set_ngroups)
-
-    # This code section assumes all layers are the same size.
-    # Later revisions may support different layers per group.
-    def get_nlayers (self):
-        return self.groups[0].nlayers
-    def set_nlayers (self, n):
-        for g in self.groups:
-            g.set_nlayers(n)
-        # TODO: should also emit when invoking BindLayer.set_nlayers()
-        self.emit("nlayers-changed", 0, n)
-    nlayers = property(get_nlayers, set_nlayers)
-
-    def resolve_bindview (self, hiasym, groupid=0):
-        pass
-
-    def snapshot (self):
-        """Serialize to Python primitives (toplevel dict)."""
-        retval = { "__class__": self.__class__.__name__ }
-        retval['groups'] = [None]*len(self.groups)
-        for i in range(len(self.groups)):
-            retval['groups'][i] = self.groups[i].snapshot()
+    def deserialize_tree (self, primitive, treemodel, anchoriter=None):
+        for row in primitive:
+            rowdata = row[:-1]
+            subprime = row[-1]
+            iter_add = treemodel.append(anchoriter, rowdata)
+            if subprime:
+                self.deserialize_tree(subprime, treemodel, iter_add)
+        self._slicetree_groups = None
+        self._slicetree_layers = None
+        return
 
     def restore (self, primitives):
-        """Restore BindStore from Python primitives (serialized)."""
+        """Deserialize binds TreeStore."""
         if primitives['__class__'] != self.__class__.__name__:
             raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        self.groups = []
-        for i in range(len(primitives['groups'])):
-            pg = primitives['groups'][i]
-            g = BindGroup(self.make_cb(i))
-            self.groups.append(g)
-            g.restore(pg)
-        return self
+        bindstore = primitives['bindstore']
+        Gtk.TreeStore.clear(self)
+        self.deserialize_tree(bindstore, self, None)
+        return
 
-    def __repr__ (self):
-        return "{}(groups={!r})".format(
-            self.__class__.__name__,
-            self.groups,
-            )
+    def snapshot (self):
+        """Serialize binds TreeStore."""
+        retval = {}
+        retval['__class__'] = self.__class__.__name__
+        retval['bindstore'] = self.serialize_tree(self, None)
+        return retval
 
-    def get_bind (self, groupid, layerid, hiasym):
-        """Main entry point: get binding for given group, layer, hiasym."""
-        lyr = self.get_layer(groupid, layerid)
-        if lyr is None: return None
-        val = lyr.get(hiasym, None)
-        return val
+    __gsignals__ = AbbrevSignals([
+        ("layer-names-changed", object, int),
+        ("group-names-changed", object),
+        ("bind-changed", int, int, str, str, str),
 
-    def set_bind (self, groupid, layerid, hiasym, hiaval, hiacmd=None):
-        """Main entry point: set binding for given group, layer, hiasym:
- set_bind(groupid, layerid, hiasym, instance_BindValue)
- set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
- set_bind(groupid, layerid, hiasym, cmdtitle)
-"""
-        cooked = None
-        if hiacmd is not None:
-            cooked = BindValue(lambda: False, hiaval, hiacmd)
-        else:
-            try:
-                hiaval.cmdtitle, hiaval.cmdcode  # quack-quack
-                cooked = hiaval
-            except AttributeError as e:
-                cooked = BindValue(lambda: False, hiaval, hiaval)
-        self.groups[groupid][layerid][hiasym] = cooked
+        # DEPRECATED
+        ("ngroups-changed", int),
+        ("nlayers-changed", int, int),
+    ])
 
-    __gsignals__ = {
-        # (groupid, layerid, hiasym, newtitle, newcode)
-        str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int, int, str, str, str) ),
-        # (ngroups)
-        str("ngroups-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
-        # (groupid, nlayers)
-        str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
-    }
+
+# alias.
+BindStore = BindTreeStore
 
 
 
@@ -525,8 +643,6 @@ class HiaView (GObject.Object):
     bindstore = GObject.Property(type=object)   # instance of BindStore.
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
 
-    axes = GObject.Property(type=object)        # TreeStore(name:str, detail:str): groups, layers.
-
     #vislayers = GObject.Property(type=int)      # bit vector.
     @GObject.Property(type=object)
     def vislayers (self):
@@ -545,14 +661,12 @@ class HiaView (GObject.Object):
 
     @GObject.Property(type=object)
     def nlayers (self):
-        groupid = 0
-        grouppath = Gtk.TreePath(str(groupid))
-        groupiter = self.axes.get_iter(grouppath)
-        return self.axes.iter_n_children(groupiter)
+        return self.bindstore.nlayers
 
     @GObject.Property(type=object)
     def ngroups (self):
-        return self.axes.iter_n_children(None)
+        #return self.axes.iter_n_children(None)
+        return self.bindstore.ngroups
 
 
 
@@ -561,25 +675,7 @@ class HiaView (GObject.Object):
         self.setup_properties()
         self.bindstore = bindstore
         self.layouts = layouts
-        self.axes = self.make_axes_store()
         self.setup_signals()
-
-    def make_axes_store (self, group_names=None, layer_names=None):
-        """make_axes_store(group_names:list, layer_names:list)
-Generate GtkTreeStore suitable for assigning to property "axes".
-Group "GLOBAL" always starts the TreeStore, and populate with the additional groups listed in 'group_names'
-Use layer names as listed in 'layer_names', or ['base'] by default.
-"""
-        retval = Gtk.TreeStore(str,str)
-        iter0 = retval.append( None, ("GLOBAL", "GLOBAL") )
-        if not layer_names:
-            layer_names = [ 'base' ]
-        if group_names:
-            for gn in group_names:
-                retval.append( None, (gn, "") )
-        for ln in layer_names:
-            retval.append( iter0, (ln, "") )
-        return retval
 
     def setup_properties (self):
         self.connect('notify::device-name', self.on_notify_device_name)
@@ -589,7 +685,6 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
         #self.connect('notify::vislayers', self.on_notify_vislayers)
         self.connect('notify::bindstore', self.on_notify_bindstore)
         self.connect('notify::layouts', self.on_notify_layouts)
-        self.connect('notify::axes', self.on_notify_axes)
         self.connect('notify::nvislayers', self.on_notify_nvislayers)
 
     def setup_signals (self):
@@ -628,10 +723,14 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
     def on_notify_bindstore (self, inst, param):
         bindstore = self.bindstore
         bindstore.connect("bind-changed", self.on_bindstore_bind_changed)
+        bindstore.connect('group-names-changed', self.on_bindstore_group_names_changed)
+        bindstore.connect('layer-names-changed', self.on_bindstore_layer_names_changed)
         #bindstore.connect("ngroups-changed", self.on_bindstore_ngroups_changed)
         #bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
         self.emit("bindstore-changed", self.bindstore)
     def on_notify_layouts (self, inst, param):
+        if not self.layouts:
+            return
         def asciisort (mdl, iterA, iterB, *args):
             # No cmp() in python3; workaround.  Still valid in python2.
             valA, valB = mdl[iterA][0], mdl[iterB][0]
@@ -639,25 +738,25 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
         self.layouts.set_sort_func(0, asciisort)
         self.layouts.set_sort_column_id(0, Gtk.SortType.ASCENDING)
         self.emit("layouts-changed", self.layouts)
-    def on_notify_axes (self, inst, param):
-        self.axes.connect("row-changed", self.on_axes_row_changed)
-        self.emit("group-names-changed", self.axes)
-        self.emit("layer-names-changed", self.axes, self.group)
     def on_notify_nvislayers (self, inst, param):
         self.emit("layer-changed", self.layer)
 
-    def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
-        depth = treepath.get_depth()
-        if depth == 1:
-            # Group depth.
-            self.emit("group-names-changed", mdl)
-        elif depth == 2:
-            # Layer depth.
-            grouppath = treepath.up()
-            groupid = int(grouppath)
-            self.emit("layer-names-changed", mdl, groupid) 
-        return
+#    def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
+#        depth = treepath.get_depth()
+#        if depth == 1:
+#            # Group depth.
+#            self.emit("group-names-changed", mdl)
+#        elif depth == 2:
+#            # Layer depth.
+#            grouppath = treepath.up()
+#            groupid = int(grouppath)
+#            self.emit("layer-names-changed", mdl, groupid) 
+#        return
 
+    def on_bindstore_group_names_changed (self, bindstore, mdl):
+        self.emit("group-names-changed", mdl)
+    def on_bindstore_layer_names_changed (self, bindstore, mdl, groupid):
+        self.emit("layer-names-changed", mdl, groupid)
     def on_bindstore_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
         self.emit("bind-changed", groupid, layerid, hiasym, newtitle, newcode)
     def on_bindstore_ngroups_changed (self, bindstore, ngroups):
@@ -743,7 +842,8 @@ def HiaSimpleActionInstall (inst_or_class):
 
 2. called within bound method (inside setup()) to install into self.actions the Gio.SimpleAction entries derived from bound methods of an object which are GAction handlers, wherein such methods were tagged by the 'HiaSimpleAction' decorator.  So handlers named 'act_FROB_FOOBAR' guide the creation of a GAction named 'FROB_FOOBAR' -- intended to be paired with class-decorator use such that instance.FROB_FOOBAR(..) is a convenience wrapper for invoking action FROB_FOOBAR.activate((...)).
 """
-    def make_proxy (action_name, param_type):
+    def Xmake_proxy (action_name, param_type):
+        param_type = param_type.replace("m","") if param_type else param_type
         if not param_type:
             # No parameter.
             def f (self):
@@ -754,7 +854,7 @@ def HiaSimpleActionInstall (inst_or_class):
             # turn arguments into tuple
             def f (self, *args):
                 action = self.actions.lookup(action_name)
-                v = GLib.Variant(param_type, *args)
+                v = GLib.Variant(param_type, args)
                 action.activate(v)
             return f
         elif param_type:
@@ -765,6 +865,18 @@ def HiaSimpleActionInstall (inst_or_class):
                 v = GLib.Variant(param_type, arg)
                 action.activate(v)
             return f
+    def make_proxy (action_name, param_type):
+        def f (self, *args):
+            action = self.actions.lookup_action(action_name)
+            if len(args) == 0:
+                action.activate()
+            elif len(args) == 1:
+                v = to_GVariant(args[0])
+                action.activate(v)
+            else:
+                v = to_GVariant(tuple(args))
+                action.activate(v)
+        return f
 
     def decorate_class (classobj):
         for a in dir(classobj):
@@ -843,25 +955,25 @@ Specify HiaGroup to make focus"""
         # TODO: try interpret as int?
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
     def act_pick_group (self, action, param):
         """Pick HiaGroup
 Specify HiaGroup to make focus"""
-        self.view.group = param.get_int64()
+        self.view.group = param.get_int32()
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
     def act_pick_layer (self, action, param):
         """Pick HiaLayer
 Specify HiaLayer to make focus."""
-        self.view.layer = param.get_int64()
+        self.view.layer = param.get_int32()
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
     def act_pick_command (self, action, param):
         """Pick HiaCommand by id.
 """
-        cmdid = param.get_int64()
+        cmdid = param.get_int32()
         return
 
     @HiaSimpleAction(param_type="s", init_state=None, stock_id=None)
@@ -871,14 +983,14 @@ Specify HiaLayer to make focus."""
         hiasym = param.get_string()
         return
 
-#    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+#    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
 #    def act_push_bind (self, action, param):
 #        """Assign bind by command id.
 #Assign bind to selected hiasym by command id (from command pack).
 #"""
 #        return
 
-    @HiaSimpleAction(param_type="(xxsss)", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="(iisss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
         (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
@@ -888,10 +1000,10 @@ Specify HiaLayer to make focus."""
     def act_assign_bind (self, action, param):
         (hiasym, cmdtitle, cmdcode) = param
         (groupid, layerid) = (self.view.group, self.view.layer)
-        self.assign_bind_explicit((groupid, layerid, hiasym, cmdtitle, cmdcode))
+        self.assign_bind_explicit(groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
-    @HiaSimpleAction("(xxs)")
+    @HiaSimpleAction("(iis)")
     def act_erase_bind_explicit (self, action, param):
         (groupid, layerid, hiasym) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
@@ -901,10 +1013,10 @@ Specify HiaLayer to make focus."""
     def act_erase_bind (self, action, param):
         hiasym = param.get_string()
         (groupid, layerid) = (self.view.group, self.view.layer)
-        self.erase_bind_explicit((groupid, layerid, hiasym))
+        self.erase_bind_explicit(groupid, layerid, hiasym)
         return
 
-    @HiaSimpleAction("(xxsxxs)")
+    @HiaSimpleAction("(iisiis)")
     def act_exchange_binds_explicit (self, action, param):
         """Exchange binds between syms, compleat path specifications.
 """
@@ -927,7 +1039,7 @@ Specify HiaLayer to make focus."""
         symA, symB = param
         groupA = groupB = self.view.group
         layerA = layerB = self.view.layer
-        self.exchange_binds_explicit((groupA,layerA,symA, groupB,layerB,symB))
+        self.exchange_binds_explicit(groupA,layerA,symA, groupB,layerB,symB)
         return
 
     @HiaSimpleAction()
@@ -935,65 +1047,41 @@ Specify HiaLayer to make focus."""
         """Clear BindStore.
 Erases all bindings.
 """
+        self.view.bindstore.clear_bindstore()
         return
 
-    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
-    def act_use_layer_names (self, action, param):
-        """Set layer names
-Sets the layers listed in the Layers selector.
-"""
-        nodelist = param
-        # erase children of GLOBAL.
-        mdl = self.view.axes
-        iter_global = mdl.get_iter_first()
-        path_global = mdl.get_path(iter_global)
-        treeiter = mdl.iter_children(iter_global)
-        while treeiter:
-            res = mdl.remove(treeiter)
-            if not res:
-                break
-        lastiter = None
-        nlayers = 0
-        for nodeitem in nodelist:
-            (label, code) = nodeitem
-            lastiter = mdl.append( iter_global, (label,code) )
-            nlayers += 1
-        #mdl.emit("row-changed", path_global, iter_global)
-        lastpath = mdl.get_path(lastiter)
-        mdl.emit("row-changed", lastpath, lastiter)
-        self.view.bindstore.nlayers = nlayers
+    @HiaSimpleAction("(s*)")  # (sms)
+    def act_add_group (self, action, param):
+        (group_name, group_code) = param
+        self.view.bindstore.add_group(group_name, group_code)
 
-    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
-    def act_use_group_names (self, action, param):
-        """Set group names
-Sets the groups listed in the Groups selector.
-"""
-        nodelist = param
-        # start from GLOBAL
-        mdl = self.view.axes
-        iter_global = mdl.get_iter_first()
-        # erase siblings of GLOBAL.
-        sibling = mdl.iter_next(iter_global)
-        while sibling:
-            res = mdl.remove(sibling)
-            if not res:
-                break
-        # rebuild siblings.
-        lastiter = None
-        ngroups = 1
-        if nodelist:
-            for nodeitem in nodelist:
-                (label, code) = nodeitem
-                lastiter = mdl.append( None, (label,code) )
-            lastpath = mdl.get_path(lastiter)
-            mdl.emit("row-changed", lastpath, lastiter)
-        else:
-            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
-        self.view.bindstore.ngroups = ngroups
+    @HiaSimpleAction("(ts*)")  # (tsms)
+    def act_rename_group (self, action, param):
+        (groupid, group_name, group_code) = param
+        self.view.bindstore.rename_group(groupid, group_name, group_code)
 
-    @HiaSimpleAction("x")
+    @HiaSimpleAction("i")
+    def act_del_group (self, action, param):
+        groupid = param
+        self.view.bindstore.del_group(groupid)
+
+    @HiaSimpleAction("(s*)")  # (sms)
+    def act_add_layer (self, action, param):
+        (layer_name, layer_code) = param
+        self.view.bindstore.add_layer(layer_name, layer_code)
+
+    @HiaSimpleAction("(ts*)")  # (tsms)
+    def act_rename_layer (self, action, param):
+        (layerid, layer_name, layer_code) = param
+        self.view.bindstore.rename_layer(layerid, layer_name, layer_code)
+
+    @HiaSimpleAction("i")
+    def act_del_layer (self, action, param):
+        self.view.bindstore.del_layer(param)
+
+    @HiaSimpleAction("i")
     def act_view_nlayers (self, action, param):
-        n_vis = param.get_int64()
+        n_vis = param.get_int32()
         self.view.nvislayers = n_vis
 
     @HiaSimpleAction()
@@ -1445,12 +1533,12 @@ Drag-and-Drop
             #self.emit("bind-assigned", self.hiasym, seltext)
             bv = BindValue(lambda: False)
             bv.restore(ast.literal_eval(seltext))
-            self.controller.assign_bind((self.hiasym, bv.cmdtitle, bv.cmdcode))
+            self.controller.assign_bind(self.hiasym, bv.cmdtitle, bv.cmdcode)
             ctx.finish(True, False, 0)
         elif info == HiaDnd.SWAP:
             othersym = seldata.get_data().decode()
             #self.emit("bind-swapped", self.hiasym, othersym)
-            self.controller.exchange_binds((self.hiasym, othersym))
+            self.controller.exchange_binds(self.hiasym, othersym)
             ctx.finish(True, False, 0)
         return False
 
@@ -2218,6 +2306,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
 
     def update_widgets (self):
         # Remove current children and add new ones.
+        oldval = self.get_active_radio()
         for ch in self.ui.top.get_children():
             # TODO: disconnect signals.
             self.ui.top.remove(ch)
@@ -2225,26 +2314,65 @@ Convenience property 'names' to access/mutate with python list-of-str.
         self.labels = []
         group = None
         namelist = self.get_axislist()
+        btn_id = 0
+
+        # Set up DnD for radio buttons.
+        # buttons with 'cmdcode' field are draggable.
+        drag_targets = [
+            HiaDnd.BIND.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+
+        # all button are destinations.
+        drop_targets = [
+            HiaDnd.SWAP.target_same_app(),
+            ]
+        drop_dests = Gtk.DestDefaults.ALL
+        drop_actions = Gdk.DragAction.COPY
+
         for listrow in namelist:
-            name = listrow[0]
+            #name = listrow[0]
+            name = listrow[2]
+            code = listrow[3]
             #b = Gtk.RadioButton(group=group, label=name)
             b = Gtk.RadioButton(group=group)
+            b.cmdcode = code
             d = Gtk.Label()
             d.set_markup(name)
             b.add(d)
             if not self.buttons:
                 group = b
-            #b.connect("clicked", self.on_button_clicked)
-            b.connect("clicked", self.on_button_clicked, len(self.buttons))
-            #b.connect("toggled", self.on_button_clicked, len(self.buttons))
+            if btn_id == oldval:
+                # Restore old value.
+                b.set_active(True)
+
+            # DnD
+            if b.cmdcode:
+                # Buttons with cmdcode are drag sources.
+                b.drag_source_set(drag_buttons, drag_targets, drag_actions)
+                b.connect("drag-data-get", self.on_drag_data_get, b.cmdcode)
+            # all buttons are drag destinations.
+            b.drag_dest_set(drop_dests, drop_targets, drop_actions)
+            b.connect("drag-data-received", self.on_drag_data_received)
+
+            b.connect("clicked", self.on_button_clicked, btn_id)
             b.show_all()
             self.buttons.append(b)
             self.labels.append(d)
             self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
+            btn_id += 1
         return
 
     def on_button_clicked (self, w, ofs=None):
         return
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        return
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        return
+
+    def get_active_radio (self): # override
+        return 0
 
 
 class HiaSelectorGroup (HiaSelectorRadio):
@@ -2252,13 +2380,9 @@ class HiaSelectorGroup (HiaSelectorRadio):
     PADDING = 16
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Mode", controller)
+    def get_active_radio (self): return self.view.group
     def get_axislist (self):
-        # GtkTreeModelFilter with children removed.
-        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=None)
-        def filter_for_group (mdl, treeiter, userdata):
-            treepath = mdl.get_path(treeiter)
-            return (treepath.get_depth() == 1)
-        submodel.set_visible_func(filter_for_group)
+        submodel = self.view.bindstore.groups
         return submodel
     def on_notify_view (self, inst, param):
         self.view.connect("group-changed", self.on_group_changed)
@@ -2283,16 +2407,9 @@ class HiaSelectorLayer (HiaSelectorRadio):
     EXPAND_MEMBERS = True
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Layer", controller)
+    def get_active_radio (self): return self.view.layer
     def get_axislist (self):
-        # GtkTreeModelFilter with children of GLOBAL.
-        treeiter0 = self.axes.get_iter_first()  # "GLOBAL"
-        chroot = self.axes.get_path(treeiter0)
-        # all the children under "GLOBAL", one row per layer.
-        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=chroot)
-        def filter_for_layer (mdl, treeiter, userdata):
-            treepath = mdl.get_path(treeiter)
-            return (treepath.get_depth() == 2)
-        submodel.set_visible_func(filter_for_layer)
+        submodel = self.view.bindstore.layers
         return submodel
     def setup_signals (self):
         #self.view.bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
@@ -2315,52 +2432,6 @@ class HiaSelectorLayer (HiaSelectorRadio):
     def on_layer_names_changed (self, view, mdl, groupid):
         # TODO: check groupid?
         self.update_widgets()
-    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
-        namelist = []
-        draggable = []
-        for i in range(nlayers):
-            shifters = []
-            n = i
-            j = 0
-            while n > 0:
-                if (n & 1):
-                    shifters.append(j)
-                n >>= 1
-                j += 1
-            if not shifters:
-                namelist.append("base")
-            else:
-                lbl_chord = [ "^{}".format(b+1) for b in shifters ]
-                lbl_chord = " + ".join(lbl_chord)
-                lbl_chord = GLib.markup_escape_text(str(lbl_chord))
-                if not "+" in lbl_chord:
-                    namelist.append("{} (<b>{}</b>)".format(i, lbl_chord))
-                    draggable.append((i, str(lbl_chord)))
-                else:
-                    namelist.append("{} ({})".format(i, lbl_chord))
-        self.controller.use_layer_names([ (n,'') for n in namelist ])
-
-        # Set up DnD for layer buttons.
-        # orthogonal buttons are draggable -- assign shifter key.
-        drag_targets = [
-            HiaDnd.BIND.target_same_app(),
-            ]
-        drag_actions = Gdk.DragAction.COPY
-        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
-        for (draggableidx, bindval) in draggable:
-            btn = self.buttons[draggableidx]
-            btn.drag_source_set(drag_buttons, drag_targets, drag_actions)
-            btn.connect("drag-data-get", self.on_drag_data_get, bindval)
-
-        # all button are destinations -- swap across binds.
-        drop_targets = [
-            HiaDnd.SWAP.target_same_app(),
-            ]
-        drop_dests = Gtk.DestDefaults.ALL
-        drop_actions = Gdk.DragAction.COPY
-        for btn in self.buttons:
-            btn.drag_dest_set(drop_dests, drop_targets, drop_actions)
-            btn.connect("drag-data-received", self.on_drag_data_received)
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         btn = w
@@ -2383,7 +2454,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
             srclayer = self.controller.view.layer
             dstlayer = nth
             group = self.controller.view.group
-            self.controller.exchange_binds_explicit((group, srclayer, hiasym,  group, dstlayer, hiasym))
+            self.controller.exchange_binds_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
             return
 
 
@@ -2984,8 +3055,8 @@ class HiaWindow (Gtk.Window):
         planner.controller.insert_actions_into_widget(self)
         #planner.controller.view.bindstore.nlayers = 4
         #planner.controller.view.bindstore.ngroups = 3
-        planner.controller.use_group_names([('Menu',''),('Game','')])
-        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+#        planner.controller.use_group_names([('Menu',''),('Game','')])
+#        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.add(planner)
         self.show_all()
         planner.controller.view_nlayers(2)
@@ -3003,8 +3074,7 @@ class AppControl (HiaControl):
     # Inherited properties: actions, hiaview
 
     def __init__ (self, hiaview):
-        super().__init__(hiaview)
-        HiaSimpleActionInstall(self)
+        HiaControl.__init__(self, hiaview)
 
     def insert_actions_into_widget (self, parent_widget):
         parent_widget.insert_action_group("app", self.actions)
@@ -3168,8 +3238,11 @@ class HiaApplication (Gtk.Application):
         layouts.build_from_legacy_store()
         hiaview = HiaView(bindstore, layouts)
         controller = AppControl(hiaview)  # HiaControl(hiaview)
-        controller.use_group_names([('Menu',''),('Game','')])
-        controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+        controller.add_group("Menu", "Menu")
+        controller.add_group("Game", "Game")
+        controller.add_layer("1", None)
+        controller.add_layer("2", "2")
+        controller.add_layer("3", None)
         self.controller = controller
 
         self.controller.actions.lookup('ragequit').connect("activate", lambda *a: self.quit())

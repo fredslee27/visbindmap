@@ -31,8 +31,11 @@ class TestHiaWidgets (skel.TestSkel):
             unittest.main()
 
     def _build_sample_binds0 (self, bindstore):
-        bindstore.clear()
-        bindstore.nlayers = 4
+        bindstore.clear_bindstore()
+        #bindstore.nlayers = 4
+        bindstore.add_layer()
+        bindstore.add_layer()
+        bindstore.add_layer()
         bindstore.set_bind(0, 0, 'K_ESC', 'quit')
         return bindstore
 
@@ -108,7 +111,8 @@ class TestHiaWidgets (skel.TestSkel):
 
     def _build_sample_binds1 (self, bindstore):
         bindstore.clear()
-        bindstore.nlayers = 2
+        #bindstore.nlayers = 2
+        bindstore.add_layer("1")
         bindstore.set_bind(0, 0, 'KP_8', 'Up')
         bindstore.set_bind(0, 0, 'KP_4', 'Left')
         bindstore.set_bind(0, 0, 'KP_6', 'Right')
@@ -181,14 +185,14 @@ class TestHiaWidgets (skel.TestSkel):
     def test_hiaselectors (self):
         self.hiaview.layouts = self.all_layouts
 
-        axes = self.controller.view.make_axes_store(
-            [ 'Menu', 'Game' ],
-            [ "base", '1', '2', '3' ],
-            )
-        self.controller.view.axes = axes
+        self.bindstore.add_group("Menu")
+        self.bindstore.add_group("Game")
+        self.bindstore.add_layer("1")
+        self.bindstore.add_layer("2")
+        self.bindstore.add_layer("3")
 
         gensel = hialayout.HiaSelectorRadio('Generic', self.controller)
-        gensel.get_axislist = lambda: [ ('one',''), ('two',''), ('three','') ]
+        gensel.get_axislist = lambda: [ (0,'','one','',None), (0,'','two','',None), (0,'','three','',None) ]
         gensel.update_widgets()
 
         grpsel = hialayout.HiaSelectorGroup(self.controller)
@@ -221,6 +225,7 @@ class TestHiaWidgets (skel.TestSkel):
 
         def script ():
             self.w.show_all()
+            self.assertEqual(len(grpsel.buttons), 3)
             yield 0.1
             #print("to use group 1")
             grpsel.buttons[1].clicked()
@@ -252,41 +257,16 @@ class TestHiaWidgets (skel.TestSkel):
             self.assertTrue(lyrsel.buttons[1].get_active())
             yield 0.5
             # Expand layers.
-            self.hiaview.bindstore.nlayers = 8
-            yield 2
+            #self.hiaview.bindstore.nlayers = 8
+            #while self.hiaview.bindstore.nlayers < 8:
+            #    self.hiaview.bindstore.add_layer()
+            self.hiaview.bindstore.add_layershifter()
+            yield 0.1
             self.assertEqual(len(lyrsel.buttons), 8)
             self.assertEqual(lyrsel.labels[7].get_label(), "7 (^1 + ^2 + ^3)")
-            yield 1
-
-        self.runloop(script)
-        self.w.destroy()
-
-    def test_hiaaxes (self):
-        self.hiaview.layouts = self.all_layouts
-
-        axes = self.controller.view.make_axes_store(
-            [ 'Menu', 'Game', 'Extra' ],
-            [ "base", '1', '2', '3' ],
-            )
-        self.controller.view.axes = axes
-
-        gensel = hialayout.HiaSelectorRadio('Generic', self.controller)
-        # Then hack apart the instance to override get_axislist()
-        gensel.get_axislist = lambda: [ ('one',''), ('two',''), ('three','') ]
-        gensel.update_widgets()
-
-        grpsel = hialayout.HiaSelectorGroup(self.controller)
-        lyrsel = hialayout.HiaSelectorLayer(self.controller)
-        devsel = hialayout.HiaSelectorDevice(self.controller)
-        box = Gtk.VBox()
-        box.pack_start(gensel, False, False, 0)
-        box.pack_start(grpsel, False, False, 0)
-        box.pack_start(lyrsel, False, False, 0)
-        box.pack_start(devsel, False, False, 0)
-        self.w.add(box)
-
-        def script ():
-            self.w.show_all()
+            yield 0.1
+            self.assertEqual(self.hiaview.layer, 1)
+            self.assertTrue(lyrsel.buttons[1].get_active())
             yield 1
 
         self.runloop(script)
@@ -295,10 +275,10 @@ class TestHiaWidgets (skel.TestSkel):
     def test_hiaplanner (self):
         self.hiaview.layouts = self.layouts0
         #self.hiaview.bindstore.nlayers = 2
+        self.hiaview.bindstore.add_layer("1",None)
         self.hiaview.vislayers = [ True, False ]
         self._build_sample_binds1(self.hiaview.bindstore)
         picker = hialayout.HiaPlanner(cmdpack=None, controller=self.controller)
-        picker.ui.sel_layer.set_names(['base', '1'])
         self.w.add(picker)
         self.w.set_size_request(640, 480)
 
@@ -317,6 +297,24 @@ class TestHiaWidgets (skel.TestSkel):
             self.hiaview.bindstore.nlayers = 2
             self.hiaview.vislayers = [ True, True ]
             yield 2
+
+        self.runloop(script)
+        self.w.destroy()
+
+    def test_hiaactions (self):
+        self.hiaview.layouts = self.layouts0
+        self.hiaview.vislayers = [ True, False ]
+        self._build_sample_binds1(self.hiaview.bindstore)
+        picker = hialayout.HiaPlanner(cmdpack=None, controller=self.controller)
+        self.w.add(picker)
+        self.w.set_size_request(640, 480)
+        controller = picker.controller
+
+        def script ():
+            self.w.show()
+            yield 0.2
+            controller.assign_bind_explicit(0,0,'K_ESC','quit','quit')
+            yield 1
 
         self.runloop(script)
         self.w.destroy()
