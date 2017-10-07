@@ -33,7 +33,7 @@ def pytypes_to_GVariantTypeEncoder (pyval):
         list: (lambda v: "a?"),
         dict: (lambda v: "a{?*}"),
         float: (lambda v: "f"),
-        int: (lambda v: "t"),
+        int: (lambda v: "x"),
         bool: (lambda v: "b"),
         bytes: (lambda v: "ay"),
         str: (lambda v: "s"),
@@ -42,6 +42,7 @@ def pytypes_to_GVariantTypeEncoder (pyval):
     }
     # is an instance of ...
     predicated = [
+        (str, lambda v: "s"),
         (tuple, lambda v: "({})".format("".join([ recurse(x) for x in v ]))),
         # list-of-types (first as prototype), or list-of-anything if empty.
         (list, lambda v: "a?" if 0==len(v) else "a{}".format(recurse(v[0]))),
@@ -50,12 +51,31 @@ def pytypes_to_GVariantTypeEncoder (pyval):
         (bytes, lambda v: "ay" if len(v) > 1 else "y"),
     ]
 
+    if hasattr(pyval,"isalpha"):   # string-like.
+        return "s"
     for (typ,pred) in predicated:
         if isinstance(pyval,typ): return pred(pyval)
     if pyval in converter:
         return converter[pyval](pyval)
+    pytype = type(pyval)
+    if pytype in converter:
+        return converter[pytype](pytype)
     # fallback.
     return "s"
+
+def to_GVariant (pyval):
+    gformat = pytypes_to_GVariantTypeEncoder(pyval)
+    #gparam = GLib.VariantType(gformat)
+    if type(pyval) is tuple and None in pyval:
+        # Build it hard-core.
+        vlist = [ GLib.Variant.new_maybe(GLib.VariantType('s'),None) if x is None else to_GVariant(x) for x in pyval ]
+        retval = GLib.Variant.new_tuple(*vlist)
+    else:
+        # Build it easy mode.
+        retval = GLib.Variant(gformat, pyval)
+    #print("built GVariant %r <- %r" % (retval, pyval))
+    return retval
+
 
 
 def HiaMenu (menu_desc, detail_transformer=None):
@@ -614,6 +634,17 @@ class BindTreeStore (Gtk.TreeStore):
         self.emit("layer-names-changed", self.layers, 0)
         return lyr_id
 
+    def rename_group (self, group_id, group_name, group_code=None):
+        path_target = Gtk.TreePath([group_id])
+        self[path_target][2] = group_name
+        self[path_target][3] = group_code
+
+    def rename_layer (self, layer_id, layer_name, layer_code=None):
+        path_global = Gtk.TreePath([0])
+        path_target = Gtk.TreePath([0, layer_id])
+        self[path_target][2] = layer_name
+        self[path_target][3] = layer_code
+
     def del_group (self, group_id):
         """Delete group by id; cannot delete 0."""
         if group_id == 0:
@@ -1139,7 +1170,8 @@ def HiaSimpleActionInstall (inst_or_class):
 
 2. called within bound method (inside setup()) to install into self.actions the Gio.SimpleAction entries derived from bound methods of an object which are GAction handlers, wherein such methods were tagged by the 'HiaSimpleAction' decorator.  So handlers named 'act_FROB_FOOBAR' guide the creation of a GAction named 'FROB_FOOBAR' -- intended to be paired with class-decorator use such that instance.FROB_FOOBAR(..) is a convenience wrapper for invoking action FROB_FOOBAR.activate((...)).
 """
-    def make_proxy (action_name, param_type):
+    def Xmake_proxy (action_name, param_type):
+        param_type = param_type.replace("m","") if param_type else param_type
         if not param_type:
             # No parameter.
             def f (self):
@@ -1161,6 +1193,18 @@ def HiaSimpleActionInstall (inst_or_class):
                 v = GLib.Variant(param_type, arg)
                 action.activate(v)
             return f
+    def make_proxy (action_name, param_type):
+        def f (self, *args):
+            action = self.actions.lookup_action(action_name)
+            if len(args) == 0:
+                action.activate()
+            elif len(args) == 1:
+                v = to_GVariant(args[0])
+                action.activate(v)
+            else:
+                v = to_GVariant(tuple(args))
+                action.activate(v)
+        return f
 
     def decorate_class (classobj):
         for a in dir(classobj):
@@ -1239,21 +1283,21 @@ Specify HiaGroup to make focus"""
         # TODO: try interpret as int?
         return
 
-    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
     def act_pick_group (self, action, param):
         """Pick HiaGroup
 Specify HiaGroup to make focus"""
         self.view.group = param.get_int64()
         return
 
-    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
     def act_pick_layer (self, action, param):
         """Pick HiaLayer
 Specify HiaLayer to make focus."""
         self.view.layer = param.get_int64()
         return
 
-    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
     def act_pick_command (self, action, param):
         """Pick HiaCommand by id.
 """
@@ -1267,14 +1311,14 @@ Specify HiaLayer to make focus."""
         hiasym = param.get_string()
         return
 
-#    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
+#    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
 #    def act_push_bind (self, action, param):
 #        """Assign bind by command id.
 #Assign bind to selected hiasym by command id (from command pack).
 #"""
 #        return
 
-    @HiaSimpleAction(param_type="(ttsss)", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="(xxsss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
         (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
@@ -1287,7 +1331,7 @@ Specify HiaLayer to make focus."""
         self.assign_bind_explicit(groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
-    @HiaSimpleAction("(tts)")
+    @HiaSimpleAction("(xxs)")
     def act_erase_bind_explicit (self, action, param):
         (groupid, layerid, hiasym) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
@@ -1300,7 +1344,7 @@ Specify HiaLayer to make focus."""
         self.erase_bind_explicit(groupid, layerid, hiasym)
         return
 
-    @HiaSimpleAction("(ttstts)")
+    @HiaSimpleAction("(xxsxxs)")
     def act_exchange_binds_explicit (self, action, param):
         """Exchange binds between syms, compleat path specifications.
 """
@@ -1331,7 +1375,37 @@ Specify HiaLayer to make focus."""
         """Clear BindStore.
 Erases all bindings.
 """
+        self.view.bindstore.clear_bindstore()
         return
+
+    @HiaSimpleAction("(s*)")  # (sms)
+    def act_add_group (self, action, param):
+        (group_name, group_code) = param
+        self.view.bindstore.add_group(group_name, group_code)
+
+    @HiaSimpleAction("(ts*)")  # (tsms)
+    def act_rename_group (self, action, param):
+        (groupid, group_name, group_code) = param
+        self.view.bindstore.rename_group(groupid, group_name, group_code)
+
+    @HiaSimpleAction("x")
+    def act_del_group (self, action, param):
+        groupid = param
+        self.view.bindstore.del_group(groupid)
+
+    @HiaSimpleAction("(s*)")  # (sms)
+    def act_add_layer (self, action, param):
+        (layer_name, layer_code) = param
+        self.view.bindstore.add_layer(layer_name, layer_code)
+
+    @HiaSimpleAction("(ts*)")  # (tsms)
+    def act_rename_layer (self, action, param):
+        (layerid, layer_name, layer_code) = param
+        self.view.bindstore.rename_layer(layerid, layer_name, layer_code)
+
+    @HiaSimpleAction("x")
+    def act_del_layer (self, action, param):
+        self.view.bindstore.del_layer(param)
 
 # TODO: implement later?
 #    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
@@ -1388,7 +1462,7 @@ Erases all bindings.
 #            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
 #        self.view.bindstore.ngroups = ngroups
 
-    @HiaSimpleAction("t")
+    @HiaSimpleAction("x")
     def act_view_nlayers (self, action, param):
         n_vis = param.get_int64()
         self.view.nvislayers = n_vis
@@ -3563,13 +3637,11 @@ class HiaApplication (Gtk.Application):
         layouts.build_from_legacy_store()
         hiaview = HiaView(bindstore, layouts)
         controller = AppControl(hiaview)  # HiaControl(hiaview)
-#        controller.use_group_names([('Menu',''),('Game','')])
-#        controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
-        bindstore.add_group("Menu")
-        bindstore.add_group("Game")
-        bindstore.add_layer("1")
-        bindstore.add_layer("2")
-        bindstore.add_layer("3")
+        controller.add_group("Menu", "Menu")
+        controller.add_group("Game", "Game")
+        controller.add_layer("1", None)
+        controller.add_layer("2", "2")
+        controller.add_layer("3", None)
         self.controller = controller
 
         self.controller.actions.lookup('ragequit').connect("activate", lambda *a: self.quit())
