@@ -452,6 +452,149 @@ class BindStore (GObject.GObject):
 
 
 
+
+
+# named tuple?
+class BindTreeValue (object):
+    def __init__ (self, cmdtitle, cmdcode=None):
+        self._cmdtitle = cmdtitle
+        self._cmdcode = cmdcode if cmdcode is not None else cmdtitle
+
+    @property
+    def cmdtitle (self): return self._cmdtitle
+    @cmdtitle.setter
+    def set_cmdtitle (self, val): self._cmdtitle = val
+
+    @property
+    def cmdcode (self): return self._cmdcode
+    @cmdcode.setter
+    def set_cmdcode (self, val): self._cmdcode = val
+
+    def __repr__ (self):
+        return "{}(cmdtitle={!r},cmdcode={!r})".format(self.__class__.__name__, self.cmdtitle, self.cmdcode)
+
+
+class BindTreeStore (Gtk.TreeStore):
+    def __init__ (self):
+        # generic: (seq_id:int, key:str, label:str, code:str, ephemeral:object)
+        # depth=1: (group_id:int, _:str, group_label:str, None:str, None:object)
+        # depth=2: (layer_id:int, _:str, layer_label:str, layer_bindable:str, bind_dict:object)
+        # depth=3: (_:int, hiasym:str, cmdtitle:str, cmdcode:str, None)
+# (depth 0 is tree root)
+# at depth 1, correspond to Group selector model
+# at depth 2, correspond to Layer selector model
+# at depth 3, association list of (hiasym, cmdtitle, cmdcode), mapping of a unique keysym to an arbitrary display string and an output-specific coding value.
+        Gtk.TreeStore.__init__(self, int,str,str,str,object)
+        self.setup_sanity()
+
+    def setup_sanity (self):
+        rootiter = self.get_iter_first()
+        iter_global = self.iter_children(rootiter)
+        # At least one group, default named 'GLOBAL'.
+        if not iter_global:
+            iter_global = self.append( None, (0,"", "GLOBAL", "GLOBAL", None) )
+        # At least one layer, default named 'base'.
+        iter_lbase = self.iter_children(iter_global)
+        if not iter_lbase:
+            iter_lbase = self.append( iter_global, (0,"", "base", "base", dict()) )
+
+    @GObject.Property(type=int)
+    def ngroups (self):
+        return 0
+    @GObject.Property(type=int)
+    def nlayers (self):
+        return 0
+
+    @GObject.Property(type=object)
+    def groups (self):
+        pass
+    @GObject.Property(type=object)
+    def layers (self):
+        pass
+
+    def get_bind (self, groupid, layerid, hiasym):
+        row_group = self[groupid]
+        row_layer = self[[groupid,layerid]]
+        row_bind = None
+        for probe in row_layer.iterchildren():
+            if probe[1] == hiasym:
+                row_bind = probe
+                break
+        if not row_bind:
+            raise KeyError(hiasym)
+        return BindTreeValue(row_bind[2], row_bind[3])
+
+    def put_bind (self, groupid, layerid, hiasym, cmdtitle_or_bindvalue, cmdcode=None):
+        bindvalue = None
+        cmdtitle = None
+        if isinstance(cmdtitle_or_bindvalue, BindTreeValue):
+            bindvalue = cmdtitle_or_bindvalue
+            cmdtitle = bindvalue.cmdtitle
+            cmdcode = bindvalue.cmdcode
+        else:
+            cmdtitle = cmdtitle_or_bindvalue
+            bindvalue = BindTreeValue(cmdtitle_or_bindvalue, cmdcode)
+        row_group = self[groupid]
+        row_layer = self[[groupid,layerid]]
+        row_bind = None
+        for probe in row_layer.iterchildren():
+            if probe[1] == hiasym:
+                row_bind = probe
+                break
+        if cmdtitle is None:
+            cmdtitle = ""
+        if cmdcode is None:
+            cmdcode = ""
+        if not row_bind:
+            rowdata = (0,hiasym, cmdtitle, cmdcode, None)
+            iter_layer = row_layer.iter
+            row_bind = self.append( iter_layer, rowdata )
+        else:
+            row_bind[2] = cmdtitle
+            row_bind[3] = cmdcode
+        return
+
+
+    def serialize_tree (self, treemodel, localrootiter=None):
+        retval = []
+        rowiter = treemodel.iter_children(localrootiter)
+        while rowiter:
+            row = treemodel[rowiter]
+            subtree = None
+            children = row.iterchildren()
+            if children:
+                subtree = self.serialize_tree(treemodel, rowiter)
+            ser_row = tuple(row) + (subtree,)
+            retval.append(ser_row)
+            rowiter = treemodel.iter_next(rowiter)
+        return retval
+
+    def deserialize_tree (self, primitive, treemodel, anchoriter=None):
+        for row in primitive:
+            rowdata = row[:-1]
+            subprime = row[-1]
+            iter_add = treemodel.append(anchoriter, rowdata)
+            if subprime:
+                self.deserialize_tree(subprime, treemodel, iter_add)
+        return
+
+    def restore (self, primitives):
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        bindstore = primitives['bindstore']
+        self.clear()
+        self.deserialize_tree(bindstore, self, None)
+        return
+
+    def snapshot (self):
+        retval = {}
+        retval['__class__'] = self.__class__.__name__
+        retval['bindstore'] = self.serialize_tree(self, None)
+        return retval
+
+
+
+
 class BitVector (object):
     def __init__ (self, initval):
         self.count = 8
@@ -3003,7 +3146,7 @@ class AppControl (HiaControl):
     # Inherited properties: actions, hiaview
 
     def __init__ (self, hiaview):
-        super().__init__(hiaview)
+        HiaControl.__init__(self, hiaview)
         HiaSimpleActionInstall(self)
 
     def insert_actions_into_widget (self, parent_widget):
