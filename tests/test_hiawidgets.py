@@ -31,8 +31,11 @@ class TestHiaWidgets (skel.TestSkel):
             unittest.main()
 
     def _build_sample_binds0 (self, bindstore):
-        bindstore.clear()
-        bindstore.nlayers = 4
+        bindstore.clear_bindstore()
+        #bindstore.nlayers = 4
+        bindstore.add_layer()
+        bindstore.add_layer()
+        bindstore.add_layer()
         bindstore.set_bind(0, 0, 'K_ESC', 'quit')
         return bindstore
 
@@ -186,9 +189,14 @@ class TestHiaWidgets (skel.TestSkel):
             [ "base", '1', '2', '3' ],
             )
         self.controller.view.axes = axes
+        self.bindstore.add_group("Menu")
+        self.bindstore.add_group("Game")
+        self.bindstore.add_layer("1")
+        self.bindstore.add_layer("2")
+        self.bindstore.add_layer("3")
 
         gensel = hialayout.HiaSelectorRadio('Generic', self.controller)
-        gensel.get_axislist = lambda: [ ('one',''), ('two',''), ('three','') ]
+        gensel.get_axislist = lambda: [ (0,'','one','',None), (0,'','two','',None), (0,'','three','',None) ]
         gensel.update_widgets()
 
         grpsel = hialayout.HiaSelectorGroup(self.controller)
@@ -221,6 +229,7 @@ class TestHiaWidgets (skel.TestSkel):
 
         def script ():
             self.w.show_all()
+            self.assertEqual(len(grpsel.buttons), 3)
             yield 0.1
             #print("to use group 1")
             grpsel.buttons[1].clicked()
@@ -252,7 +261,10 @@ class TestHiaWidgets (skel.TestSkel):
             self.assertTrue(lyrsel.buttons[1].get_active())
             yield 0.5
             # Expand layers.
-            self.hiaview.bindstore.nlayers = 8
+            #self.hiaview.bindstore.nlayers = 8
+            #while self.hiaview.bindstore.nlayers < 8:
+            #    self.hiaview.bindstore.add_layer()
+            self.hiaview.bindstore.add_layershifter()
             yield 2
             self.assertEqual(len(lyrsel.buttons), 8)
             self.assertEqual(lyrsel.labels[7].get_label(), "7 (^1 + ^2 + ^3)")

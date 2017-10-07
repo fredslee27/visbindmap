@@ -328,7 +328,7 @@ class BindGroup (list):
         return self
 
 
-class BindStore (GObject.GObject):
+class BindStoreLegacy (GObject.GObject):
     """
  groups = list of BindGroup instances
  resolve_bindview : list of tuple(redirects, BindValue)
@@ -525,12 +525,15 @@ class BindTreeStore (Gtk.TreeStore):
         if 0 == self.iter_n_children(self.get_iter_first()):
             self.add_layer("base")
 
-    @GObject.Property(type=int)
-    def ngroups (self):
-        return len(self.groups)
-    @GObject.Property(type=int)
-    def nlayers (self):
-        return len(self.layers)
+#    @GObject.Property(type=int)
+#    def ngroups (self):
+#        return len(self.groups)
+#    @GObject.Property(type=int)
+#    def nlayers (self):
+#        return len(self.layers)
+    # nominal maximums; shorts are created on demand, excesses hidden.
+    ngroups = GObject.Property(type=int, default=1)
+    nlayers = GObject.Property(type=int, default=1)
 
     @staticmethod
     def iter_depth (treemdl, treeiter):
@@ -571,11 +574,20 @@ class BindTreeStore (Gtk.TreeStore):
             self._slicetree_layers.set_visible_func(self.is_layer_depth)
         return self._slicetree_layers
 
+    def get_group (self, group_id):
+        return self[group_id]
+
+    def get_layer (self, group_id, layer_id):
+        return self[(group_id,layer_id)]
+
     def add_group (self, group_name, group_code=None):
         """Add another group available for selection."""
         grp_id = len(self)
         rowdata = (grp_id,"", group_name, group_code, None)
         iter_group = self.append( None, rowdata )
+        self.ngroups = grp_id+1
+        self._slicetree_groups = None  # Invalidate sliced tree.
+        self.emit("ngroups-changed", self.ngroups)
         return grp_id
 
     def add_layer (self, layer_name=None, layer_code=None):
@@ -588,7 +600,18 @@ class BindTreeStore (Gtk.TreeStore):
         bindmap = dict()
         rowdata = (lyr_id,"", layer_name, layer_code, bindmap)
         iter_layer = self.append( iter_global, rowdata )
+        self.nlayers = lyr_id+1
+        self._slicetree_layers = None  # Invalidate sliced tree.
         # TODO: handle 'row-added' to propagate to all other groups.
+
+        grpiter = self.get_iter_first()
+        grpiter = self.iter_next(grpiter)
+        while grpiter:
+            lyriter = self.append( grpiter, rowdata )
+            grpiter = self.iter_next(grpiter)
+
+        #self.emit("nlayers-changed", 0, self.nlayers)
+        self.emit("layer-names-changed", self.layers, 0)
         return lyr_id
 
     def del_group (self, group_id):
@@ -598,6 +621,8 @@ class BindTreeStore (Gtk.TreeStore):
         path_target = Gtk.TreePath([group_id])
         iter_target = self.get_iter(path_target)
         self.remove(iter_target)
+        self.ngroups -= 1
+        self._slicetree_groups = None  # Invalidate sliced tree.
 
     def del_layer (self, layer_id):
         """Delete layer by id; cannot delete last remaining layer."""
@@ -609,6 +634,8 @@ class BindTreeStore (Gtk.TreeStore):
         iter_target = self.get_iter(path_target)
         self.remove(iter_target)
         # TODO: handle 'row-deleted' to propagate to all other groups.
+        self.nlayers -= 1
+        self._slicetree_layers = None  # Invalidate sliced tree.
 
     def clear_layer (self, group_id, layer_id):
         """Remove all binds in layer."""
@@ -636,6 +663,7 @@ class BindTreeStore (Gtk.TreeStore):
                 pass
         # Clear first layer.
         self.clear_layer(group_id, 0)
+        self._slicetree_layers = None  # Invalidate sliced tree.
 
     def clear_bindstore (self):
         """Erase everything, reset groups and layers."""
@@ -650,6 +678,7 @@ class BindTreeStore (Gtk.TreeStore):
                 pass
         # Clear first group.
         self.clear_group(0)
+        self._slicetree_groups = None  # Invalidate sliced tree.
         # Rename first group and first layer.
         try:
             self[0] = (0,"", "GLOBAL", "GLOBAL", None)
@@ -690,19 +719,35 @@ class BindTreeStore (Gtk.TreeStore):
             code = shiftertag if not "+" in shiftertag else None
             self.add_layer(label, code)
             layernum += 1
+        self.nlayers = layernum
+        self._slicetree_layers = None  # Invalidate sliced tree.
         return
 
-    def get_bind (self, groupid, layerid, hiasym):
-        """Get bind specified by group, layer, and keysym."""
-        row_group = self[groupid]
-        row_layer = self[[groupid,layerid]]
+    def get_bind (self, groupid, layerid, hiasym, default=None):
+        """Get bind specified by group, layer, and keysym,
+returns BindValue."""
+        try:
+            row_group = self[groupid]
+        except IndexError as e:
+            if groupid < self.ngroups:
+                return default
+            else:
+                raise e
+        try:
+            row_layer = self[[groupid,layerid]]
+        except IndexError as e:
+            if groupid < self.nlayers:
+                return default
+            else:
+                raise e
         row_bind = None
         for probe in row_layer.iterchildren():
             if probe[1] == hiasym:
                 row_bind = probe
                 break
         if not row_bind:
-            raise KeyError(hiasym)
+            #raise KeyError(hiasym)
+            return default
         return BindTreeValue(row_bind[2], row_bind[3])
 
     def put_bind (self, groupid, layerid, hiasym, cmdtitle_or_bindvalue, cmdcode=None):
@@ -734,7 +779,10 @@ class BindTreeStore (Gtk.TreeStore):
         else:
             row_bind[2] = cmdtitle
             row_bind[3] = cmdcode
+        self.emit("bind-changed", groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
+
+    set_bind = put_bind
 
     def iter_binds (self):
         """Iterate through all binds in store, yielding tuples (group_id:int, layer_id:int, hiasym:str, cmdtitle:str, cmdcode:str)"""
@@ -759,6 +807,9 @@ class BindTreeStore (Gtk.TreeStore):
             grpid += 1
         return
 
+    def clear (self):
+        Gtk.TreeStore.clear(self)
+        self.setup_sanity()
 
     def serialize_tree (self, treemodel, localrootiter=None):
         retval = []
@@ -781,6 +832,8 @@ class BindTreeStore (Gtk.TreeStore):
             iter_add = treemodel.append(anchoriter, rowdata)
             if subprime:
                 self.deserialize_tree(subprime, treemodel, iter_add)
+        self._slicetree_groups = None
+        self._slicetree_layers = None
         return
 
     def restore (self, primitives):
@@ -788,7 +841,7 @@ class BindTreeStore (Gtk.TreeStore):
         if primitives['__class__'] != self.__class__.__name__:
             raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
         bindstore = primitives['bindstore']
-        self.clear()
+        Gtk.TreeStore.clear(self)
         self.deserialize_tree(bindstore, self, None)
         return
 
@@ -800,11 +853,17 @@ class BindTreeStore (Gtk.TreeStore):
         return retval
 
     __gsignals__ = AbbrevSignals([
-        ("layers-changed",),
-        ("groups-changed",),
-        ("bind-changed", int, int, str),
+        ("layer-names-changed", object, int),
+        ("group-names-changed", object),
+        ("bind-changed", int, int, str, str, str),
+
+        # DEPRECATED
+        ("ngroups-changed", int),
+        ("nlayers-changed", int, int),
     ])
 
+
+BindStore = BindTreeStore
 
 
 
@@ -2582,9 +2641,12 @@ Convenience property 'names' to access/mutate with python list-of-str.
         group = None
         namelist = self.get_axislist()
         for listrow in namelist:
-            name = listrow[0]
+            #name = listrow[0]
+            name = listrow[2]
+            code = listrow[3]
             #b = Gtk.RadioButton(group=group, label=name)
             b = Gtk.RadioButton(group=group)
+            b.cmdcode = code
             d = Gtk.Label()
             d.set_markup(name)
             b.add(d)
@@ -2609,12 +2671,13 @@ class HiaSelectorGroup (HiaSelectorRadio):
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Mode", controller)
     def get_axislist (self):
-        # GtkTreeModelFilter with children removed.
-        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=None)
-        def filter_for_group (mdl, treeiter, userdata):
-            treepath = mdl.get_path(treeiter)
-            return (treepath.get_depth() == 1)
-        submodel.set_visible_func(filter_for_group)
+#        # GtkTreeModelFilter with children removed.
+#        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=None)
+#        def filter_for_group (mdl, treeiter, userdata):
+#            treepath = mdl.get_path(treeiter)
+#            return (treepath.get_depth() == 1)
+#        submodel.set_visible_func(filter_for_group)
+        submodel = self.view.bindstore.groups
         return submodel
     def on_notify_view (self, inst, param):
         self.view.connect("group-changed", self.on_group_changed)
@@ -2640,15 +2703,16 @@ class HiaSelectorLayer (HiaSelectorRadio):
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Layer", controller)
     def get_axislist (self):
-        # GtkTreeModelFilter with children of GLOBAL.
-        treeiter0 = self.axes.get_iter_first()  # "GLOBAL"
-        chroot = self.axes.get_path(treeiter0)
-        # all the children under "GLOBAL", one row per layer.
-        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=chroot)
-        def filter_for_layer (mdl, treeiter, userdata):
-            treepath = mdl.get_path(treeiter)
-            return (treepath.get_depth() == 2)
-        submodel.set_visible_func(filter_for_layer)
+#        # GtkTreeModelFilter with children of GLOBAL.
+#        treeiter0 = self.axes.get_iter_first()  # "GLOBAL"
+#        chroot = self.axes.get_path(treeiter0)
+#        # all the children under "GLOBAL", one row per layer.
+#        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=chroot)
+#        def filter_for_layer (mdl, treeiter, userdata):
+#            treepath = mdl.get_path(treeiter)
+#            return (treepath.get_depth() == 2)
+#        submodel.set_visible_func(filter_for_layer)
+        submodel = self.view.bindstore.layers
         return submodel
     def setup_signals (self):
         #self.view.bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
@@ -2656,6 +2720,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
     def on_notify_view (self, inst, param):
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("layer-names-changed", self.on_layer_names_changed)
+        self.view.bindstore.connect("layer-names-changed", self.on_layer_names_changed)
         try:
             self.update_widget()
         except AttributeError:

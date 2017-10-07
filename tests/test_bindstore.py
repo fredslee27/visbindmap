@@ -13,7 +13,7 @@ class TestBindStore (skel.TestSkel):
     def setUp (self):
         return
 
-    def test_bindstore (self):
+    def Xtest_bindstore (self):
         class box:
             a = 0
             a2 = 0
@@ -69,7 +69,7 @@ class TestBindStore (skel.TestSkel):
         self.runloop(script)
         self.assertNotEqual(box.a, 0)
 
-    def test_reprs (self):
+    def Xtest_reprs (self):
         # Test repr() and serialization.
         v = hialayout.BindValue("nop", "nop")
         r = repr(v)
@@ -128,7 +128,7 @@ class TestBindStore (skel.TestSkel):
         s = g.snapshot()
         self.assertEqual(s, expected)
 
-    def test_restore (self):
+    def Xtest_restore (self):
         # Test restore BindStore from serialization.
         s = {
             "__class__": hialayout.BindStore.__name__,
@@ -175,9 +175,15 @@ class TestBindStore (skel.TestSkel):
             allsyms = [ x[2] for x in binds ]
             self.assertEqual(len(allsyms), 3)
 
+            b.put_bind(0,0,'K_SHIFT','More','more')
+            probe = b.get_bind(0,0,'K_SHIFT')
+            self.assertEqual(probe.cmdtitle, "More")
+
             b2 = hialayout.BindTreeStore()
             b2.restore(s)
             bv = b2.get_bind(0,0,'K_ESC')
+            #print(b2.snapshot())
+            self.assertIsNotNone(bv)
             self.assertTrue(bv.cmdtitle, 'Quit')
 
             grpmdl = b.groups
@@ -208,6 +214,7 @@ class TestBindStore (skel.TestSkel):
             self.assertEqual(len(b), 3)
 
             b.del_group(2)
+            self.assertEqual(len(b), 2)
 
             b.clear_bindstore()
             s = b.snapshot()
