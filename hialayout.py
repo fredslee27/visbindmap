@@ -2843,6 +2843,10 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         self.knowwhat = "cmdpackview"
 
     def update_widgets (self):
+        try:
+            self.ui
+        except AttributeError:
+            return
         self.ui.treeview.set_model(self.model)
         packname = self.model.packname if self.model else None
         if packname:
@@ -2852,16 +2856,13 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         return
 
     def setup_signals (self):
-        self.connect("map", self.on_map)
+        self.connect("realize", self.on_realize)
 
-    def on_map (self, w, *args):
-        print("cmdpack late_setup_signals")
+    def on_realize (self, w, *args):
         toplevel = self.get_toplevel()
         actions = toplevel.get_action_group("app")
-        print(" actiongroup %r : %r" % (actions,toplevel))
         if actions:
             act0 = actions.lookup_action("load_commandpack")
-            print("act0 : %r" % act0)
             act0.connect("activate", self.on_act_load_commandpack)
         return
 
@@ -3260,38 +3261,42 @@ Holds app-wide GAction.
         return menubar
 
     def setup_signals (self):
-#        self.controller.actions.lookup_action("load_commandpack").connect("activate", self.on_act_load_commandpack)
-#        self.controller.actions.lookup_action("install_commandpack").connect("activate", self.on_act_install_commandpack)
-        pass
+        self.connect("map-event", self.on_map_event)
+        return
 
-#    def on_act_load_commandpack (self, action, garg):
-#        pass
-#    def on_act_install_commandpack (self, action, garg):
-#        pass
+    def on_map_event (self, w, *args):
+        actions = self.get_action_group("app")
+        if actions:
+            act0 = actions.lookup_action("ask_commandpack")
+            if act0:
+                act0.connect("activate", self.on_ask_commandpack)
+        return False
         
-
     def ask_commandpack (self):
         title = "Load Command Pack"
         action = Gtk.FileChooserAction.OPEN
         buttons = [
-            "Load", Gtk.RESPONSE_ACCEPT,
-            Gtk.STOCK_CANCEL, Gtk.RESPONSE_CANCEL,
+            Gtk.STOCK_APPLY, Gtk.ResponseType.ACCEPT,
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             ]
-        dlg = Gtk.FileChooserDialog(title=title, parent=self, action=action, *buttons)
+        dlg = Gtk.FileChooserDialog(title=title, parent=self, action=action, buttons=buttons)
         response = dlg.run()
         filepath = None
-        if response == Gtk.RESPONSE_ACCEPT:
+        if response == Gtk.ResponseType.ACCEPT:
             # load.
             filepath = dlg.get_filename()
             self.controller.load_commandpack(filepath)
             dlg.close()
             dlg.destroy()
-        elif response == Gtk.RESPONSE_CANCEL:
+        elif response == Gtk.ResponseType.CANCEL:
             dlg.close()
             dlg.destroy()
         else:
             dlg.close()
             dlg.destroy()
+
+    def on_ask_commandpack (self, action, paramval):
+        self.ask_commandpack()
 
 
 class HiaApplication (Gtk.Application):
