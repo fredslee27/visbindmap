@@ -37,8 +37,8 @@ def pytypes_to_GVariantTypeEncoder (pyval):
         bool: (lambda v: "b"),
         bytes: (lambda v: "ay"),
         str: (lambda v: "s"),
-        any: (lambda v: "?"),  # technically a function object.
-        all: (lambda v: "*"),  # technically a function object.
+        any: (lambda v: "?"),  # technically a builtin function.
+        all: (lambda v: "*"),  # technically a builtin function.
     }
     # is an instance of ...
     predicated = [
@@ -520,8 +520,10 @@ class BindTreeStore (Gtk.TreeStore):
         self.setup_sanity()
 
     def setup_sanity (self):
-        self.add_group("GLOBAL")
-        self.add_layer("base")
+        if 0 == len(self):
+            self.add_group("GLOBAL")
+        if 0 == self.iter_n_children(self.get_iter_first()):
+            self.add_layer("base")
 
     @GObject.Property(type=int)
     def ngroups (self):
@@ -574,7 +576,7 @@ class BindTreeStore (Gtk.TreeStore):
         grp_id = len(self)
         rowdata = (grp_id,"", group_name, group_code, None)
         iter_group = self.append( None, rowdata )
-        return iter_group
+        return grp_id
 
     def add_layer (self, layer_name=None, layer_code=None):
         """Add another layer available for selection."""
@@ -586,7 +588,83 @@ class BindTreeStore (Gtk.TreeStore):
         bindmap = dict()
         rowdata = (lyr_id,"", layer_name, layer_code, bindmap)
         iter_layer = self.append( iter_global, rowdata )
-        return iter_layer
+        # TODO: handle 'row-added' to propagate to all other groups.
+        return lyr_id
+
+    def del_group (self, group_id):
+        """Delete group by id; cannot delete 0."""
+        if group_id == 0:
+            raise ValueError("Cannot delete global group (consider clear_group()?)")
+        path_target = Gtk.TreePath([group_id])
+        iter_target = self.get_iter(path_target)
+        self.remove(iter_target)
+
+    def del_layer (self, layer_id):
+        """Delete layer by id; cannot delete last remaining layer."""
+        group_id = 0
+        layers = self.iter_n_children(Gkt.TreePath([group_id]))
+        if len(layers) == 1:
+            raise ValueError("Cannot delete final remaining layer (consider clear_layer()?)")
+        path_target = Gtk.TreePath([group_id,layer_id])
+        iter_target = self.get_iter(path_target)
+        self.remove(iter_target)
+        # TODO: handle 'row-deleted' to propagate to all other groups.
+
+    def clear_layer (self, group_id, layer_id):
+        """Remove all binds in layer."""
+        path_layer = Gtk.TreePath([group_id,layer_id])
+        iter_layer = self.get_iter(path_layer)
+        row_layer = self[path_layer]
+        # Delete all binds.
+        child = self.iter_children(iter_layer)
+        if child:
+            while self.remove(child):
+                pass
+        # Invalidate dict.
+        row_layer[4].clear()
+
+    def clear_group (self, group_id):
+        """Erase all binds, remove all non-first layers."""
+        path_group = Gtk.TreePath([group_id])
+        iter_group = self.get_iter(path_group)
+        row_group = self[path_group]
+        # Remove non-first layers.
+        iter_layer = self.iter_children(iter_group)
+        iter_target = self.iter_next(iter_layer)
+        if iter_target:
+            while self.remove(iter_target):
+                pass
+        # Clear first layer.
+        self.clear_layer(group_id, 0)
+
+    def clear_bindstore (self):
+        """Erase everything, reset groups and layers."""
+        iter_first = self.get_iter_first()
+        if not iter_first:
+            self.setup_sanity()
+            return
+        # Remove non-first groups.
+        iter_target = self.iter_next(iter_first)
+        if iter_target:
+            while self.remove(iter_target):
+                pass
+        # Clear first group.
+        self.clear_group(0)
+        # Rename first group and first layer.
+        try:
+            self[0] = (0,"", "GLOBAL", "GLOBAL", None)
+            self[(0,0)] = (0,"", "base", None, None)
+        except KeyError:
+            pass
+
+    def find_group (self, group_name):
+        """Convert group name to group id; returns -1 if no match."""
+        groupid = 0
+        groups = self.groups
+        for groupid in len(groups):
+            if groups[groupd][2] == group_name:
+                return groupid
+        return -1
 
     def _decompose_shifters (self, layernum):
         shifters = []
@@ -615,6 +693,7 @@ class BindTreeStore (Gtk.TreeStore):
         return
 
     def get_bind (self, groupid, layerid, hiasym):
+        """Get bind specified by group, layer, and keysym."""
         row_group = self[groupid]
         row_layer = self[[groupid,layerid]]
         row_bind = None
@@ -627,6 +706,7 @@ class BindTreeStore (Gtk.TreeStore):
         return BindTreeValue(row_bind[2], row_bind[3])
 
     def put_bind (self, groupid, layerid, hiasym, cmdtitle_or_bindvalue, cmdcode=None):
+        """Assign binding to hiasym in specified groupid and layerid."""
         bindvalue = None
         cmdtitle = None
         if isinstance(cmdtitle_or_bindvalue, BindTreeValue):
@@ -657,6 +737,7 @@ class BindTreeStore (Gtk.TreeStore):
         return
 
     def iter_binds (self):
+        """Iterate through all binds in store, yielding tuples (group_id:int, layer_id:int, hiasym:str, cmdtitle:str, cmdcode:str)"""
         grpid = 0
         lyrid = 0
         symid = 0
@@ -703,6 +784,7 @@ class BindTreeStore (Gtk.TreeStore):
         return
 
     def restore (self, primitives):
+        """Deserialize binds TreeStore."""
         if primitives['__class__'] != self.__class__.__name__:
             raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
         bindstore = primitives['bindstore']
@@ -711,6 +793,7 @@ class BindTreeStore (Gtk.TreeStore):
         return
 
     def snapshot (self):
+        """Serialize binds TreeStore."""
         retval = {}
         retval['__class__'] = self.__class__.__name__
         retval['bindstore'] = self.serialize_tree(self, None)
