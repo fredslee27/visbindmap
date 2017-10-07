@@ -940,8 +940,6 @@ class HiaView (GObject.Object):
     bindstore = GObject.Property(type=object)   # instance of BindStore.
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
 
-    axes = GObject.Property(type=object)        # TreeStore(name:str, detail:str): groups, layers.
-
     #vislayers = GObject.Property(type=int)      # bit vector.
     @GObject.Property(type=object)
     def vislayers (self):
@@ -960,14 +958,12 @@ class HiaView (GObject.Object):
 
     @GObject.Property(type=object)
     def nlayers (self):
-        groupid = 0
-        grouppath = Gtk.TreePath(str(groupid))
-        groupiter = self.axes.get_iter(grouppath)
-        return self.axes.iter_n_children(groupiter)
+        return self.bindstore.nlayers
 
     @GObject.Property(type=object)
     def ngroups (self):
-        return self.axes.iter_n_children(None)
+        #return self.axes.iter_n_children(None)
+        return self.bindstore.ngroups
 
 
 
@@ -976,25 +972,7 @@ class HiaView (GObject.Object):
         self.setup_properties()
         self.bindstore = bindstore
         self.layouts = layouts
-        self.axes = self.make_axes_store()
         self.setup_signals()
-
-    def make_axes_store (self, group_names=None, layer_names=None):
-        """make_axes_store(group_names:list, layer_names:list)
-Generate GtkTreeStore suitable for assigning to property "axes".
-Group "GLOBAL" always starts the TreeStore, and populate with the additional groups listed in 'group_names'
-Use layer names as listed in 'layer_names', or ['base'] by default.
-"""
-        retval = Gtk.TreeStore(str,str)
-        iter0 = retval.append( None, ("GLOBAL", "GLOBAL") )
-        if not layer_names:
-            layer_names = [ 'base' ]
-        if group_names:
-            for gn in group_names:
-                retval.append( None, (gn, "") )
-        for ln in layer_names:
-            retval.append( iter0, (ln, "") )
-        return retval
 
     def setup_properties (self):
         self.connect('notify::device-name', self.on_notify_device_name)
@@ -1004,7 +982,6 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
         #self.connect('notify::vislayers', self.on_notify_vislayers)
         self.connect('notify::bindstore', self.on_notify_bindstore)
         self.connect('notify::layouts', self.on_notify_layouts)
-        self.connect('notify::axes', self.on_notify_axes)
         self.connect('notify::nvislayers', self.on_notify_nvislayers)
 
     def setup_signals (self):
@@ -1043,6 +1020,8 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
     def on_notify_bindstore (self, inst, param):
         bindstore = self.bindstore
         bindstore.connect("bind-changed", self.on_bindstore_bind_changed)
+        bindstore.connect('group-names-changed', self.on_bindstore_group_names_changed)
+        bindstore.connect('layer-names-changed', self.on_bindstore_layer_names_changed)
         #bindstore.connect("ngroups-changed", self.on_bindstore_ngroups_changed)
         #bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
         self.emit("bindstore-changed", self.bindstore)
@@ -1054,25 +1033,25 @@ Use layer names as listed in 'layer_names', or ['base'] by default.
         self.layouts.set_sort_func(0, asciisort)
         self.layouts.set_sort_column_id(0, Gtk.SortType.ASCENDING)
         self.emit("layouts-changed", self.layouts)
-    def on_notify_axes (self, inst, param):
-        self.axes.connect("row-changed", self.on_axes_row_changed)
-        self.emit("group-names-changed", self.axes)
-        self.emit("layer-names-changed", self.axes, self.group)
     def on_notify_nvislayers (self, inst, param):
         self.emit("layer-changed", self.layer)
 
-    def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
-        depth = treepath.get_depth()
-        if depth == 1:
-            # Group depth.
-            self.emit("group-names-changed", mdl)
-        elif depth == 2:
-            # Layer depth.
-            grouppath = treepath.up()
-            groupid = int(grouppath)
-            self.emit("layer-names-changed", mdl, groupid) 
-        return
+#    def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
+#        depth = treepath.get_depth()
+#        if depth == 1:
+#            # Group depth.
+#            self.emit("group-names-changed", mdl)
+#        elif depth == 2:
+#            # Layer depth.
+#            grouppath = treepath.up()
+#            groupid = int(grouppath)
+#            self.emit("layer-names-changed", mdl, groupid) 
+#        return
 
+    def on_bindstore_group_names_changed (self, bindstore, mdl):
+        self.emit("group-names-changed", mdl)
+    def on_bindstore_layer_names_changed (self, bindstore, mdl, groupid):
+        self.emit("layer-names-changed", mdl, groupid)
     def on_bindstore_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
         self.emit("bind-changed", groupid, layerid, hiasym, newtitle, newcode)
     def on_bindstore_ngroups_changed (self, bindstore, ngroups):
@@ -1352,59 +1331,60 @@ Erases all bindings.
 """
         return
 
-    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
-    def act_use_layer_names (self, action, param):
-        """Set layer names
-Sets the layers listed in the Layers selector.
-"""
-        nodelist = param
-        # erase children of GLOBAL.
-        mdl = self.view.axes
-        iter_global = mdl.get_iter_first()
-        path_global = mdl.get_path(iter_global)
-        treeiter = mdl.iter_children(iter_global)
-        while treeiter:
-            res = mdl.remove(treeiter)
-            if not res:
-                break
-        lastiter = None
-        nlayers = 0
-        for nodeitem in nodelist:
-            (label, code) = nodeitem
-            lastiter = mdl.append( iter_global, (label,code) )
-            nlayers += 1
-        #mdl.emit("row-changed", path_global, iter_global)
-        lastpath = mdl.get_path(lastiter)
-        mdl.emit("row-changed", lastpath, lastiter)
-        self.view.bindstore.nlayers = nlayers
-
-    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
-    def act_use_group_names (self, action, param):
-        """Set group names
-Sets the groups listed in the Groups selector.
-"""
-        nodelist = param
-        # start from GLOBAL
-        mdl = self.view.axes
-        iter_global = mdl.get_iter_first()
-        # erase siblings of GLOBAL.
-        sibling = mdl.iter_next(iter_global)
-        while sibling:
-            res = mdl.remove(sibling)
-            if not res:
-                break
-        # rebuild siblings.
-        lastiter = None
-        ngroups = 1
-        if nodelist:
-            for nodeitem in nodelist:
-                (label, code) = nodeitem
-                lastiter = mdl.append( None, (label,code) )
-            lastpath = mdl.get_path(lastiter)
-            mdl.emit("row-changed", lastpath, lastiter)
-        else:
-            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
-        self.view.bindstore.ngroups = ngroups
+# TODO: implement later?
+#    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
+#    def act_use_layer_names (self, action, param):
+#        """Set layer names
+#Sets the layers listed in the Layers selector.
+#"""
+#        nodelist = param
+#        # erase children of GLOBAL.
+#        mdl = self.view.axes
+#        iter_global = mdl.get_iter_first()
+#        path_global = mdl.get_path(iter_global)
+#        treeiter = mdl.iter_children(iter_global)
+#        while treeiter:
+#            res = mdl.remove(treeiter)
+#            if not res:
+#                break
+#        lastiter = None
+#        nlayers = 0
+#        for nodeitem in nodelist:
+#            (label, code) = nodeitem
+#            lastiter = mdl.append( iter_global, (label,code) )
+#            nlayers += 1
+#        #mdl.emit("row-changed", path_global, iter_global)
+#        lastpath = mdl.get_path(lastiter)
+#        mdl.emit("row-changed", lastpath, lastiter)
+#        self.view.bindstore.nlayers = nlayers
+#
+#    @HiaSimpleAction("a(ss)")  # array of tuple(str,str)
+#    def act_use_group_names (self, action, param):
+#        """Set group names
+#Sets the groups listed in the Groups selector.
+#"""
+#        nodelist = param
+#        # start from GLOBAL
+#        mdl = self.view.axes
+#        iter_global = mdl.get_iter_first()
+#        # erase siblings of GLOBAL.
+#        sibling = mdl.iter_next(iter_global)
+#        while sibling:
+#            res = mdl.remove(sibling)
+#            if not res:
+#                break
+#        # rebuild siblings.
+#        lastiter = None
+#        ngroups = 1
+#        if nodelist:
+#            for nodeitem in nodelist:
+#                (label, code) = nodeitem
+#                lastiter = mdl.append( None, (label,code) )
+#            lastpath = mdl.get_path(lastiter)
+#            mdl.emit("row-changed", lastpath, lastiter)
+#        else:
+#            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
+#        self.view.bindstore.ngroups = ngroups
 
     @HiaSimpleAction("x")
     def act_view_nlayers (self, action, param):
@@ -2633,6 +2613,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
 
     def update_widgets (self):
         # Remove current children and add new ones.
+        oldval = self.get_active_radio()
         for ch in self.ui.top.get_children():
             # TODO: disconnect signals.
             self.ui.top.remove(ch)
@@ -2640,6 +2621,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
         self.labels = []
         group = None
         namelist = self.get_axislist()
+        btn_id = 0
         for listrow in namelist:
             #name = listrow[0]
             name = listrow[2]
@@ -2652,17 +2634,22 @@ Convenience property 'names' to access/mutate with python list-of-str.
             b.add(d)
             if not self.buttons:
                 group = b
-            #b.connect("clicked", self.on_button_clicked)
-            b.connect("clicked", self.on_button_clicked, len(self.buttons))
-            #b.connect("toggled", self.on_button_clicked, len(self.buttons))
+            if btn_id == oldval:
+                # Restore old value.
+                b.set_active(True)
+            b.connect("clicked", self.on_button_clicked, btn_id)
             b.show_all()
             self.buttons.append(b)
             self.labels.append(d)
             self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
+            btn_id += 1
         return
 
     def on_button_clicked (self, w, ofs=None):
         return
+
+    def get_active_radio (self): # override
+        return 0
 
 
 class HiaSelectorGroup (HiaSelectorRadio):
@@ -2670,13 +2657,8 @@ class HiaSelectorGroup (HiaSelectorRadio):
     PADDING = 16
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Mode", controller)
+    def get_active_radio (self): return self.view.group
     def get_axislist (self):
-#        # GtkTreeModelFilter with children removed.
-#        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=None)
-#        def filter_for_group (mdl, treeiter, userdata):
-#            treepath = mdl.get_path(treeiter)
-#            return (treepath.get_depth() == 1)
-#        submodel.set_visible_func(filter_for_group)
         submodel = self.view.bindstore.groups
         return submodel
     def on_notify_view (self, inst, param):
@@ -2702,16 +2684,8 @@ class HiaSelectorLayer (HiaSelectorRadio):
     EXPAND_MEMBERS = True
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Layer", controller)
+    def get_active_radio (self): return self.view.layer
     def get_axislist (self):
-#        # GtkTreeModelFilter with children of GLOBAL.
-#        treeiter0 = self.axes.get_iter_first()  # "GLOBAL"
-#        chroot = self.axes.get_path(treeiter0)
-#        # all the children under "GLOBAL", one row per layer.
-#        submodel = Gtk.TreeModelFilter(child_model=self.axes, virtual_root=chroot)
-#        def filter_for_layer (mdl, treeiter, userdata):
-#            treepath = mdl.get_path(treeiter)
-#            return (treepath.get_depth() == 2)
-#        submodel.set_visible_func(filter_for_layer)
         submodel = self.view.bindstore.layers
         return submodel
     def setup_signals (self):
@@ -2720,7 +2694,6 @@ class HiaSelectorLayer (HiaSelectorRadio):
     def on_notify_view (self, inst, param):
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("layer-names-changed", self.on_layer_names_changed)
-        self.view.bindstore.connect("layer-names-changed", self.on_layer_names_changed)
         try:
             self.update_widget()
         except AttributeError:
@@ -3405,8 +3378,8 @@ class HiaWindow (Gtk.Window):
         planner.controller.insert_actions_into_widget(self)
         #planner.controller.view.bindstore.nlayers = 4
         #planner.controller.view.bindstore.ngroups = 3
-        planner.controller.use_group_names([('Menu',''),('Game','')])
-        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+#        planner.controller.use_group_names([('Menu',''),('Game','')])
+#        planner.controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
         self.add(planner)
         self.show_all()
         planner.controller.view_nlayers(2)
@@ -3589,8 +3562,13 @@ class HiaApplication (Gtk.Application):
         layouts.build_from_legacy_store()
         hiaview = HiaView(bindstore, layouts)
         controller = AppControl(hiaview)  # HiaControl(hiaview)
-        controller.use_group_names([('Menu',''),('Game','')])
-        controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+#        controller.use_group_names([('Menu',''),('Game','')])
+#        controller.use_layer_names([('base',''), ('1',''), ('2',''), ('3','')])
+        bindstore.add_group("Menu")
+        bindstore.add_group("Game")
+        bindstore.add_layer("1")
+        bindstore.add_layer("2")
+        bindstore.add_layer("3")
         self.controller = controller
 
         self.controller.actions.lookup('ragequit').connect("activate", lambda *a: self.quit())
