@@ -10,6 +10,7 @@ from gi.repository import Gtk, Gdk, GObject, GLib, Gio
 
 import ast
 import os, sys, math
+import fcntl
 import threading
 import shlex
 
@@ -18,6 +19,9 @@ import kbd_desc
 
 
 
+def _crash ():
+    print("*** CRASHING")
+    sys.exit(99)
 
 
 
@@ -870,14 +874,22 @@ def HiaSimpleActionInstall (inst_or_class):
     def make_proxy (action_name, param_type):
         def f (self, *args):
             action = self.actions.lookup_action(action_name)
+            t = action.get_parameter_type()
             if len(args) == 0:
+                if t:
+                    return False
                 action.activate()
             elif len(args) == 1:
                 v = to_GVariant(args[0])
+                if not v.is_of_type(t):
+                    return False
                 action.activate(v)
             else:
                 v = to_GVariant(tuple(args))
+                if not v.is_of_type(t):
+                    return False
                 action.activate(v)
+            return True
         return f
 
     def decorate_class (classobj):
@@ -3283,57 +3295,114 @@ class HiaApplication (Gtk.Application):
         self.mainw.present()
         return
 
+    def cmd_actions (self, *args):
+        actnames = self.controller.actions.list_actions()
+        actlist = []
+        for actname in actnames:
+            action = self.controller.actions.lookup_action(actname)
+            param_type = action.get_parameter_type()
+            if param_type:
+                p = param_type.dup_string()
+                if not p.startswith("("):
+                    p = "({})".format(p)
+                entry = " ".join( (actname, p) )
+            else:
+                entry = actname
+            actlist.append(entry)
+        return "\n".join(actlist)
+
     def on_interactive_command (self, words):
         g_print = print
         dispatch = {
-            'quit': lambda *a: self.quit(),
+            'crash': (lambda *a: _crash()),
+            'echo': (lambda *a: " ".join(a)),
+            'version': (lambda *a: "version 0"),
+            '#t': (lambda *a: True),
+            '#f': (lambda *a: False),
+            '#n': (lambda *a: None),
+            'help': (lambda *a: r"""Commands are matched against action names, arguments are converted and grouped for action activation.  Command arguments are interpreted as int, bool (#t or #f), None (#n), str.
+Use command 'actions' for list of known actions.
+"""),
+#            'actions': (lambda *a: "\n".join(sorted(self.controller.actions.list_actions()))),
+            'actions': self.cmd_actions,
         }
         cmd = words[0]
         f = dispatch.get(cmd, None)
         if f:
-            return f(words[1:])
-        else:
-            return "BAD_COMMAND({})".format(cmd)
+            return f(*words[1:])
+        action = self.controller.actions.lookup_action(cmd)
+        if action:
+            entry = getattr(self.controller, cmd)
+            # convert rest of arguments to integer or string.
+            args = []
+            for word in words[1:]:
+                v = None
+                if word[0].isdigit():
+                    try:
+                        v = int(word)
+                    except ValueError:
+                        v = str(word)
+                elif word[0] == '#':
+                    if word[1] in ("t", "T"):
+                        v = True
+                    elif word[1] in ("f", "F"):
+                        v = False
+                    elif word[1] in ("n", "N"):
+                        v = None
+                    else:
+                        v = str(word)
+                else:
+                    v = str(word)
+                args.append(v)
+            pyval = entry(*args)
+            return pyval
+        return "BAD_COMMAND({!r})".format(cmd)
 
     def thread_repl (self, ginputstream):
         pass
+
+    def pump_stdin (self, extra=None):
+        count = 4096
+        ioprio = GLib.PRIORITY_DEFAULT
+        cancellable = None
+        callback = self.on_stdin_async_ready
+        self.stdin.read_bytes_async(count, ioprio, cancellable, callback, extra)
+        return False
 
     def on_stdin_async_ready (self, srcobj, res, extra):
         # read
         buf = srcobj.read_bytes_finish(res).get_data()
         if buf:
             self.cmdbuf += buf
-        pending = str(self.cmdbuf)
+        else:
+            # Delay 0.05s and re-run pump_stdin().
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 50, self.pump_stdin, extra)
+            return
+        pending = str(self.cmdbuf.decode())
         while "\n" in pending:
             oneline, pending = pending.split("\n", 1)
             # eval
             words = shlex.split(oneline)
             printable = self.on_interactive_command(words)
             if printable is not None:
-                print(printable)
-        self.cmdbuf = bytes(pending)
+                if printable is True:
+                    print("#t")
+                elif printable is False:
+                    print("#f")
+                elif printable is None:
+                    pass
+                    print("#n")
+                else:
+                    print(printable)
+        self.cmdbuf = bytes(pending.encode())
         # loop.
-        count = 1
-        ioprio = GLib.PRIORITY_DEFAULT
-        cancellable = None
-        callback = self.on_stdin_async_ready
-        extra = None
-        self.stdin.read_bytes_async(count, ioprio, cancellable, callback, extra)
+        self.pump_stdin()
 
     def on_notify_stdin (self, inst, param):
-        print("spinning up stdin")
+        # set non-block
+        #fcntl.fcntl(self.stdin.get_fd(), fcntl.F_SETFL, os.O_NONBLOCK)
         # Spin up stdin-reading and parsing thread.
-#        thread = threading.Thread(target=self.thread_repl, args=(self.stdin,))
-#        thread.start()
-#        self.repl = thread
-        #self.cmdbuf = bytes(4096)
-        #self.stdin.read_async(self.cmdbuf, len(self.cmdbuf), Gio.PRIORITY_DEFAULT, self.on_stdin_async_ready, None)
-        count = 1
-        ioprio = GLib.PRIORITY_DEFAULT
-        cancellable = None
-        callback = self.on_stdin_async_ready
-        extra = None
-        self.stdin.read_bytes_async(count, ioprio, cancellable, callback, extra)
+        self.pump_stdin()
         self.cmdbuf = bytes()
 
 
