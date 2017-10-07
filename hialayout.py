@@ -24,7 +24,41 @@ import kbd_desc
 # Helper functions #
 ####################
 
-def HiaMenu (menu_desc):
+
+def pytypes_to_GVariantTypeEncoder (pyval):
+    """Convert python type objects into GVariantType description."""
+    recurse = pytypes_to_GVariantTypeEncoder
+    # literal type object.
+    converter = {
+        list: (lambda v: "a?"),
+        dict: (lambda v: "a{?*}"),
+        float: (lambda v: "f"),
+        int: (lambda v: "t"),
+        bool: (lambda v: "b"),
+        bytes: (lambda v: "ay"),
+        str: (lambda v: "s"),
+        any: (lambda v: "?"),  # technically a function object.
+        all: (lambda v: "*"),  # technically a function object.
+    }
+    # is an instance of ...
+    predicated = [
+        (tuple, lambda v: "({})".format("".join([ recurse(x) for x in v ]))),
+        # list-of-types (first as prototype), or list-of-anything if empty.
+        (list, lambda v: "a?" if 0==len(v) else "a{}".format(recurse(v[0]))),
+        (dict, lambda v: "a{?*}"),
+        # multi-bytes => "ay", else 0-or-1 bytes => "y"
+        (bytes, lambda v: "ay" if len(v) > 1 else "y"),
+    ]
+
+    for (typ,pred) in predicated:
+        if isinstance(pyval,typ): return pred(pyval)
+    if pyval in converter:
+        return converter[pyval](pyval)
+    # fallback.
+    return "s"
+
+
+def HiaMenu (menu_desc, detail_transformer=None):
     """For use where Gio.Menu is needed (e.g. GtkMenu), loading menu description from various resources:
  * python nestable list+tuples: [  (item1, detailed_action1), None, (item2, detailed_action2), (item2, [ (subitem1, subaction1), (subitem2, subaction2), ... ], ... ]
 """
@@ -33,7 +67,7 @@ def HiaMenu (menu_desc):
 #        if type(menu_desc) is list:
 #            self.build_menu_from_pylist(self, menu_desc)
 
-    def build_menu_from_pylist (menu, menudesc):
+    def build_menu_from_pylist (menu, menudesc, xfm=None):
         """Generate Gio.Menu from list+tuple simplified description.
     Format is a list of tuples.
     Each tuple is one of three forms:
@@ -61,7 +95,7 @@ def HiaMenu (menu_desc):
                 sectsize = 0
             elif type(detail) == list:
                 # submenu
-                submenu = build_menu_from_pylist(None, detail)
+                submenu = build_menu_from_pylist(None, detail, xfm)
                 menuitem = Gio.MenuItem.new_submenu(label=lbl, submenu=submenu)
                 menusect.append_item(menuitem)
                 sectsize += 1
@@ -69,11 +103,12 @@ def HiaMenu (menu_desc):
                 # normal item.
                 menuitem = Gio.MenuItem()
                 menuitem.set_label(lbl)
-                if type(detail) is tuple:
-                    (action,target) = detail
+                cooked = xfm(detail) if xfm else detail
+                if type(cooked) is tuple:
+                    (action,target) = cooked
                     menuitem.set_action_and_target_value(action,target)
                 else:
-                    detailed_action = detail
+                    detailed_action = cooked
                     menuitem.set_detailed_action(detailed_action)
                 menusect.append_item(menuitem)
                 sectsize += 1
@@ -84,7 +119,7 @@ def HiaMenu (menu_desc):
         return menu
 
     if type(menu_desc) is list:
-        return build_menu_from_pylist(None, menu_desc)
+        return build_menu_from_pylist(None, menu_desc, detail_transformer)
 
 
 
@@ -1570,7 +1605,7 @@ class ClusteredLayouts (HiaLayouts):
 
     def make_menu (self):
         # Return a Gio.Menu describing a menu choosing an available layout.
-        def a(layoutname):
+        def detail_transformer(layoutname):
             actname = "app.assign_bind"
             hiasym = self.symprefix
             cmdtitle = layoutname
@@ -1580,51 +1615,51 @@ class ClusteredLayouts (HiaLayouts):
         MENU_DESC = [
             # (displayed_label, bind_value)  =>  menuitem set layout
             # || (displayed_label, [ nested_MENUDESC ] )  =>  submenu
-            ("_None", a("Empty")),
-            ("_Single Button", a("OneButton")),
-            ("Scroll _Wheel", a("ScrollWheel")),
-            ("_D-Pad", a("DirectionPad")),
-            ("Button _Quad", a("ButtonQuad")),
-            ("Tr_ackpad", a("MousePad")),
-            ("Mouse R_egion", a("MouseRegion")),
-            ("_Joystick", a("Joystick")),
-            ("_Gyro", a("GyroTilt")),
+            ("_None", "Empty"),
+            ("_Single Button", "OneButton"),
+            ("Scroll _Wheel", "ScrollWheel"),
+            ("_D-Pad", "DirectionPad"),
+            ("Button _Quad", "ButtonQuad"),
+            ("Tr_ackpad", "MousePad"),
+            ("Mouse R_egion", "MouseRegion"),
+            ("_Joystick", "Joystick"),
+            ("_Gyro", "GyroTilt"),
             ("_Touch Menu", [
-                ("_2 items", a("TouchMenu02")),
-                ("_4 items", a("TouchMenu04")),
-                ("_7 items", a("TouchMenu07")),
-                ("_9 items", a("TouchMenu09")),
-                ("1_2 items", a("TouchMenu12")),
-                ("1_3 items", a("TouchMenu13")),
-                ("1_6 items", a("TouchMenu16")),
+                ("_2 items", "TouchMenu02"),
+                ("_4 items", "TouchMenu04"),
+                ("_7 items", "TouchMenu07"),
+                ("_9 items", "TouchMenu09"),
+                ("1_2 items", "TouchMenu12"),
+                ("1_3 items", "TouchMenu13"),
+                ("1_6 items", "TouchMenu16"),
                 ]),
             ("_Radial Menu", [
                 ("_01..09 items", [
-                    ("_1 item", a("RadialMenu01")),
-                    ("_2 items", a("RadialMenu02")),
-                    ("_3 items", a("RadialMenu03")),
-                    ("_4 items", a("RadialMenu04")),
-                    ("_5 items", a("RadialMenu05")),
-                    ("_6 items", a("RadialMenu06")),
-                    ("_7 items", a("RadialMenu07")),
-                    ("_8 items", a("RadialMenu08")),
-                    ("_9 items", a("RadialMenu09")),
+                    ("_1 item", "RadialMenu01"),
+                    ("_2 items", "RadialMenu02"),
+                    ("_3 items", "RadialMenu03"),
+                    ("_4 items", "RadialMenu04"),
+                    ("_5 items", "RadialMenu05"),
+                    ("_6 items", "RadialMenu06"),
+                    ("_7 items", "RadialMenu07"),
+                    ("_8 items", "RadialMenu08"),
+                    ("_9 items", "RadialMenu09"),
                     ]),
                 ("_10.._19 items", [
-                    ("1_1 items", a("RadialMenu11")),
-                    ("1_2 items", a("RadialMenu12")),
-                    ("1_3 items", a("RadialMenu13")),
-                    ("1_4 items", a("RadialMenu14")),
-                    ("1_5 items", a("RadialMenu15")),
-                    ("1_6 items", a("RadialMenu16")),
-                    ("1_7 items", a("RadialMenu17")),
-                    ("1_8 items", a("RadialMenu18")),
-                    ("1_9 items", a("RadialMenu19")),
+                    ("1_1 items", "RadialMenu11"),
+                    ("1_2 items", "RadialMenu12"),
+                    ("1_3 items", "RadialMenu13"),
+                    ("1_4 items", "RadialMenu14"),
+                    ("1_5 items", "RadialMenu15"),
+                    ("1_6 items", "RadialMenu16"),
+                    ("1_7 items", "RadialMenu17"),
+                    ("1_8 items", "RadialMenu18"),
+                    ("1_9 items", "RadialMenu19"),
                     ]),
-                ("_20 items", a("RadialMenu20")),
+                ("_20 items", "RadialMenu20"),
                 ]),
             ]
-        menu = HiaMenu(MENU_DESC)
+        menu = HiaMenu(MENU_DESC, detail_transformer)
         return menu
 
     def build_layouts (self):
@@ -3058,47 +3093,48 @@ Holds app-wide GAction.
         self.show_all()
 
     def setup_menubar (self):
-        def a (actname, paramtype=None, targetval=None):
+        def detail_transformer (raw):
             actprefix = "app."
-            cooked = actname
-            if paramtype is None:
-                cooked = "{}{}".format(actprefix, actname)
-            else:
-                v = GLib.Variant(paramtype, targetval)
+            cooked = raw
+            if type(raw) is tuple:
+                (actname, paramtype, pyval) = raw
+                v = GLib.Variant(paramtype, pyval)
                 cooked = ("{}{}".format(actprefix, actname), v)
+            else:
+                cooked = "{}{}".format(actprefix, raw)
             return cooked
         MENU_DESC = [
             ('_File', [
-                ('_New', a("file_new")),
-                ('_Open', a("file_open")),
-                ('_Save', a("file_save")),
-                ('Save _As', a("file_saveas")),
+                ('_New', "file_new"),
+                ('_Open', "file_open"),
+                ('_Save', "file_save"),
+                ('Save _As', "file_saveas"),
                 None,
-                ('_CommandPack', a("load_commandpack")),
+                ('_CommandPack', "load_commandpack"),
                 None,
-                ('_Quit', a("quit", "b", False)),
-                ('RageQuit', a("ragequit")),
+                ('_Quit', ("quit", "b", False)),
+                ('RageQuit', "ragequit"),
                 ]),
             ('_Edit', [
-                ('_Copy', a("edit_copy")),
-                ('C_ut', a("edit_cut")),
-                ('_Paste', a("edit_paste")),
+                ('_Copy', "edit_copy"),
+                ('C_ut', "edit_cut"),
+                ('_Paste', "edit_paste"),
                 None,
-                ('Pr_eferences', a("preferences")),
+                ('Pr_eferences', "preferences"),
                 ]),
             ('_View', [
-                ('_1 Layer', a("view_layers", "i", 1)),
-                ('_2 Layers', a("view_layers", "i", 2)),
-                ('_4 Layers', a("view_layers", "i", 4)),
-                ('_8 Layers', a("view_layers", "i", 8)),
+                ('_1 Layer', ("view_layers", "i", 1)),
+                ('_2 Layers', ("view_layers", "i", 2)),
+                ('_4 Layers', ("view_layers", "i", 4)),
+                ('_8 Layers', ("view_layers", "i", 8)),
                 ]),
             ('_Help', [
-                ('_Contents', a("help_help")),
+                ('_Contents', "help_help"),
                 None,
-                ('_About', a("about")),
+                ('_About', "about"),
                 ]),
             ]
-        self.menu_main = HiaMenu(MENU_DESC)
+        self.menu_main = HiaMenu(MENU_DESC, detail_transformer)
         menubar = Gtk.MenuBar.new_from_model(self.menu_main)
         self.menubar = menubar
         return menubar
