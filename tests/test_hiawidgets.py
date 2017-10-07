@@ -111,7 +111,8 @@ class TestHiaWidgets (skel.TestSkel):
 
     def _build_sample_binds1 (self, bindstore):
         bindstore.clear()
-        bindstore.nlayers = 2
+        #bindstore.nlayers = 2
+        bindstore.add_layer("1")
         bindstore.set_bind(0, 0, 'KP_8', 'Up')
         bindstore.set_bind(0, 0, 'KP_4', 'Left')
         bindstore.set_bind(0, 0, 'KP_6', 'Right')
@@ -296,6 +297,24 @@ class TestHiaWidgets (skel.TestSkel):
             self.hiaview.bindstore.nlayers = 2
             self.hiaview.vislayers = [ True, True ]
             yield 2
+
+        self.runloop(script)
+        self.w.destroy()
+
+    def test_hiaactions (self):
+        self.hiaview.layouts = self.layouts0
+        self.hiaview.vislayers = [ True, False ]
+        self._build_sample_binds1(self.hiaview.bindstore)
+        picker = hialayout.HiaPlanner(cmdpack=None, controller=self.controller)
+        self.w.add(picker)
+        self.w.set_size_request(640, 480)
+        controller = picker.controller
+
+        def script ():
+            self.w.show()
+            yield 0.2
+            controller.assign_bind_explicit(0,0,'K_ESC','quit','quit')
+            yield 1
 
         self.runloop(script)
         self.w.destroy()

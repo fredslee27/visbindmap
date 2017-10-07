@@ -1026,6 +1026,8 @@ class HiaView (GObject.Object):
         #bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
         self.emit("bindstore-changed", self.bindstore)
     def on_notify_layouts (self, inst, param):
+        if not self.layouts:
+            return
         def asciisort (mdl, iterA, iterB, *args):
             # No cmp() in python3; workaround.  Still valid in python2.
             valA, valB = mdl[iterA][0], mdl[iterB][0]
@@ -1148,7 +1150,7 @@ def HiaSimpleActionInstall (inst_or_class):
             # turn arguments into tuple
             def f (self, *args):
                 action = self.actions.lookup(action_name)
-                v = GLib.Variant(param_type, *args)
+                v = GLib.Variant(param_type, args)
                 action.activate(v)
             return f
         elif param_type:
@@ -1237,21 +1239,21 @@ Specify HiaGroup to make focus"""
         # TODO: try interpret as int?
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
     def act_pick_group (self, action, param):
         """Pick HiaGroup
 Specify HiaGroup to make focus"""
         self.view.group = param.get_int64()
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
     def act_pick_layer (self, action, param):
         """Pick HiaLayer
 Specify HiaLayer to make focus."""
         self.view.layer = param.get_int64()
         return
 
-    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
     def act_pick_command (self, action, param):
         """Pick HiaCommand by id.
 """
@@ -1265,14 +1267,14 @@ Specify HiaLayer to make focus."""
         hiasym = param.get_string()
         return
 
-#    @HiaSimpleAction(param_type="x", init_state=None, stock_id=None)
+#    @HiaSimpleAction(param_type="t", init_state=None, stock_id=None)
 #    def act_push_bind (self, action, param):
 #        """Assign bind by command id.
 #Assign bind to selected hiasym by command id (from command pack).
 #"""
 #        return
 
-    @HiaSimpleAction(param_type="(xxsss)", init_state=None, stock_id=None)
+    @HiaSimpleAction(param_type="(ttsss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
         (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
@@ -1282,10 +1284,10 @@ Specify HiaLayer to make focus."""
     def act_assign_bind (self, action, param):
         (hiasym, cmdtitle, cmdcode) = param
         (groupid, layerid) = (self.view.group, self.view.layer)
-        self.assign_bind_explicit((groupid, layerid, hiasym, cmdtitle, cmdcode))
+        self.assign_bind_explicit(groupid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
-    @HiaSimpleAction("(xxs)")
+    @HiaSimpleAction("(tts)")
     def act_erase_bind_explicit (self, action, param):
         (groupid, layerid, hiasym) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
@@ -1295,10 +1297,10 @@ Specify HiaLayer to make focus."""
     def act_erase_bind (self, action, param):
         hiasym = param.get_string()
         (groupid, layerid) = (self.view.group, self.view.layer)
-        self.erase_bind_explicit((groupid, layerid, hiasym))
+        self.erase_bind_explicit(groupid, layerid, hiasym)
         return
 
-    @HiaSimpleAction("(xxsxxs)")
+    @HiaSimpleAction("(ttstts)")
     def act_exchange_binds_explicit (self, action, param):
         """Exchange binds between syms, compleat path specifications.
 """
@@ -1321,7 +1323,7 @@ Specify HiaLayer to make focus."""
         symA, symB = param
         groupA = groupB = self.view.group
         layerA = layerB = self.view.layer
-        self.exchange_binds_explicit((groupA,layerA,symA, groupB,layerB,symB))
+        self.exchange_binds_explicit(groupA,layerA,symA, groupB,layerB,symB)
         return
 
     @HiaSimpleAction()
@@ -1386,7 +1388,7 @@ Erases all bindings.
 #            mdl.emit("row-changed", mdl.get_path(iter_global), iter_global)
 #        self.view.bindstore.ngroups = ngroups
 
-    @HiaSimpleAction("x")
+    @HiaSimpleAction("t")
     def act_view_nlayers (self, action, param):
         n_vis = param.get_int64()
         self.view.nvislayers = n_vis
@@ -1840,12 +1842,12 @@ Drag-and-Drop
             #self.emit("bind-assigned", self.hiasym, seltext)
             bv = BindValue(lambda: False)
             bv.restore(ast.literal_eval(seltext))
-            self.controller.assign_bind((self.hiasym, bv.cmdtitle, bv.cmdcode))
+            self.controller.assign_bind(self.hiasym, bv.cmdtitle, bv.cmdcode)
             ctx.finish(True, False, 0)
         elif info == HiaDnd.SWAP:
             othersym = seldata.get_data().decode()
             #self.emit("bind-swapped", self.hiasym, othersym)
-            self.controller.exchange_binds((self.hiasym, othersym))
+            self.controller.exchange_binds(self.hiasym, othersym)
             ctx.finish(True, False, 0)
         return False
 
@@ -2777,7 +2779,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
             srclayer = self.controller.view.layer
             dstlayer = nth
             group = self.controller.view.group
-            self.controller.exchange_binds_explicit((group, srclayer, hiasym,  group, dstlayer, hiasym))
+            self.controller.exchange_binds_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
             return
 
 
@@ -3398,7 +3400,6 @@ class AppControl (HiaControl):
 
     def __init__ (self, hiaview):
         HiaControl.__init__(self, hiaview)
-        HiaSimpleActionInstall(self)
 
     def insert_actions_into_widget (self, parent_widget):
         parent_widget.insert_action_group("app", self.actions)
