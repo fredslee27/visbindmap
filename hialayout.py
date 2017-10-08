@@ -642,22 +642,24 @@ class BitVector (object):
 
 class HiaView (GObject.Object):
     """Hia-planning data; M in MVC."""
+
     device_name = GObject.Property(type=str, default="")
     device_details = GObject.Property(type=object)  # instance of LayoutStore, references self.layouts[].
     group = GObject.Property(type=int, default=0)
     layer = GObject.Property(type=int, default=0)
-    nvislayers = GObject.Property(type=int, default=1)
+    nvislayers = GObject.Property(type=int, default=1)  # iter wrapper to _nvislayers bitvector.
     _vislayers = BitVector(1)
     bindstore = GObject.Property(type=object)   # instance of BindStore.
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
 
     #vislayers = GObject.Property(type=int)      # bit vector.
-    @GObject.Property(type=object)
+#    @GObject.Property(type=object)
+    @property
     def vislayers (self):
         retval = list(self._vislayers)
         return list(self._vislayers)
     @vislayers.setter
-    def set_vislayers (self, list_bool):
+    def vislayers (self, list_bool):
         vbl = len(list_bool)
         for i in range(vbl):
             if list_bool[i]:
@@ -826,7 +828,10 @@ Subsequent lines constitute the action's tooltip text (with Pango markup).
         if funcobj.__doc__:
             # label <- __doc__ until first newline
             # tooltip <- __doc__ after first newline
-            label, tooltip = funcobj.__doc__.split("\n", 1)
+            if "\n" in funcobj.__doc__:
+                label, tooltip = funcobj.__doc__.split("\n", 1)
+            else:
+                label, tooltip = funcobj.__doc__, ""
             # Strip whitespaces from start and end.
             tooltip = tooltip.strip()
         if param_type is not None:
@@ -2381,7 +2386,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
             b.show_all()
             self.buttons.append(b)
             self.labels.append(d)
-            self.ui.top.pack_start(b, self.EXPAND_MEMBERS, False, self.PADDING)
+            self.ui.top.pack_start(b, self.EXPAND_MEMBERS, True, self.PADDING)
             btn_id += 1
         return
 
@@ -3236,21 +3241,69 @@ class AppControl (HiaControl):
     def act_quit (self, inst, param):
         pass
 
-    @HiaSimpleAction()
-    def act_file_new (self, inst, param):
-        pass
 
     @HiaSimpleAction()
-    def act_file_open (self, inst, param):
-        pass
+    def act_new_file (self, inst, param):
+        print("clearing working board")
+
+    @HiaSimpleAction("s")
+    def act_open_file (self, inst, param):
+        pathname = param.get_string()
+        print("opening file '%s'..." % pathname)
+
+    @HiaSimpleAction("s")
+    def act_save_file (self, inst, param):
+        pathname = param.get_string()
+        print("saving to file '%s'..." % pathname)
 
     @HiaSimpleAction()
-    def act_file_save (self, inst, param):
-        pass
+    def act_ask_file_new (self, inst, param):
+        # Check for dirtiness, then present confirmation dialog or continue straight to clear_file.
+
+        dirty = True
+
+        if dirty:
+            dlg = Gtk.MessageDialog(transient_for=self.groupwin, title="Erase working board", flags=Gtk.DialogFlags.MODAL, type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.YES_NO, text="Detected unsaved changes.\nForce erasing the working data you see?")
+            response = dlg.run()
+            if response == Gtk.ResponseType.YES:
+                self.new_file()
+            dlg.hide()
+            dlg.destroy()
 
     @HiaSimpleAction()
-    def act_file_saveas (self, inst, param):
-        pass
+    def act_ask_file_open (self, inst, param):
+        dlg = None
+        try:
+            dlg = self.groupwin.dlg_open
+        finally:
+            if dlg is None:
+                return
+        response = dlg.run()
+        if response == Gtk.ResponseType.ACCEPT:
+            pathname = dlg.get_filename()
+            self.load_file(pathname)
+        dlg.hide()
+
+    @HiaSimpleAction()
+    def act_ask_file_save (self, inst, param):
+        # determine dirtiness, then invoke ask_file_saveas or continue straight to save_file.
+        return
+
+    @HiaSimpleAction()
+    def act_ask_file_saveas (self, inst, param):
+        """Save file by name chooser.
+"""
+        dlg = None
+        try:
+            dlg = self.groupwin.dlg_save
+        finally:
+            if dlg is None:
+                return
+        response = dlg.run()
+        if response == Gtk.ResponseType.ACCEPT:
+            pathname = dlg.get_filename()
+            self.save_file(pathname)
+        dlg.hide()
 
     @HiaSimpleAction()
     def act_ask_commandpack (self, inst, param):
@@ -3290,7 +3343,14 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction("i")
     def act_view_layers (self, inst, param):
-        pass
+        m = param.get_int32()
+#        a = self.view.layer
+#        basis = int(a / m) * m
+#        v = [ False ] * self.view.nlayers
+#        for i in range(0, m):
+#            v[basis+i] = True
+#        self.view.vislayers = v
+        self.view.nvislayers = m
 
     @HiaSimpleAction()
     def act_help_help (self, inst, param):
@@ -3310,7 +3370,7 @@ Holds app-wide GAction.
 
     controller = GObject.Property(type=object)      # AppControl
     dlg_cmdpack = GObject.Property(type=object)     # GtkFileChooserDialog
-    dlg_load = GObject.Property(type=object)        # GtkFileChooserDialog
+    dlg_open = GObject.Property(type=object)        # GtkFileChooserDialog
     dlg_save = GObject.Property(type=object)        # GtkFileChooserDialog
 
     def __init__ (self, app, controller=None):
@@ -3323,6 +3383,7 @@ Holds app-wide GAction.
 
     def setup_widgets (self):
         self.set_size_request(640,480)
+        self.set_title("HID Bind Planner")
         self.vbox = Gtk.VBox()
         self.controller.insert_actions_into_widget(self)
         planner = HiaPlanner(controller=self.controller)
@@ -3345,7 +3406,26 @@ Holds app-wide GAction.
             Gtk.STOCK_APPLY, Gtk.ResponseType.ACCEPT,
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             ]
-        self.dlg_cmdpack = Gtk.FileChooserDialog(title=title, parent=self, action=action, buttons=buttons)
+        self.dlg_cmdpack = Gtk.FileChooserDialog(title=title, transient_for=self, action=action)
+        self.dlg_cmdpack.add_buttons(*buttons)
+
+        title = "Save File"
+        action = Gtk.FileChooserAction.SAVE
+        buttons = [
+            Gtk.STOCK_SAVE, Gtk.ResponseType.ACCEPT,
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            ]
+        self.dlg_save = Gtk.FileChooserDialog(title=title, transient_for=self, action=action)
+        self.dlg_save.add_buttons(*buttons)
+
+        title = "Open File"
+        action = Gtk.FileChooserAction.OPEN
+        buttons = [
+            Gtk.STOCK_OPEN, Gtk.ResponseType.ACCEPT,
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            ]
+        self.dlg_open = Gtk.FileChooserDialog(title=title, transient_for=self, action=action)
+        self.dlg_open.add_buttons(*buttons)
 
         return
 
@@ -3362,10 +3442,10 @@ Holds app-wide GAction.
             return cooked
         MENU_DESC = [
             ('_File', [
-                ('_New', "file_new"),
-                ('_Open', "file_open"),
-                ('_Save', "file_save"),
-                ('Save _As', "file_saveas"),
+                ('_New', "ask_file_new"),
+                ('_Open', "ask_file_open"),
+                ('_Save', "ask_file_save"),
+                ('Save _As', "ask_file_saveas"),
                 None,
                 ('_CommandPack', "ask_commandpack"),
                 None,
@@ -3458,7 +3538,7 @@ class HiaApplication (Gtk.Application):
         controller.add_layer("3", None)
         self.controller = controller
 
-        self.controller.actions.lookup('ragequit').connect("activate", lambda *a: self.quit())
+        self.controller.actions.lookup_action('ragequit').connect("activate", lambda *a: self.quit())
 
         return True
     def on_shutdown (self, app):
