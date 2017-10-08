@@ -2178,7 +2178,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             layoutname = self._clustered_layouts[0][0]  # "Empty".
         else:
             layoutname = self.layout_name
-        return "{} <{}>".format(self.hiasym, layoutname)
+        return " {} <{}>".format(self.hiasym, layoutname)
 
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""
