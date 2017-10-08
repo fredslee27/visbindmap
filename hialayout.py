@@ -1077,7 +1077,7 @@ Erases all bindings.
         (group_name, group_code) = param
         self.view.bindstore.add_group(group_name, group_code)
 
-    @HiaSimpleAction("(ts*)")  # (tsms)
+    @HiaSimpleAction("(is*)")  # (tsms)
     def act_rename_group (self, action, param):
         (groupid, group_name, group_code) = param
         self.view.bindstore.rename_group(groupid, group_name, group_code)
@@ -1092,7 +1092,7 @@ Erases all bindings.
         (layer_name, layer_code) = param
         self.view.bindstore.add_layer(layer_name, layer_code)
 
-    @HiaSimpleAction("(ts*)")  # (tsms)
+    @HiaSimpleAction("(is*)")  # (tsms)
     def act_rename_layer (self, action, param):
         (layerid, layer_name, layer_code) = param
         self.view.bindstore.rename_layer(layerid, layer_name, layer_code)
@@ -3402,15 +3402,13 @@ Holds app-wide GAction.
         return
 
     def on_cmdpack_changed (self, w, cmdpackstore):
-        # get modelist
+        # get modelist for BindStore adjustment.
         modelist = cmdpackstore.modelist
-        print("prep modelist: %r" % modelist)
-        modenum = 0
-        for modenum in range(len(modelist)):
-            modename = modelist[modenum]
+        for srcidx in range(len(modelist)):
+            modenum = srcidx+1
+            modename = modelist[srcidx]
             if modenum < len(self.controller.view.bindstore.groups):
                 # rename
-                print('rename %d' % modenum)
                 self.controller.rename_group(modenum, modename, modename)
             else:
                 # add.
