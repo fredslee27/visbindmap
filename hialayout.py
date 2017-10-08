@@ -651,6 +651,7 @@ class HiaView (GObject.Object):
     _vislayers = BitVector(1)
     bindstore = GObject.Property(type=object)   # instance of BindStore.
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
+    active_sym = GObject.Property(type=str)     # currently selected HiaTop
 
     #vislayers = GObject.Property(type=int)      # bit vector.
 #    @GObject.Property(type=object)
@@ -1008,6 +1009,7 @@ Specify HiaLayer to make focus."""
         """Pick HiaSym by name.
 """
         hiasym = param.get_string()
+        self.view.active_sym = hiasym
         return
 
 #    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -1305,6 +1307,8 @@ For HiaCluster, affects what layout to use.
         str("bind-swapped"): (GObject.SignalFlags.RUN_FIRST, None, (str, str)),
         # (hiasym,)
         str("bind-erased"): (GObject.SignalFlags.RUN_FIRST, None, (str,)),
+        # (hiasym,)
+        str("sym-selected"): (GObject.SignalFlags.RUN_FIRST, None, (str,)),
     }
     __gsignals__ = _gsignals
 
@@ -1380,6 +1384,7 @@ Drag-and-Drop
 
     def setup_signals (self):
         """Set up widget signals within key top."""
+        self.ui.button.connect("clicked", self.on_button_clicked)
         self.view.connect("group-changed", self.on_group_changed)
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("vislayers-changed", self.on_vislayers_changed)
@@ -1517,6 +1522,8 @@ Drag-and-Drop
     def on_vislayers_changed (self, hiavia, vislayers):
         bindlist = self.get_bindlist()
         self.binddisp = bindlist
+    def on_button_clicked (self, w, *args):
+        self.emit("sym-selected", self.hiasym)
 
     def setup_dnd (self):
         """Set up Drag-and-Drop for key top."""
@@ -2074,6 +2081,7 @@ class HiaSelectorSym (Gtk.Grid):
         retval.connect("bind-assigned", self.on_bind_assigned)
         retval.connect("bind-swapped", self.on_bind_swapped)
         retval.connect("bind-erased", self.on_bind_erased)
+        retval.connect("sym-selected", self.on_sym_selected)
         retval.show()
         return retval
     def make_hiawidget_key (self, hiasym, hialabel):
@@ -2081,6 +2089,7 @@ class HiaSelectorSym (Gtk.Grid):
         retval.connect("bind-assigned", self.on_bind_assigned)
         retval.connect("bind-swapped", self.on_bind_swapped)
         retval.connect("bind-erased", self.on_bind_erased)
+        retval.connect("sym-selected", self.on_sym_selected)
         retval.show()
         return retval
 
@@ -2126,7 +2135,11 @@ class HiaSelectorSym (Gtk.Grid):
     def on_bind_erased (self, w, hiasym):
         self.emit("bind-erased", hiasym)
 
+    def on_sym_selected (self, w, hiasym):
+        self.emit("sym-selected", hiasym)
+
     __gsignals__ = {
+        str("sym-selected"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
         str("bind-assigned"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
         str("bind-swapped"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
         str("bind-erased"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
@@ -3159,6 +3172,7 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_bind.connect("bind-swapped", self.on_bind_swapped)
         self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
         #self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
+        self.ui.sel_bind.connect("sym-selected", self.on_sym_selected)
         return
 
     def on_device_changed (self, view, devname):
@@ -3183,7 +3197,8 @@ class HiaPlanner (Gtk.HPaned):
         self.emit("bind-swapped", hiasym, othersym)
     def on_bind_erased (self, w, hiasym):
         self.emit("bind-erased", hiasym)
-
+    def on_sym_selected (self, w, hiasym):
+        self.controller.pick_sym(hiasym)
     __gsignals__ = {
         # Named device changed.
         str("bind-assigned"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
