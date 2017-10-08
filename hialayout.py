@@ -3614,6 +3614,8 @@ Use command 'actions' for list of known actions.
 """),
             'actions': self.cmd_actions,
         }
+        if not words:
+            return  # Can happen if input is all whitespaces.
         cmd = words[0]
         f = dispatch.get(cmd, None)
         if f:
