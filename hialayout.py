@@ -112,7 +112,11 @@ def HiaMenu (menu_desc, detail_transformer=None):
         menusect = Gio.Menu()
         sectsize = 0
         for itemdesc in menudesc:
-            (lbl, detail) = itemdesc if itemdesc else (None,None)
+            # extend itemdesc to be (over-)padded with None.
+            extended = (itemdesc if itemdesc else ()) + (None,)*3
+            lbl = extended[0]
+            detail = extended[1]
+            stock_id = extended[2]
             if lbl is None:
                 # separator/section.
                 # wrap up old section into a 'section' menuitem.
@@ -845,7 +849,8 @@ Subsequent lines constitute the action's tooltip text (with Pango markup).
             gparam=gparam,
             gstate=gstate,
             label=label,
-            tooltip=tooltip)
+            tooltip=tooltip,
+            stock_id=stock_id)
         return funcobj
     # curry.
     return wrapper
