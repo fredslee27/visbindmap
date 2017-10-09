@@ -122,6 +122,34 @@ class TestHiaWidgets (skel.TestSkel):
         bindstore.set_bind(0, 1, 'KP_4', '4')
         bindstore.set_bind(0, 1, 'KP_6', '6')
         bindstore.set_bind(0, 1, 'KP_2', '2')
+
+        bindstore.set_bind(0, 0, 'CL#u', 'Up')
+        bindstore.set_bind(0, 0, 'CL#d', 'Down')
+        bindstore.set_bind(0, 0, 'CL#l', 'Left')
+        bindstore.set_bind(0, 0, 'CL#r', 'Right')
+        bindstore.set_bind(0, 0, 'CL#c', 'Return')
+
+        bindstore.set_bind(0, 0, 'CL#1', 'Return')
+        bindstore.set_bind(0, 0, 'CL#2', 'Return')
+        bindstore.set_bind(0, 0, 'CL#3', 'Return')
+        bindstore.set_bind(0, 0, 'CL#4', 'Return')
+        bindstore.set_bind(0, 0, 'CL#5', 'Return')
+        bindstore.set_bind(0, 0, 'CL#6', 'Return')
+        bindstore.set_bind(0, 0, 'CL#7', 'Return')
+        bindstore.set_bind(0, 0, 'CL#8', 'Return')
+        bindstore.set_bind(0, 0, 'CL#9', 'Return')
+        bindstore.set_bind(0, 0, 'CL#10', 'Return')
+        bindstore.set_bind(0, 0, 'CL#11', 'Return')
+        bindstore.set_bind(0, 0, 'CL#12', 'Return')
+        bindstore.set_bind(0, 0, 'CL#13', 'Return')
+        bindstore.set_bind(0, 0, 'CL#14', 'Return')
+        bindstore.set_bind(0, 0, 'CL#15', 'Return')
+        bindstore.set_bind(0, 0, 'CL#16', 'Return')
+        bindstore.set_bind(0, 0, 'CL#17', 'Return')
+        bindstore.set_bind(0, 0, 'CL#18', 'Return')
+        bindstore.set_bind(0, 0, 'CL#19', 'Return')
+        bindstore.set_bind(0, 0, 'CL#20', 'Return')
+
         return bindstore
 
     def test_hiasurface (self):
@@ -138,7 +166,7 @@ class TestHiaWidgets (skel.TestSkel):
             self.w.show_all()
             yield 1
 
-            ch = hiasurface.children['KP_8']
+            ch = hiasurface.hiachildren['KP_8']
             bt = ch
             v = bt.binddisp[0].cmdtitle
             self.assertEqual(v, "Up")
@@ -175,9 +203,32 @@ class TestHiaWidgets (skel.TestSkel):
             occupied_scan = [ (0,0), (0,1), (0,2),
                               (1,0), (1,1), (1,2),
                               (2,0), (2,1), (2,2), ]
-            occupied_report = [ bool(hiacluster.ui.planar.get_child_at(x,y)) for (x,y) in occupied_scan ]
+            occupied_report = [ bool(hiacluster.ui.sel_sym.ui.grid.get_child_at(x,y)) for (x,y) in occupied_scan ]
             self.assertTrue(occupied_report, [ False,True,False,  True,False,True,  False,True,False ])
             yield 2
+
+        self.runloop(script)
+        self.w.destroy()
+
+    def test_hialist (self):
+        layouts = hialayout.HiaLayouts()
+        layouts.build_from_legacy_store()
+        self._build_sample_binds1(self.hiaview.bindstore)
+        #self.hiaview.vislayers = [ True, False ]
+
+        hiacluster = hialayout.HiaCluster(self.controller, "CL#")
+        #self.bindstore.set_bind(0,0,'CL#','RadialMenu10')
+        self.bindstore.set_bind(0,0,'CL#','Joystick')
+
+        self.w.add(hiacluster)
+
+        def script ():
+            self.w.set_size_request(200,200)
+            self.w.show_all()
+            yield 2
+            hiacluster.ui.sel_sym.ui.top.set_visible_child_name("tabular")
+            self.bindstore.set_bind(0,0,'CL#','RadialMenu10')
+            yield 5
 
         self.runloop(script)
         self.w.destroy()
@@ -287,7 +338,7 @@ class TestHiaWidgets (skel.TestSkel):
             yield 1
             picker.ui.sel_device.ui.inp_dev.set_active(1)
             self.assertEqual(self.hiaview.device_name, "keypad")
-            probe = picker.ui.sel_bind.get_child_at(0,2)
+            probe = picker.ui.sel_bind.ui.grid.get_child_at(0,2)
             self.assertIsNotNone(probe)
             self.assertEqual(probe.hiasym, "KP_4")
             yield 1

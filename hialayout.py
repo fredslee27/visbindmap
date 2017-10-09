@@ -1924,45 +1924,45 @@ class ClusteredLayouts (HiaLayouts):
         layout2 = self.make_gridded_layoutstore("TouchMenu02",
           6, 12,
           [
-            ("1", 0, 0), ("2", 1, 0),
+            ("01", 0, 0), ("02", 1, 0),
             ]
         )
         layout4 = self.make_gridded_layoutstore("TouchMenu04",
           6, 6,
           [
-            ("1", 0, 0), ("2", 1, 0),
-            ("3", 0, 1), ("4", 1, 1),
+            ("01", 0, 0), ("02", 1, 0),
+            ("03", 0, 1), ("04", 1, 1),
             ]
         )
         layout9 = self.make_gridded_layoutstore("TouchMenu09",
           4, 4,
           [
-            ("1", 0, 0), ("2", 1, 0), ("3", 2, 0),
-            ("4", 0, 1), ("5", 1, 1), ("6", 2, 1),
-            ("7", 0, 2), ("8", 1, 2), ("9", 2, 2),
+            ("01", 0, 0), ("02", 1, 0), ("03", 2, 0),
+            ("04", 0, 1), ("05", 1, 1), ("06", 2, 1),
+            ("07", 0, 2), ("08", 1, 2), ("09", 2, 2),
             ]
         )
         layout12 = self.make_gridded_layoutstore("TouchMenu12",
           3, 4,
           [
-            ("1", 0, 0),  ("2", 1, 0),  ("3", 2, 0),  ("4", 3, 0),
-            ("5", 0, 1),  ("6", 1, 1),  ("7", 2, 1),  ("8", 3, 1),
-            ("9", 0, 2), ("10", 1, 2), ("11", 2, 2), ("12", 3, 2),
+            ("01", 0, 0), ("02", 1, 0), ("03", 2, 0), ("04", 3, 0),
+            ("05", 0, 1), ("06", 1, 1), ("07", 2, 1), ("08", 3, 1),
+            ("09", 0, 2), ("10", 1, 2), ("11", 2, 2), ("12", 3, 2),
             ]
         )
         layout16 = self.make_gridded_layoutstore("TouchMenu16",
           3, 3,
           [
-             ("1", 0, 0),  ("2", 1, 0),  ("3", 2, 0),  ("4", 3, 0),
-             ("5", 0, 1),  ("6", 1, 1),  ("7", 2, 1),  ("8", 3, 1),
-             ("9", 0, 2), ("10", 1, 2), ("11", 2, 2), ("12", 3, 2),
+            ("01", 0, 0), ("02", 1, 0), ("03", 2, 0), ("04", 3, 0),
+            ("05", 0, 1), ("06", 1, 1), ("07", 2, 1), ("08", 3, 1),
+            ("09", 0, 2), ("10", 1, 2), ("11", 2, 2), ("12", 3, 2),
             ("13", 0, 3), ("14", 1, 3), ("15", 2, 3), ("16", 3, 3),
             ]
         )
 
         def SYM (suffix):
             """Helper function for manually-defined layouts - generate extended hiasym."""
-            return "{}{}".format(self.symprefix, suffix)
+            return "{}{:02d}".format(self.symprefix, suffix)
 
         # The irregular layouts: 7, 13
         """
@@ -2012,14 +2012,15 @@ class ClusteredLayouts (HiaLayouts):
     def _build_layout_radialmenu (self):
         # 19 variants, for counts 1..20.
         def SYM (suffix):
-            return "{}{}".format(self.symprefix, suffix)
+            return "{}{:02d}".format(self.symprefix, suffix)
         def radialize (n, r=6):
             for step in range(n):
                 angle = step * 2*math.pi / float(n)
                 theta = - math.pi / 2. + angle
                 x = r + (float(r) * math.cos(theta)) - .5
                 y = r + (float(r) * math.sin(theta)) + .5
-                yield (SYM(n), SYM(n), "key", x, y, 1, 1)
+                hiasym = SYM(step+1)
+                yield (hiasym, hiasym, "key", x, y, 1, 1)
         # Generate RadialMenu01 through RadialMenu20
         for variant in range(1,21):
             layout = self.make_layoutstore("{}{:02d}".format("RadialMenu", variant))
@@ -2029,37 +2030,68 @@ class ClusteredLayouts (HiaLayouts):
         return
 
 
-class HiaSelectorSym (Gtk.Grid):
+class HiaSelectorSym (Gtk.Stack):
     """Display of a HiaLayout."""
 
     layout = GObject.Property(type=object)      # instance of LayoutStore
-    children = GObject.Property(type=object)    # dict, hiasym => hiatop
+    hiachildren = GObject.Property(type=object) # dict, hiasym => hiatop
     view = GObject.Property(type=object)        # instance of HiaView
     controller = GObject.Property(type=object)  # instance of HiaControl
     _view = None        # Previously known instance.
+    listmodel = GObject.Property(type=object)   # TreeStore (internal use)
 
     def __init__ (self, controller):
-        Gtk.Grid.__init__(self)
-        self.set_row_homogeneous(True)
-        self.set_column_homogeneous(True)
-        self.set_row_spacing(1)
-        self.set_column_spacing(1)
+        Gtk.Stack.__init__(self)
+        #Gtk.ScrolledWindow.__init__(self)
+        #Gtk.HBox.__init__(self)
+        class ui: pass
+        self.ui = ui
 
         self.connect("notify::layout", self.on_notify_layout)
-        self.connect("notify::children", self.on_notify_children)
+        self.connect("notify::hiachildren", self.on_notify_hiachildren)
         self.connect("notify::view", self.on_notify_view)
         self.connect("notify::controller", self.on_notify_controller)
 
         self.controller = controller
         self._view = None
-        #self.view = view
-        #self.layout = layout
-        self.children = {}
+        self.hiachildren = {}
+
+        self.setup_widgets()
+
+    def setup_widgets (self):
+        self.ui.grid = Gtk.Grid()
+        self.ui.grid.set_row_homogeneous(True)
+        self.ui.grid.set_column_homogeneous(True)
+        self.ui.grid.set_row_spacing(1)
+        self.ui.grid.set_column_spacing(1)
+
+        self.ui.treecells = []
+        self.ui.treecols = []
+        self.ui.listview = Gtk.TreeView()
+
+        #self.ui.top = Gtk.Stack()
+        self.ui.top = self
+        self.ui.top.add_named(self.ui.grid, "planar")
+        #self.ui.top.add_named(self.ui.listview, "tabular")
+
+        #self.ui.portal_grid = Gtk.ScrolledWindow()
+        #self.ui.portal_grid.add(self.ui.grid)
+        #self.ui.top.add_named(self.ui.portal_grid, "planar")
+        self.ui.portal_list = Gtk.ScrolledWindow()
+        self.ui.portal_list.add(self.ui.listview)
+        self.ui.top.add_named(self.ui.portal_list, "tabular")
+
+        self.rebuild_listview()
+
+        #self.add(self.ui.top)
+        self.show_all()
 
     def on_notify_layout (self, inst, param):
         self.rebuild_surface()
+        self.rebuild_listmodel()
+        self.rebuild_listview()
 
-    def on_notify_children (self, inst, param):
+    def on_notify_hiachildren (self, inst, param):
         return
 
     def on_notify_controller (self, inst, param):
@@ -2073,11 +2105,12 @@ class HiaSelectorSym (Gtk.Grid):
         self.layout = self.view.device_details
 
     def disown_children (self):
-        chlist = self.get_children()
+        grid = self.ui.grid
+        chlist = grid.get_children()
         # TODO: disconnect signals.
         for ch in chlist:
-            self.remove(ch)
-        self.children = {}
+            grid.remove(ch)
+        self.hiachildren = {}
 
     def make_hiawidget_cluster (self, hiasym, hialabel):
         retval = HiaCluster(self.controller, hiasym, hialabel)
@@ -2110,23 +2143,70 @@ class HiaSelectorSym (Gtk.Grid):
         if not self.layout:
             return
         max_row = 0
+        grid = self.ui.grid
         for rowentry in self.layout:
             intent = (str,str,str, int,int,int,int)
             #(hiasym, lbl, prototype, x, y, w, h) = rowentry
             (hiasym, lbl, prototype, x, y, w, h) = [ intended(rawval) for (intended,rawval) in zip(intent,rowentry) ]
             hw = self.make_hiawidget(hiasym, lbl, prototype)
-            #self.children.append(hw)
-            self.children[hiasym] = hw
+            self.hiachildren[hiasym] = hw
             if hw:
-                self.attach(hw, x, y, w, h)
+                grid.attach(hw, x, y, w, h)
             if y > max_row:
                 max_row = y
         for y in range(max_row):
-            if not self.get_child_at(0, y):
+            if not grid.get_child_at(0, y):
                 filler = Gtk.HBox()
                 filler.show()
-                self.attach(filler, 0, y, 1, 1)
-        self.show()
+                grid.attach(filler, 0, y, 1, 1)
+        grid.show()
+
+        return
+
+    def rebuild_listmodel (self):
+        # Re-make listmodel on nlayer change.
+        #print("rebuild listmodel, hiachildren %r" % (self.hiachildren.keys(),))
+        nlayers = self.controller.view.nlayers
+        coldesc = (str,) + (str,)*nlayers
+        listmodel = Gtk.TreeStore(*coldesc)
+        chsyms = sorted(self.hiachildren.keys())
+        for hiasym in chsyms:
+            hia = self.hiachildren[hiasym]
+            bindlist = [ b.get_markup_str() for b in hia.get_bindlist() ]
+            rowdata = (hiasym,) + tuple(bindlist)
+            listmodel.append(None, rowdata)
+            #print("adding row %r" % (rowdata,))
+        self.listmodel = listmodel
+        self.rebuild_listview()
+        return
+
+    def rebuild_listview (self):
+        treeview = self.ui.listview
+        for treecol in self.ui.treecols:
+            treeview.remove_column(treecol)
+
+        cell0 = Gtk.CellRendererText()
+        col0 = Gtk.TreeViewColumn("sym", cell0, markup=0)
+        treeview.append_column(col0)
+
+        treecells = [cell0]
+        treecols = [col0]
+
+        nlayers = self.controller.view.nlayers
+        for i in range(nlayers):
+            #cellI = Gtk.CellRendererText()
+            cellI = cell0
+            titleI = "bind{}".format(i)
+            colI = Gtk.TreeViewColumn(titleI, cellI, markup=i+1)
+            colI.set_expand(True)
+            treeview.append_column(colI)
+            #treecells.append(cellI)
+            treecols.append(colI)
+
+        self.ui.treecells = treecells
+        self.ui.treecols = treecols
+        treeview.set_model(self.listmodel)
+        self.ui.listview = treeview
         return
 
     def on_bind_assigned (self, w, hiasym, bindvalue):
@@ -2194,35 +2274,47 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 
         self.ui.mnu_layout = self._clustered_layouts.make_menu()
 
+        name_act_listview = "view_bindlist__%s" % self.hiasym
+        self.ui.act_listview = Gio.SimpleAction.new_stateful(name=name_act_listview, parameter_type=None, state=to_GVariant(False))
+        self.controller.actions.add_action(self.ui.act_listview)
+        self.ui.mnu_layout.append("_List View", "app.{}".format(name_act_listview))
+        self.ui.act_listview.connect("change-state", self.on_act_listview)
+
         self.ui.frame = Gtk.Frame()
         self.ui.frame.set_shadow_type(Gtk.ShadowType.ETCHED_IN)
         self.ui.frame_title = Gtk.HBox()
         self.ui.frame_arranger = Gtk.MenuButton()
         self.ui.frame_arranger.set_use_popover(False)  # TODO: GSettings.
         self.ui.frame_arranger.set_menu_model(self.ui.mnu_layout)
+#        self.ui.frame_switcher = Gtk.ToggleButton("L")
         label = self.get_extended_label()
         self.ui.frame_label = Gtk.Label(label=label)
         self.ui.frame_title.pack_start(self.ui.frame_arranger, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
+#        self.ui.frame_title.pack_start(self.ui.frame_switcher, False, False, 0)
         self.ui.frame.set_label_widget(self.ui.frame_title)
 
-        self.ui.planar = HiaSelectorSym(self.controller)
-        try:
-            self.ui.planar.layout = self._clustered_layouts[self.layout_name][1]
-        except TypeError:
-            pass
-        self.ui.tabular = None
+#        self.ui.planar = HiaSelectorSym(self.controller)
+#        try:
+#            self.ui.planar.layout = self._clustered_layouts[self.layout_name][1]
+#        except TypeError:
+#            pass
+#        self.ui.tabular = None
+#
+#        self.ui.top = Gtk.Stack()
+#        self.ui.top.add_named(self.ui.planar, "planar")
+#        self.ui.frame.add(self.ui.top)
 
-        self.ui.top = Gtk.Stack()
-        self.ui.top.add_named(self.ui.planar, "planar")
+        self.ui.sel_sym = HiaSelectorSym(self.controller)
 
-        self.ui.frame.add(self.ui.top)
         self.add(self.ui.frame)
+        self.ui.frame.add(self.ui.sel_sym)
 
         self.show_all()
 
     def setup_signals (self):
         """Set up widget signas in clustered control."""
+#        self.ui.frame_switcher.connect("clicked", self.on_frame_switch)
         return
 
     def setup_dnd (self):
@@ -2239,8 +2331,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         except TypeError:
             layout = None
         try:
-            self.ui.planar
-            self.ui.planar.layout = layout
+            self.ui.sel_sym
+            self.ui.sel_sym.layout = layout
         except AttributeError:
             pass
 
@@ -2266,6 +2358,20 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         return
     def on_vislayers_changed (self, hiavia, vislayers):
         return
+
+    def on_frame_switch (self, w, *args):
+        cur = self.ui.sel_sym.ui.top.get_visible_child_name()
+        if cur == "planar":
+            target = "tabular"
+        else:
+            target = "planar"
+        self.ui.sel_sym.ui.top.set_visible_child_name(target)
+
+    def on_act_listview (self, inst, param):
+        v = param.get_boolean()
+        inst.set_state(param)
+        target = "tabular" if v else "planar"
+        self.ui.sel_sym.ui.top.set_visible_child_name(target)
 
 #    __gsignals__ = dict(HiaBindable._gsignals)
 
@@ -3148,6 +3254,7 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_group = HiaSelectorGroup(self.controller)
         self.ui.sel_layer = HiaSelectorLayer(self.controller)
         self.ui.sel_bind = HiaSelectorSym(self.controller)
+#        self.ui.sel_bind.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
 
         self.ui.lhs = Gtk.VBox()
         self.ui.lhs.pack_start(self.ui.sel_cmd, True, True, 0)
@@ -3156,7 +3263,7 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.rhs.pack_start(self.ui.sel_device, False, False, 0)
         self.ui.rhs.pack_start(self.ui.sel_group, False, False, 0)
         self.ui.rhs.pack_start(self.ui.sel_layer, False, False, 0)
-        self.ui.rhs.pack_start(self.ui.sel_bind, False, False, 0)
+        self.ui.rhs.pack_start(self.ui.sel_bind, False, True, 0)
 
         self.add1(self.ui.lhs)
         self.add2(self.ui.rhs)
