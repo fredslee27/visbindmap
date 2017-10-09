@@ -1340,6 +1340,18 @@ Drag-and-Drop
 """
     # Inherited GProperties: binddisp, view, controller, hiasym, label
 
+    # CSS for styling the binddisp widgets.
+    _css1 = Gtk.CssProvider()
+    _css1.load_from_data((r"""
+.binddisp {
+    padding: 0px 0px;
+    border: none;
+}
+.binddisp:insensitive {
+    background-color: rgba(0,0,0, 0.05);
+}
+""").encode())
+
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
 
@@ -1405,27 +1417,11 @@ Drag-and-Drop
         bb, bv = None, Gtk.Label()
         bv.set_halign(Gtk.Align.FILL)   # to fill the rest of box with bg.
         bv.set_xalign(0.0)              # to force glyphs start at far left.
-        ref = Gtk.TextView()
-        # Copy-ish style background-color from TextView().
-        ctx0 = ref.get_style_context()
-        refrgba = ctx0.get_background_color(Gtk.StateFlags.NORMAL)
-        bgcolor1 = refrgba.to_string()
-        # Copy-ish style insensitive-color from Label()
-        bgcolor2 = bv.get_style_context().get_color(Gtk.StateFlags.INSENSITIVE).to_string()
-        style_provider = Gtk.CssProvider()
-        style_provider.load_from_data((r"""
-.binddisp {
-    background-color: %s
-}
-.binddisp:insensitive {
-    background-color: %s
-}
-""" % (bgcolor1,bgcolor2)).encode())
+
         stylectx = bv.get_style_context()
+        stylectx.add_class("entry")
         stylectx.add_class("binddisp")
-        #stylectx.add_class("entry")
-        #stylectx.add_class("flat")
-        stylectx.add_provider(style_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        stylectx.add_provider(self._css1, Gtk.STYLE_PROVIDER_PRIORITY_USER)
         return bb, bv
 
     def update_binddispline_textview (self, bb, bv, markup):
@@ -1495,8 +1491,10 @@ Drag-and-Drop
             bv = self.ui.bindviews[bi]
             if bi == self.view.layer:
                 bv.get_style_context().set_state(Gtk.StateFlags.NORMAL)
+                bv.get_style_context().add_class("entry")
             else:
                 bv.get_style_context().set_state(Gtk.StateFlags.INSENSITIVE)
+                bv.get_style_context().remove_class("entry")
         for bi in range(len(binddisp), len(self.ui.bindrows)):
             self.ui.hrules[bi].hide()
             self.ui.bindrows[bi].hide()
