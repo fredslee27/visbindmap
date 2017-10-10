@@ -1096,27 +1096,27 @@ Specify HiaLayer to make focus."""
         hiaA = sel_sym.hiachildren[symA]
         hiaA = (self.groupwin).planner.ui.sel_sym.hiachildren.get(symA,None)
         hiaB = (self.groupwin).planner.ui.sel_sym.hiachildren.get(symB,None)
+
         # temp is snapshot of A
         temp = []
         temp.append( (symA, bvA) )
         for subsymA in hiaA.hiachildren:
             subhiaA = hiaA.hiachildren[subsymA]
-            #subbvA = subhiaA.get_bindlist()
-            #subbvA = subhiaA.get_bindlist()
             temp.append( (subsymA, bindstore.get_bind(groupA, layerA, subsymA)) )
         # Transfer B into A
         bvB = bindstore.get_bind(groupB, layerB, symB)
-        self.assign_bind_explicit(int(groupA), int(layerA), str(symA), str(bvB.cmdtitle), str(bvB.cmdcode))
+        bindstore.set_bind(groupA, layerA, symA, bvB.cmdtitle, bvB.cmdcode)
         for subsymB in hiaB.hiachildren:
             suffix = subsymB[len(symB):]
             subhiaB = hiaB.hiachildren[subsymB]
             subsymA = "{}{}".format(symA, suffix)
             bvB = bindstore.get_bind(groupB, layerB, subsymB)
-            bvB = bindstore.get_bind(groupB, layerB, subsymB)
             if bvB:
-                self.assign_bind_explicit(groupA, layerA, subsymA, bvB.cmdtitle, bvB.cmdcode)
+                cmdtitle, cmdcode = bvB.cmdtitle, bvB.cmdcode
             else:
-                self.assign_bind_explicit(groupA, layerA, subsymA, "", "")
+                cmdtitle, cmdcode = "", ""
+            bindstore.set_bind(groupA, layerA, subsymA, cmdtitle, cmdcode)
+
         # Transfer temp into B
         for sym,val in temp:
             suffix = sym[len(symA):]
