@@ -2797,6 +2797,30 @@ class HiaSelectorGroup (HiaSelectorRadio):
             self.controller.pick_group(int(ofs))
         return
 
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # dropped on group.
+        btn = w
+        nth = self.buttons.index(btn)
+        if nth < 0:
+            # Invalid destination.
+            return
+        dstgroup = nth
+        if info == HiaDnd.SWAP:
+            # Swap across groups.
+            hiasym = str(seldata.get_data().decode())
+            srcgroup = self.controller.view.group
+            dstgroup = nth
+            layer = self.controller.view.layer
+            self.controller.exchange_binds_explicit(srcgroup, layer, hiasym,  dstgroup, layer, hiasym)
+            return
+        elif info == HiaDnd.CLUSTER_SWAP:
+            hiasym = str(seldata.get_data().decode())
+            srcgroup = self.controller.view.group
+            dstgroup = nth
+            layer = self.controller.view.layer
+            self.controller.exchange_clusters_explicit(srcgroup, layer, hiasym,  dstgroup, layer, hiasym)
+            return
+
 
 class HiaSelectorLayer (HiaSelectorRadio):
     EXPAND_MEMBERS = True
