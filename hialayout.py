@@ -1086,26 +1086,42 @@ Specify HiaLayer to make focus."""
     @HiaSimpleAction("(iisiis)")
     def act_exchange_clusters_explicit (self, action, param):
         (groupA, layerA, symA, groupB, layerB, symB) = param
-        bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
-        bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
+#        bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
+#        bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
         #hiaA = (self.groupwin).planner.ui.sel_sym.hiachildren(symA)
         win = self.groupwin
         planner = win.planner
         sel_sym = planner.ui.sel_sym
         bindstore = planner.view.bindstore
         hiaA = sel_sym.hiachildren[symA]
-        hiaA = (self.groupwin).planner.ui.sel_sym.hiachildren.get(symA,None)
-        hiaB = (self.groupwin).planner.ui.sel_sym.hiachildren.get(symB,None)
+        hiaB = sel_sym.hiachildren[symB]
+
+        def resolve_bind (grp, lyr, sym):
+            bv = bindstore.get_bind(grp, lyr, sym)
+            if bv: return bv
+            bv = bindstore.get_bind(grp, 0, sym)
+            if bv: return bv
+            bv = bindstore.get_bind(0, lyr, sym)
+            if bv: return bv
+            bv = bindstore.get_bind(0, 0, sym)
+            if bv: return bv
 
         # temp is snapshot of A
         temp = []
+        bvA = resolve_bind(groupA, layerA, symA)
         temp.append( (symA, bvA) )
         for subsymA in hiaA.hiachildren:
             subhiaA = hiaA.hiachildren[subsymA]
             temp.append( (subsymA, bindstore.get_bind(groupA, layerA, subsymA)) )
+
         # Transfer B into A
-        bvB = bindstore.get_bind(groupB, layerB, symB)
-        bindstore.set_bind(groupA, layerA, symA, bvB.cmdtitle, bvB.cmdcode)
+        #bvB = bindstore.get_bind(groupB, layerB, symB)
+        bvB = resolve_bind(groupB, layerB, symB)
+        if bvB:
+            cmdtitle, cmdcode = bvB.cmdtitle, bvB.cmdcode
+        else:
+            cmdtitle, cmdcode = "", ""
+        bindstore.set_bind(groupA, layerA, symA, cmdtitle, cmdcode)
         for subsymB in hiaB.hiachildren:
             suffix = subsymB[len(symB):]
             subhiaB = hiaB.hiachildren[subsymB]
@@ -1120,8 +1136,8 @@ Specify HiaLayer to make focus."""
         # Transfer temp into B
         for sym,val in temp:
             suffix = sym[len(symA):]
-            symB = "{}{}".format(symB, suffix)
-            bindstore.set_bind(groupB, layerB, symB, val)
+            subsymB = "{}{}".format(symB, suffix)
+            bindstore.set_bind(groupB, layerB, subsymB, val)
         return
 
     @HiaSimpleAction()
@@ -2529,6 +2545,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         try:
             self.ui.sel_sym
             self.ui.sel_sym.layout = layout
+            self.ui.frame_label.set_label(self.get_extended_label())
         except AttributeError:
             pass
 
@@ -2553,6 +2570,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_group_changed (self, hiaview, newgrp):
         return
     def on_layer_changed (self, hiaview, newlyr):
+        bindlist = self.get_bindlist()
+        self.layout_name = bindlist[self.view.layer].cmdtitle
         return
     def on_vislayers_changed (self, hiaview, vislayers):
         return
@@ -2702,6 +2721,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
         # all button are destinations.
         drop_targets = [
             HiaDnd.SWAP.target_same_app(),
+            HiaDnd.CLUSTER_SWAP.target_same_app(),
             ]
         drop_dests = Gtk.DestDefaults.ALL
         drop_actions = Gdk.DragAction.COPY
@@ -2809,6 +2829,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
         self.update_widgets()
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # drag from layer to sym.
         btn = w
         bindval = str(args[0])
         if info == HiaDnd.BIND:
@@ -2818,6 +2839,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
         return
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # dropped on layer.
         btn = w
         nth = self.buttons.index(btn)
         if nth < 0:
@@ -2831,6 +2853,12 @@ class HiaSelectorLayer (HiaSelectorRadio):
             group = self.controller.view.group
             self.controller.exchange_binds_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
             return
+        elif info == HiaDnd.CLUSTER_SWAP:
+            hiasym = str(seldata.get_data().decode())
+            srclayer = self.controller.view.layer
+            dstlayer = nth
+            group = self.controller.view.group
+            self.controller.exchange_clusters_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
 
 
 # Intended to be named HiaSelectorLayout, but spelling too similar to *Layer
@@ -3727,7 +3755,7 @@ Holds app-wide GAction.
         self.planner = planner
 
         self.statusbar = Gtk.Statusbar()
-        self.statusbar.push(self.statusbar.get_context_id("status"), "Ready...")
+        self.statusbar.push(self.statusbar.get_context_id("status"), "Ready.")
 
         self.setup_menubar()
 
