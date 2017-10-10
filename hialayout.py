@@ -2601,21 +2601,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         if info == HiaDnd.CLUSTER_SWAP:
             # Swap across layers.
             othersym = str(seldata.get_data().decode())
-#            hiasym = self.hiasym
-#            #self.controller.exchange_clusters(group, srclayer, hiasym,  group, dstlayer, hiasym)
             bindstore = self.view.bindstore
             group = self.view.group
             layer = self.view.layer
-#            temp = []
-#            v = bindstore.get_bind(group, layer, othersym)
-#            temp.append((group, layer, othersym, v))
-#
-#            print("hiachildren %r : %r" % (self.hiasym, self.hiachildren))
-#            for hia in self.hiachildren:
-#                #suffix = hia.hiasym[len(self.hiasym):]
-#                v = bindstore.get_bind(group, layer, hia.hiasym)
-#                temp.append((group, layer, othersym, v))
-#            print("prepped temp = %r" % temp)
             self.controller.exchange_clusters_explicit(group,layer,self.hiasym, group,layer,othersym)
             return
 
