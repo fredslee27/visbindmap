@@ -20,7 +20,8 @@ class TestHiaWidgets (skel.TestSkel):
         self.layouts0.append(("keypad", self._build_sample_layout1()))
         #self.hiaview = hialayout.HiaView(self.bindstore, self.all_layouts)
         self.hiaview = hialayout.HiaView(self.bindstore, self.layouts0)
-        self.controller = hialayout.HiaControl(self.hiaview)
+        #self.controller = hialayout.HiaControl(self.hiaview)
+        self.controller = hialayout.AppControl(self.hiaview)
         self.w = Gtk.Window(title="TestHiaWidget")
         self.controller.insert_actions_into_widget(self.w)
         return
@@ -369,6 +370,29 @@ class TestHiaWidgets (skel.TestSkel):
 
         self.runloop(script)
         self.w.destroy()
+
+    def test_hiaplanner2 (self):
+        self.hiaview.layouts = self.all_layouts
+        self.hiaview.bindstore.add_layer("1",None)
+        self.hiaview.vislayers = [ True, False ]
+        self._build_sample_binds1(self.hiaview.bindstore)
+        picker = hialayout.HiaPlanner(cmdpack=None, controller=self.controller)
+        self.w.add(picker)
+        self.w.set_size_request(640, 480)
+
+        def script ():
+            self.w.show()
+            yield 0.2
+            self.controller.pick_device('PS4/Steam')
+            self.controller.view.bindstore.set_bind(0,0,'DP#','Joystick')
+            self.controller.load_commandpack("cmdset/KerbalSpaceProgram.sqlite3")
+            action = self.controller.actions.lookup_action("view_bindlist__DP#")
+            action.activate()
+            yield 5
+
+        self.runloop(script)
+        self.w.destroy()
+
 
 
 if __name__ == '__main__':

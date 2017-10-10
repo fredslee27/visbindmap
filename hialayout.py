@@ -192,8 +192,11 @@ Also takes an optional dict acceptable for __gsignals__, added onto the return v
 # named tuple?
 class BindTreeValue (object):
     def __init__ (self, cmdtitle, cmdcode=None):
-        self._cmdtitle = cmdtitle
-        self._cmdcode = cmdcode if cmdcode is not None else cmdtitle
+        if type(cmdtitle) is dict:
+            self.restore(cmdtitle)
+        else:
+            self._cmdtitle = cmdtitle
+            self._cmdcode = cmdcode if cmdcode is not None else cmdtitle
 
     @property
     def cmdtitle (self): return self._cmdtitle
@@ -205,9 +208,25 @@ class BindTreeValue (object):
     @cmdcode.setter
     def set_cmdcode (self, val): self._cmdcode = val
 
+    def restore (self, primitives):
+        """Deserialize binds TreeStore."""
+        if primitives['__class__'] != self.__class__.__name__:
+            raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
+        self._cmdtitle = primitives['cmdtitle']
+        self._cmdcode = primitives['cmdcode']
+
+    def snapshot (self):
+        retval = {
+            "__class__": self.__class__.__name__,
+            "cmdtitle": self.cmdtitle,
+            "cmdcode": self.cmdcode,
+        }
+        return retval
+
     def __repr__ (self):
         return "{}(cmdtitle={!r},cmdcode={!r})".format(self.__class__.__name__, self.cmdtitle, self.cmdcode)
 
+BindValue = BindTreeValue
 
 
 
@@ -1127,7 +1146,10 @@ Erases all bindings.
         basis = int(a / n_vis) * n_vis
         vislayers = [ False ] * self.view.nlayers
         for i in range(n_vis):
-            vislayers[basis+i] = True
+            try:
+                vislayers[basis+i] = True
+            except IndexError:
+                pass
         self.view.vislayers = vislayers
 
 
@@ -1218,6 +1240,11 @@ For HiaCluster, affects what layout to use.
 
     def __init__ (self, controller, hiasym, label=None):
         Gtk.HBox.__init__(self)
+        self.hiasym = hiasym
+
+        class sig_handlers:
+            view = {}
+        self._sh = sig_handlers
 
         self.connect("notify::binddisp", self.on_notify_binddisp)
         self.connect("notify::view", self.on_notify_view)
@@ -1226,7 +1253,6 @@ For HiaCluster, affects what layout to use.
 
         #self.view = view
         self.controller = controller
-        self.hiasym = hiasym
         self.label = str(label if label is not None else self.hiasym)
         class ui: pass   # Plain data.
         self.ui = ui
@@ -1566,9 +1592,7 @@ Drag-and-Drop
         # Drop on HiaTop
         if info == HiaDnd.BIND:
             seltext = seldata.get_data().decode()
-            #self.emit("bind-assigned", self.hiasym, seltext)
-            bv = BindValue(lambda: False)
-            bv.restore(ast.literal_eval(seltext))
+            bv = BindValue(ast.literal_eval(seltext))
             self.controller.assign_bind(self.hiasym, bv.cmdtitle, bv.cmdcode)
             ctx.finish(True, False, 0)
         elif info == HiaDnd.SWAP:
@@ -2055,6 +2079,7 @@ class HiaSelectorSym (Gtk.Stack):
         self.controller = controller
         self._view = None
         self.hiachildren = {}
+        self.listmodel = Gtk.TreeStore(str,)    # placeholder model.
 
         self.setup_widgets()
 
@@ -2071,12 +2096,17 @@ class HiaSelectorSym (Gtk.Stack):
 
         #self.ui.top = Gtk.Stack()
         self.ui.top = self
-        self.ui.top.add_named(self.ui.grid, "planar")
+
+        self.ui.grid_top = Gtk.VBox()
+        #self.ui.top.add_named(self.ui.grid_top, "planar")
         #self.ui.top.add_named(self.ui.listview, "tabular")
 
         #self.ui.portal_grid = Gtk.ScrolledWindow()
         #self.ui.portal_grid.add(self.ui.grid)
-        #self.ui.top.add_named(self.ui.portal_grid, "planar")
+        self.ui.portal_grid = Gtk.VBox()
+        self.ui.portal_grid.pack_start(self.ui.grid, False, False, 0)
+        self.ui.top.add_named(self.ui.portal_grid, "planar")
+
         self.ui.portal_list = Gtk.ScrolledWindow()
         self.ui.portal_list.add(self.ui.listview)
         self.ui.top.add_named(self.ui.portal_list, "tabular")
@@ -2099,6 +2129,11 @@ class HiaSelectorSym (Gtk.Stack):
         return
 
     def on_notify_view (self, inst, param):
+        self.view.connect("vislayers-changed", self.on_view_vislayers_changed)
+        self.view.connect("layer-changed", self.on_view_layer_changed)
+        self.view.connect("group-changed", self.on_view_group_changed)
+        self.set_vislayers(self.view.vislayers)
+        self.set_layer(self.view.layer)
         return
 
     def on_notify_view_device_details (self, inst, param):
@@ -2194,18 +2229,55 @@ class HiaSelectorSym (Gtk.Stack):
 
         nlayers = self.controller.view.nlayers
         for i in range(nlayers):
-            #cellI = Gtk.CellRendererText()
-            cellI = cell0
-            titleI = "bind{}".format(i)
-            colI = Gtk.TreeViewColumn(titleI, cellI, markup=i+1)
+            cellI = Gtk.CellRendererText()
+            if i:
+                #titleI = "bind{}".format(i)
+                titleI = "[{}]".format(i)
+            else:
+                titleI = "[base]"
+#            colI = Gtk.TreeViewColumn(titleI, cellI, markup=i+1)
+            colI = Gtk.TreeViewColumn()
             colI.set_expand(True)
+            headerI = Gtk.Label(titleI)
+            headerI.show()
+#            headerI.get_style_context().add_provider(HiaTop._css1, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+            colI.set_widget(headerI)
+            colI.pack_start(cellI, True)
+            colI.add_attribute(cellI, "markup", i+1)
+#            colI.get_button().get_style_context().add_provider(HiaTop._css1, Gtk.STYLE_PROVIDER_PRIORITY_USER)
             treeview.append_column(colI)
-            #treecells.append(cellI)
+            treecells.append(cellI)
             treecols.append(colI)
 
         self.ui.treecells = treecells
         self.ui.treecols = treecols
         treeview.set_model(self.listmodel)
+
+        # set up drag-and-drop for list view.
+        drag_targets = [
+            HiaDnd.SWAP.target_same_app(),
+            HiaDnd.UNBIND.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+        treeview.enable_model_drag_source(drag_buttons, drag_targets, drag_actions)
+        treeview.connect("drag-data-get", self.on_row_drag_data_get)
+        # DnD destination: bind, swap.
+        drop_targets = [
+            HiaDnd.SWAP.target_same_app(),
+            HiaDnd.BIND.target_same_app(),
+            ]
+        drop_dests = Gtk.DestDefaults.ALL
+        drop_actions = Gdk.DragAction.COPY
+        treeview.enable_model_drag_dest(drop_targets, drop_actions)
+        treeview.connect("drag-data-received", self.on_row_drag_data_received)
+
+        treeview.get_style_context().add_provider(HiaTop._css1, Gtk.STYLE_PROVIDER_PRIORITY_USER)
+        treeview.get_style_context().add_class("binddisp")
+
+        self.set_layer(self.view.layer)
+        self.set_vislayers(self.view.vislayers)
+
         self.ui.listview = treeview
         return
 
@@ -2221,6 +2293,109 @@ class HiaSelectorSym (Gtk.Stack):
     def on_sym_selected (self, w, hiasym):
         self.emit("sym-selected", hiasym)
 
+    def on_bind_changed (self, bindstore, grp, lyr, hiasym, newtitle, newcode):
+        bindpath = None
+        for bindrow in self.listmodel:
+            if bindrow[0] == hiasym:
+                #bindrow[lyr+1] = newtitle
+                hia = self.hiachildren[hiasym]
+                bindlist = [ b.get_markup_str() for b in hia.get_bindlist() ]
+                for i in range(len(bindlist)):
+                    bindrow[i+1] = bindlist[i]
+        self.ui.listview.queue_draw()
+
+    def set_group (self, layer_id):
+        self.rebuild_listmodel()
+        self.rebuild_listview()
+        return
+    def set_layer (self, layer_id):
+        try:
+            self.ui.treecells
+        except AttributeError:
+            return
+        listview = self.ui.listview
+        for colid in range(1, len(self.ui.treecols)):
+            lid = colid-1
+            # TODO: dim unselected layers' headers.
+            if lid == layer_id:
+                self.ui.treecells[colid].props.cell_background_rgba = Gdk.RGBA(0,0,0,0)
+#                hdr = self.ui.treecols[colid].get_widget()
+#                hdr.get_style_context().remove_class("binddisp")
+#                hdr.set_sensitive(True)
+            else:
+                self.ui.treecells[colid].props.cell_background_rgba = Gdk.RGBA(0,0,0,0.10)
+#                hdr = self.ui.treecols[colid].get_widget()
+#                hdr.get_style_context().add_class("binddisp")
+#                hdr.set_sensitive(False)
+        self.ui.listview.queue_draw()
+        return
+    def set_vislayers (self, vislayers):
+        # TODO: this gets called multiple times per invocation from parent, but only one reacts visually... figure out where multiplicity comes from.
+        if not self.listmodel:
+            return
+        try:
+            self.ui.treecols
+        except AttributeError:
+            return
+        m = self.listmodel.get_n_columns()
+        v = (tuple(vislayers) if vislayers else ()) + (False,)*m
+        for lid in range(len(vislayers)):
+            try:
+                self.ui.treecols[1+lid].set_visible(v[lid])
+            except IndexError:
+                pass
+        return
+
+    def on_view_group_changed (self, view, group_id):
+        self.set_group(group_id)
+    def on_view_layer_changed (self, view, layer_id):
+        self.set_layer(layer_id)
+    def on_view_vislayers_changed (self, view, vislayers):
+        self.set_vislayers(vislayers)
+
+    def on_row_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # Drag from HiaListRow (equiv to HiaTop).
+        selinfo = self.ui.listview.get_selection()
+        treemdl, selrows = selinfo.get_selected_rows()
+        if info == HiaDnd.UNBIND:
+            # dragged to command set.
+            if len(selrows) != 1:
+                return
+            selpath = selrows[0]
+            selrow = treemdl[selpath]
+            hiasym = selrow[0]
+            seldata.set(seldata.get_target(), 8, hiasym.encode())
+            self.controller.erase_bind(hiasym)
+        elif info == HiaDnd.SWAP:
+            # dragged to HiaTop or HiaListRow.
+            if len(selrows) != 1: return
+            val = hiasym = treemdl[selrows[0]][0]
+            seldata.set(seldata.get_target(), 8, hiasym.encode())
+        return False
+
+    def on_row_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # Drop on HiaListRow
+        listview = self.ui.listview
+        if info == HiaDnd.BIND:
+            # from command set, or that which provides a drop-bind.
+            seltext = seldata.get_data().decode()
+            bv = BindValue(ast.literal_eval(seltext))
+            listinfo = listview.get_dest_row_at_pos(x,y)
+            if not listinfo:
+                return
+            (selpath, selpos) = listinfo
+            hiasym = self.listmodel[selpath][0]
+            self.controller.assign_bind(hiasym, bv.cmdtitle, bv.cmdcode)
+            ctx.finish(True, False, 0)
+        elif info == HiaDnd.SWAP:
+            # from HiaTop or HiaListRow.
+            othersym = seldata.get_data().decode()
+            (selpath, selpos) = listview.get_dest_row_at_pos(x,y)
+            hiasym = self.listmodel[selpath][0]
+            self.controller.exchange_binds(hiasym, othersym)
+            ctx.finish(True, False, 0)
+        return False
+
     __gsignals__ = {
         str("sym-selected"): (GObject.SIGNAL_RUN_FIRST, None, (str,)),
         str("bind-assigned"): (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
@@ -2234,16 +2409,16 @@ class HiaCluster (HiaBindable):
 Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 """
 
-    hiachildren = GObject.Property(type=object) # list of nested HiaBindable
+    #hiachildren = GObject.Property(type=object) # list of nested HiaBindable
     layout_name = GObject.Property(type=str)    # active clustered_layout name
 
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
 
-        self.connect("notify::hiachildren", self.on_notify_hiachildren)
+        #self.connect("notify::hiachildren", self.on_notify_hiachildren)
         self.connect("notify::layout-name", self.on_notify_layout_name)
 
-        self.hiachildren = []
+        #self.hiachildren = []
         # Instantiated per HiaCluster instance due to self.hiasym prefix.
         self._clustered_layouts = ClusteredLayouts(self.hiasym)
         # Initial layout.
@@ -2255,6 +2430,13 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
+
+    @GObject.Property(type=object)
+    def hiachildren (self):
+        try:
+            return self.ui.sel_sym.hiachildren
+        except AttributeError:
+            return None
 
     def get_extended_label (self):
         if not self.layout_name:
@@ -2286,24 +2468,11 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.ui.frame_arranger = Gtk.MenuButton()
         self.ui.frame_arranger.set_use_popover(False)  # TODO: GSettings.
         self.ui.frame_arranger.set_menu_model(self.ui.mnu_layout)
-#        self.ui.frame_switcher = Gtk.ToggleButton("L")
         label = self.get_extended_label()
         self.ui.frame_label = Gtk.Label(label=label)
         self.ui.frame_title.pack_start(self.ui.frame_arranger, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
-#        self.ui.frame_title.pack_start(self.ui.frame_switcher, False, False, 0)
         self.ui.frame.set_label_widget(self.ui.frame_title)
-
-#        self.ui.planar = HiaSelectorSym(self.controller)
-#        try:
-#            self.ui.planar.layout = self._clustered_layouts[self.layout_name][1]
-#        except TypeError:
-#            pass
-#        self.ui.tabular = None
-#
-#        self.ui.top = Gtk.Stack()
-#        self.ui.top.add_named(self.ui.planar, "planar")
-#        self.ui.frame.add(self.ui.top)
 
         self.ui.sel_sym = HiaSelectorSym(self.controller)
 
@@ -2314,15 +2483,14 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 
     def setup_signals (self):
         """Set up widget signas in clustered control."""
-#        self.ui.frame_switcher.connect("clicked", self.on_frame_switch)
         return
 
     def setup_dnd (self):
         """Set up Drag-and-Drop for clustered control."""
         return
 
-    def on_notify_hiachildren (self, inst, param):
-        pass
+#    def on_notify_hiachildren (self, inst, param):
+#        pass
 
     def on_notify_layout_name (self, inst, param):
         layoutname = self.layout_name
@@ -2351,12 +2519,16 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         if hiasym == self.hiasym:
             self.layout_name = newtitle
             self.label = "{} <{}>".format(self.hiasym, self.layout_name)
+        if hiasym in self.hiachildren:
+            self.ui.sel_sym.on_bind_changed(bindstore, groupid, layerid, hiasym, newtitle, newcode)
         return
     def on_group_changed (self, hiaview, newgrp):
         return
     def on_layer_changed (self, hiaview, newlyr):
+        self.ui.sel_sym.set_layer(newlyr)
         return
-    def on_vislayers_changed (self, hiavia, vislayers):
+    def on_vislayers_changed (self, hiaview, vislayers):
+        self.ui.sel_sym.set_vislayers(vislayers)
         return
 
     def on_frame_switch (self, w, *args):
@@ -2585,7 +2757,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
         btn = w
         bindval = str(args[0])
         if info == HiaDnd.BIND:
-            bv = BindValue(None, bindval, bindval)
+            bv = BindValue(bindval, bindval)
             bindvalue = repr(bv.snapshot()).encode()
             seldata.set(seldata.get_target(), 8, bindvalue)
         return
@@ -2929,6 +3101,8 @@ class CommandPackFeed_sqlite3 (CommandPackFeed):
     def is_acceptable (uri):
         # URI of None yields the hard-coded command pack feed.
         #return (uri is None)
+        if not uri:
+            return False
         try:
             conn = sqlite3.connect(uri)
         except:
@@ -3123,7 +3297,7 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         firstsel = pathsels[0]
         selrow = mdl[firstsel]
         #cmdname = selrow[1]
-        bv = BindValue(lambda:False, selrow[2], selrow[1])
+        bv = BindValue(selrow[2], selrow[1])
         bindvalue = repr(bv.snapshot())
         if info == HiaDnd.BIND:
             # dragged from command set.
@@ -3692,6 +3866,7 @@ class HiaApplication (Gtk.Application):
         if not self.mainw:
             self.mainw = HiaAppWindow(self, controller=self.controller)
         self.mainw.present()
+        self.controller.load_commandpack("")
         return
 
     def cmd_actions (self, *args):
