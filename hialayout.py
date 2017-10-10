@@ -775,18 +775,6 @@ class HiaView (GObject.Object):
     def on_notify_nvislayers (self, inst, param):
         self.emit("layer-changed", self.layer)
 
-#    def on_axes_row_changed (self, mdl, treepath, treeiter, *args):
-#        depth = treepath.get_depth()
-#        if depth == 1:
-#            # Group depth.
-#            self.emit("group-names-changed", mdl)
-#        elif depth == 2:
-#            # Layer depth.
-#            grouppath = treepath.up()
-#            groupid = int(grouppath)
-#            self.emit("layer-names-changed", mdl, groupid) 
-#        return
-
     def on_bindstore_group_names_changed (self, bindstore, mdl):
         self.emit("group-names-changed", mdl)
     def on_bindstore_layer_names_changed (self, bindstore, mdl, groupid):
@@ -2066,8 +2054,6 @@ class HiaSelectorSym (Gtk.Stack):
 
     def __init__ (self, controller):
         Gtk.Stack.__init__(self)
-        #Gtk.ScrolledWindow.__init__(self)
-        #Gtk.HBox.__init__(self)
         class ui: pass
         self.ui = ui
 
@@ -2094,26 +2080,22 @@ class HiaSelectorSym (Gtk.Stack):
         self.ui.treecols = []
         self.ui.listview = Gtk.TreeView()
 
-        #self.ui.top = Gtk.Stack()
-        self.ui.top = self
-
         self.ui.grid_top = Gtk.VBox()
-        #self.ui.top.add_named(self.ui.grid_top, "planar")
-        #self.ui.top.add_named(self.ui.listview, "tabular")
+        #self.ui.add_named(self.ui.grid_top, "planar")
+        #self.ui.add_named(self.ui.listview, "tabular")
 
         #self.ui.portal_grid = Gtk.ScrolledWindow()
         #self.ui.portal_grid.add(self.ui.grid)
         self.ui.portal_grid = Gtk.VBox()
         self.ui.portal_grid.pack_start(self.ui.grid, False, False, 0)
-        self.ui.top.add_named(self.ui.portal_grid, "planar")
+        self.add_named(self.ui.portal_grid, "planar")
 
         self.ui.portal_list = Gtk.ScrolledWindow()
         self.ui.portal_list.add(self.ui.listview)
-        self.ui.top.add_named(self.ui.portal_list, "tabular")
+        self.add_named(self.ui.portal_list, "tabular")
 
         self.rebuild_listview()
 
-        #self.add(self.ui.top)
         self.show_all()
 
     def on_notify_layout (self, inst, param):
@@ -2240,11 +2222,9 @@ class HiaSelectorSym (Gtk.Stack):
             colI.set_expand(True)
             headerI = Gtk.Label(titleI)
             headerI.show()
-#            headerI.get_style_context().add_provider(HiaTop._css1, Gtk.STYLE_PROVIDER_PRIORITY_USER)
             colI.set_widget(headerI)
             colI.pack_start(cellI, True)
             colI.add_attribute(cellI, "markup", i+1)
-#            colI.get_button().get_style_context().add_provider(HiaTop._css1, Gtk.STYLE_PROVIDER_PRIORITY_USER)
             treeview.append_column(colI)
             treecells.append(cellI)
             treecols.append(colI)
@@ -2319,14 +2299,8 @@ class HiaSelectorSym (Gtk.Stack):
             # TODO: dim unselected layers' headers.
             if lid == layer_id:
                 self.ui.treecells[colid].props.cell_background_rgba = Gdk.RGBA(0,0,0,0)
-#                hdr = self.ui.treecols[colid].get_widget()
-#                hdr.get_style_context().remove_class("binddisp")
-#                hdr.set_sensitive(True)
             else:
                 self.ui.treecells[colid].props.cell_background_rgba = Gdk.RGBA(0,0,0,0.10)
-#                hdr = self.ui.treecols[colid].get_widget()
-#                hdr.get_style_context().add_class("binddisp")
-#                hdr.set_sensitive(False)
         self.ui.listview.queue_draw()
         return
     def set_vislayers (self, vislayers):
@@ -2409,23 +2383,19 @@ class HiaCluster (HiaBindable):
 Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 """
 
-    #hiachildren = GObject.Property(type=object) # list of nested HiaBindable
     layout_name = GObject.Property(type=str)    # active clustered_layout name
 
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
 
-        #self.connect("notify::hiachildren", self.on_notify_hiachildren)
         self.connect("notify::layout-name", self.on_notify_layout_name)
 
-        #self.hiachildren = []
         # Instantiated per HiaCluster instance due to self.hiasym prefix.
         self._clustered_layouts = ClusteredLayouts(self.hiasym)
         # Initial layout.
         bindlist = self.get_bindlist()
         layoutname = bindlist[self.view.layer].cmdtitle
         self.layout_name = layoutname
-#        self._layout = self._clustered_layouts[layoutname][1]
 
         self.setup_widgets()
         self.setup_signals()
@@ -2489,9 +2459,6 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         """Set up Drag-and-Drop for clustered control."""
         return
 
-#    def on_notify_hiachildren (self, inst, param):
-#        pass
-
     def on_notify_layout_name (self, inst, param):
         layoutname = self.layout_name
         try:
@@ -2525,25 +2492,23 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_group_changed (self, hiaview, newgrp):
         return
     def on_layer_changed (self, hiaview, newlyr):
-        self.ui.sel_sym.set_layer(newlyr)
         return
     def on_vislayers_changed (self, hiaview, vislayers):
-        self.ui.sel_sym.set_vislayers(vislayers)
         return
 
     def on_frame_switch (self, w, *args):
-        cur = self.ui.sel_sym.ui.top.get_visible_child_name()
+        cur = self.ui.sel_sym.get_visible_child_name()
         if cur == "planar":
             target = "tabular"
         else:
             target = "planar"
-        self.ui.sel_sym.ui.top.set_visible_child_name(target)
+        self.ui.sel_sym.set_visible_child_name(target)
 
     def on_act_listview (self, inst, param):
         v = param.get_boolean()
         inst.set_state(param)
         target = "tabular" if v else "planar"
-        self.ui.sel_sym.ui.top.set_visible_child_name(target)
+        self.ui.sel_sym.set_visible_child_name(target)
 
 #    __gsignals__ = dict(HiaBindable._gsignals)
 
@@ -2829,9 +2794,6 @@ class HiaSelectorDevice (Gtk.HBox):
         inp_dev.pack_start(self.ui.render0, 0)
         inp_dev.add_attribute(self.ui.render0, 'text', 0)
         inp_dev.set_active(0)
-        #self.view.device = ('(none)', None)
-        #self.view.device = '(none)'
-        #self.view.device_name = '(none)'
         self.controller.pick_device('(none)')
         self.ui.inp_dev = inp_dev
 
@@ -3100,12 +3062,13 @@ class CommandPackFeed_sqlite3 (CommandPackFeed):
     @staticmethod
     def is_acceptable (uri):
         # URI of None yields the hard-coded command pack feed.
-        #return (uri is None)
         if not uri:
             return False
         try:
             conn = sqlite3.connect(uri)
-        except:
+            curs = conn.cursor()
+            rows = curs.execute("SELECT COUNT(*) FROM cmd;")
+        except sqlite3.DatabaseError:
             return False
         if not conn:
             return False
@@ -3136,13 +3099,6 @@ class CommandPackFeed_sqlite3 (CommandPackFeed):
         except sqlite3.OperationalError:
             rows = []
             modelist = []
-#        rows = []
-#        modelist = gtk.ListStore(str,str)
-#        modelist.append( ("Global", None) )
-#        for row in rows:
-#            modename = row[0]
-#            fallthrough = "Global"
-#            modelist.append( (modename, fallthrough) )
         cmdpack.modelist = modelist
 
         # Get groupings.
@@ -3428,7 +3384,6 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_group = HiaSelectorGroup(self.controller)
         self.ui.sel_layer = HiaSelectorLayer(self.controller)
         self.ui.sel_bind = HiaSelectorSym(self.controller)
-#        self.ui.sel_bind.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
 
         self.ui.lhs = Gtk.VBox()
         self.ui.lhs.pack_start(self.ui.sel_cmd, True, True, 0)
@@ -3455,7 +3410,6 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_bind.connect("bind-assigned", self.on_bind_assigned)
         self.ui.sel_bind.connect("bind-swapped", self.on_bind_swapped)
         self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
-        #self.ui.sel_cmd.connect("bind-erased", self.on_bind_erased)
         self.ui.sel_bind.connect("sym-selected", self.on_sym_selected)
         return
 
@@ -3643,12 +3597,6 @@ class AppControl (HiaControl):
     @HiaSimpleAction("i")
     def act_view_layers (self, inst, param):
         m = param.get_int32()
-#        a = self.view.layer
-#        basis = int(a / m) * m
-#        v = [ False ] * self.view.nlayers
-#        for i in range(0, m):
-#            v[basis+i] = True
-#        self.view.vislayers = v
         self.view.nvislayers = m
 
     @HiaSimpleAction()
