@@ -1083,6 +1083,63 @@ Specify HiaLayer to make focus."""
         self.exchange_binds_explicit(groupA,layerA,symA, groupB,layerB,symB)
         return
 
+    @HiaSimpleAction("(iisiis)")
+    def act_exchange_clusters_explicit (self, action, param):
+        (groupA, layerA, symA, groupB, layerB, symB) = param
+#        bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
+#        bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
+        #hiaA = (self.groupwin).planner.ui.sel_sym.hiachildren(symA)
+        win = self.groupwin
+        planner = win.planner
+        sel_sym = planner.ui.sel_sym
+        bindstore = planner.view.bindstore
+        hiaA = sel_sym.hiachildren[symA]
+        hiaB = sel_sym.hiachildren[symB]
+
+        def resolve_bind (grp, lyr, sym):
+            bv = bindstore.get_bind(grp, lyr, sym)
+            if bv: return bv
+            bv = bindstore.get_bind(grp, 0, sym)
+            if bv: return bv
+            bv = bindstore.get_bind(0, lyr, sym)
+            if bv: return bv
+            bv = bindstore.get_bind(0, 0, sym)
+            if bv: return bv
+
+        # temp is snapshot of A
+        temp = []
+        bvA = resolve_bind(groupA, layerA, symA)
+        temp.append( (symA, bvA) )
+        for subsymA in hiaA.hiachildren:
+            subhiaA = hiaA.hiachildren[subsymA]
+            temp.append( (subsymA, bindstore.get_bind(groupA, layerA, subsymA)) )
+
+        # Transfer B into A
+        #bvB = bindstore.get_bind(groupB, layerB, symB)
+        bvB = resolve_bind(groupB, layerB, symB)
+        if bvB:
+            cmdtitle, cmdcode = bvB.cmdtitle, bvB.cmdcode
+        else:
+            cmdtitle, cmdcode = "", ""
+        bindstore.set_bind(groupA, layerA, symA, cmdtitle, cmdcode)
+        for subsymB in hiaB.hiachildren:
+            suffix = subsymB[len(symB):]
+            subhiaB = hiaB.hiachildren[subsymB]
+            subsymA = "{}{}".format(symA, suffix)
+            bvB = bindstore.get_bind(groupB, layerB, subsymB)
+            if bvB:
+                cmdtitle, cmdcode = bvB.cmdtitle, bvB.cmdcode
+            else:
+                cmdtitle, cmdcode = "", ""
+            bindstore.set_bind(groupA, layerA, subsymA, cmdtitle, cmdcode)
+
+        # Transfer temp into B
+        for sym,val in temp:
+            suffix = sym[len(symA):]
+            subsymB = "{}{}".format(symB, suffix)
+            bindstore.set_bind(groupB, layerB, subsymB, val)
+        return
+
     @HiaSimpleAction()
     def act_clear_bindstore (self, action, param):
         """Clear BindStore.
@@ -1178,6 +1235,7 @@ overload the drag-drop 'info' field to as DnD opcodes."""
     BIND = enum("bind", 1)
     UNBIND = enum("unbind", 2)
     SWAP = enum("swap", 3)
+    CLUSTER_SWAP = enum("cluster_swap", 4)
     REORDER = enum("reorder", 11)
 
 
@@ -2171,6 +2229,9 @@ class HiaSelectorSym (Gtk.Stack):
                 grid.attach(hw, x, y, w, h)
             if y > max_row:
                 max_row = y
+            bv = self.view.bindstore.get_bind(self.view.group, self.view.layer, hiasym)
+            if bv:
+                hw.layout_name = bv.cmdtitle
         for y in range(max_row):
             if not grid.get_child_at(0, y):
                 filler = Gtk.HBox()
@@ -2457,7 +2518,23 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 
     def setup_dnd (self):
         """Set up Drag-and-Drop for clustered control."""
-        return
+        # DnD source: cluster_swap
+        drag_targets = [
+            HiaDnd.CLUSTER_SWAP.target_same_app(),
+            ]
+        drag_actions = Gdk.DragAction.COPY
+        drag_buttons = Gdk.ModifierType.BUTTON1_MASK
+        w = self.ui.frame_arranger
+        w.drag_source_set(drag_buttons, drag_targets, drag_actions)
+        w.connect("drag-data-get", self.on_drag_data_get)
+        # DnD destination: cluster_swap
+        drop_targets = [
+            HiaDnd.CLUSTER_SWAP.target_same_app(),
+            ]
+        drop_dests = Gtk.DestDefaults.ALL
+        drop_actions = Gdk.DragAction.COPY
+        w.drag_dest_set(drop_dests, drop_targets, drop_actions)
+        w.connect("drag-data-received", self.on_drag_data_received)
 
     def on_notify_layout_name (self, inst, param):
         layoutname = self.layout_name
@@ -2468,6 +2545,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         try:
             self.ui.sel_sym
             self.ui.sel_sym.layout = layout
+            self.ui.frame_label.set_label(self.get_extended_label())
         except AttributeError:
             pass
 
@@ -2492,6 +2570,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_group_changed (self, hiaview, newgrp):
         return
     def on_layer_changed (self, hiaview, newlyr):
+        bindlist = self.get_bindlist()
+        self.layout_name = bindlist[self.view.layer].cmdtitle
         return
     def on_vislayers_changed (self, hiaview, vislayers):
         return
@@ -2509,6 +2589,23 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         inst.set_state(param)
         target = "tabular" if v else "planar"
         self.ui.sel_sym.set_visible_child_name(target)
+
+    def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        if info == HiaDnd.CLUSTER_SWAP:
+            """Swap cluster layout and bindings."""
+            hiasym = self.hiasym
+            seldata.set(seldata.get_target(), 8, hiasym)
+        return
+
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        if info == HiaDnd.CLUSTER_SWAP:
+            # Swap across layers.
+            othersym = str(seldata.get_data().decode())
+            bindstore = self.view.bindstore
+            group = self.view.group
+            layer = self.view.layer
+            self.controller.exchange_clusters_explicit(group,layer,self.hiasym, group,layer,othersym)
+            return
 
 #    __gsignals__ = dict(HiaBindable._gsignals)
 
@@ -2612,6 +2709,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
         # all button are destinations.
         drop_targets = [
             HiaDnd.SWAP.target_same_app(),
+            HiaDnd.CLUSTER_SWAP.target_same_app(),
             ]
         drop_dests = Gtk.DestDefaults.ALL
         drop_actions = Gdk.DragAction.COPY
@@ -2687,6 +2785,30 @@ class HiaSelectorGroup (HiaSelectorRadio):
             self.controller.pick_group(int(ofs))
         return
 
+    def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # dropped on group.
+        btn = w
+        nth = self.buttons.index(btn)
+        if nth < 0:
+            # Invalid destination.
+            return
+        dstgroup = nth
+        if info == HiaDnd.SWAP:
+            # Swap across groups.
+            hiasym = str(seldata.get_data().decode())
+            srcgroup = self.controller.view.group
+            dstgroup = nth
+            layer = self.controller.view.layer
+            self.controller.exchange_binds_explicit(srcgroup, layer, hiasym,  dstgroup, layer, hiasym)
+            return
+        elif info == HiaDnd.CLUSTER_SWAP:
+            hiasym = str(seldata.get_data().decode())
+            srcgroup = self.controller.view.group
+            dstgroup = nth
+            layer = self.controller.view.layer
+            self.controller.exchange_clusters_explicit(srcgroup, layer, hiasym,  dstgroup, layer, hiasym)
+            return
+
 
 class HiaSelectorLayer (HiaSelectorRadio):
     EXPAND_MEMBERS = True
@@ -2719,6 +2841,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
         self.update_widgets()
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
+        # drag from layer to sym.
         btn = w
         bindval = str(args[0])
         if info == HiaDnd.BIND:
@@ -2728,6 +2851,7 @@ class HiaSelectorLayer (HiaSelectorRadio):
         return
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
+        # dropped on layer.
         btn = w
         nth = self.buttons.index(btn)
         if nth < 0:
@@ -2741,6 +2865,12 @@ class HiaSelectorLayer (HiaSelectorRadio):
             group = self.controller.view.group
             self.controller.exchange_binds_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
             return
+        elif info == HiaDnd.CLUSTER_SWAP:
+            hiasym = str(seldata.get_data().decode())
+            srclayer = self.controller.view.layer
+            dstlayer = nth
+            group = self.controller.view.group
+            self.controller.exchange_clusters_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
 
 
 # Intended to be named HiaSelectorLayout, but spelling too similar to *Layer
@@ -3354,7 +3484,7 @@ class HiaPlanner (Gtk.HPaned):
                 self.ui.sel_device,
                 self.ui.sel_group,
                 self.ui.sel_layer,
-                self.ui.sel_bind,
+                self.ui.sel_sym,
                 ]:
             children.controller = self.controller
 
@@ -3366,7 +3496,7 @@ class HiaPlanner (Gtk.HPaned):
         # top-level HiaSelectorSym.
         details = self.view.device_details
         try:
-            self.ui.sel_bind.layout = details
+            self.ui.sel_sym.layout = details
         except AttributeError:
             pass
 
@@ -3383,7 +3513,7 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.sel_device = HiaSelectorDevice(self.controller)
         self.ui.sel_group = HiaSelectorGroup(self.controller)
         self.ui.sel_layer = HiaSelectorLayer(self.controller)
-        self.ui.sel_bind = HiaSelectorSym(self.controller)
+        self.ui.sel_sym = HiaSelectorSym(self.controller)
 
         self.ui.lhs = Gtk.VBox()
         self.ui.lhs.pack_start(self.ui.sel_cmd, True, True, 0)
@@ -3392,7 +3522,7 @@ class HiaPlanner (Gtk.HPaned):
         self.ui.rhs.pack_start(self.ui.sel_device, False, False, 0)
         self.ui.rhs.pack_start(self.ui.sel_group, False, False, 0)
         self.ui.rhs.pack_start(self.ui.sel_layer, False, False, 0)
-        self.ui.rhs.pack_start(self.ui.sel_bind, False, True, 0)
+        self.ui.rhs.pack_start(self.ui.sel_sym, False, True, 0)
 
         self.add1(self.ui.lhs)
         self.add2(self.ui.rhs)
@@ -3407,20 +3537,20 @@ class HiaPlanner (Gtk.HPaned):
     def setup_signals (self):
         """Set up signals within binds planner."""
 #        self.view.connect("device-changed", self.on_device_changed)
-        self.ui.sel_bind.connect("bind-assigned", self.on_bind_assigned)
-        self.ui.sel_bind.connect("bind-swapped", self.on_bind_swapped)
-        self.ui.sel_bind.connect("bind-erased", self.on_bind_erased)
-        self.ui.sel_bind.connect("sym-selected", self.on_sym_selected)
+        self.ui.sel_sym.connect("bind-assigned", self.on_bind_assigned)
+        self.ui.sel_sym.connect("bind-swapped", self.on_bind_swapped)
+        self.ui.sel_sym.connect("bind-erased", self.on_bind_erased)
+        self.ui.sel_sym.connect("sym-selected", self.on_sym_selected)
         return
 
     def on_device_changed (self, view, devname):
         # Top-level HiaSelectorSym.
         try:
-            self.ui.sel_bind
+            self.ui.sel_sym
         except AttributeError:
             return
         details = self.controller.view.device_details
-        self.ui.sel_bind.layout = details
+        self.ui.sel_sym.layout = details
 
     def on_layer_changed (self, view, layerid):
         # Top-level layer change -- update vislayers.
@@ -3637,7 +3767,7 @@ Holds app-wide GAction.
         self.planner = planner
 
         self.statusbar = Gtk.Statusbar()
-        self.statusbar.push(self.statusbar.get_context_id("status"), "Ready...")
+        self.statusbar.push(self.statusbar.get_context_id("status"), "Ready.")
 
         self.setup_menubar()
 
