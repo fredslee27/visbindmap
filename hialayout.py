@@ -318,26 +318,26 @@ BindValue = BindTreeValue
 class BindTreeStore (Gtk.TreeStore):
     def __init__ (self):
         # generic: (seq_id:int, key:str, label:str, code:str, ephemeral:object)
-        # depth=1: (group_id:int, _:str, group_label:str, None:str, None:object)
+        # depth=1: (mode_id:int, _:str, mode_label:str, None:str, None:object)
         # depth=2: (layer_id:int, _:str, layer_label:str, layer_bindable:str, bind_dict:object)
         # depth=3: (_:int, hiasym:str, cmdtitle:str, cmdcode:str, None)
 # (depth 0 is tree root)
-# at depth 1, correspond to Group selector model
+# at depth 1, correspond to Mode selector model
 # at depth 2, correspond to Layer selector model
 # at depth 3, association list of (hiasym, cmdtitle, cmdcode), mapping of a unique keysym to an arbitrary display string and an output-specific coding value.
         Gtk.TreeStore.__init__(self, int,str,str,str,object)
-        self._slicetree_groups = None
+        self._slicetree_modes = None
         self._slicetree_layers = None
         self.setup_sanity()
 
     def setup_sanity (self):
         if 0 == len(self):
-            self.add_group("GLOBAL")
+            self.add_mode("GLOBAL")
         if 0 == self.iter_n_children(self.get_iter_first()):
             self.add_layer("base")
 
     # nominal maximums; shorts are created on demand, excesses hidden.
-    ngroups = GObject.Property(type=int, default=1)
+    nmodes = GObject.Property(type=int, default=1)
     nlayers = GObject.Property(type=int, default=1)
 
     @staticmethod
@@ -349,7 +349,7 @@ class BindTreeStore (Gtk.TreeStore):
         return retval
 
     @staticmethod
-    def is_group_depth (treemdl, treeiter, *args):
+    def is_mode_depth (treemdl, treeiter, *args):
         return BindTreeStore.iter_depth(treemdl, treeiter) == 1
 
     @staticmethod
@@ -361,39 +361,39 @@ class BindTreeStore (Gtk.TreeStore):
         return BindTreeStore.iter_depth(treemdl, treeiter) == 3
 
     @GObject.Property(type=object)
-    def groups (self):
-        """Get TreeModel representing available groups for selection."""
-        if not self._slicetree_groups:
-            self._slicetree_groups = Gtk.TreeStore.filter_new(self, None)
-            self._slicetree_groups.set_visible_func(self.is_group_depth)
-        return self._slicetree_groups
+    def modes (self):
+        """Get TreeModel representing available modes for selection."""
+        if not self._slicetree_modes:
+            self._slicetree_modes = Gtk.TreeStore.filter_new(self, None)
+            self._slicetree_modes.set_visible_func(self.is_mode_depth)
+        return self._slicetree_modes
     @GObject.Property(type=object)
     def layers (self):
         """Get TreeModel representing available layers for selection."""
-        path_group = Gtk.TreePath.new_first()
+        path_mode = Gtk.TreePath.new_first()
         def filter_layer (treemdl, treeiter, *args):
             parentpath = treemdl.get_path(treemdl.iter_parent(treeiter))
-            return parentpath == path_group
+            return parentpath == path_mode
         if not self._slicetree_layers:
-            self._slicetree_layers = Gtk.TreeStore.filter_new(self, path_group)
+            self._slicetree_layers = Gtk.TreeStore.filter_new(self, path_mode)
             self._slicetree_layers.set_visible_func(self.is_layer_depth)
         return self._slicetree_layers
 
-    def get_group (self, group_id):
-        return self[group_id]
+    def get_mode (self, mode_id):
+        return self[mode_id]
 
-    def get_layer (self, group_id, layer_id):
-        return self[(group_id,layer_id)]
+    def get_layer (self, mode_id, layer_id):
+        return self[(mode_id,layer_id)]
 
-    def add_group (self, group_name, group_code=None):
-        """Add another group available for selection."""
-        grp_id = len(self)
-        rowdata = (grp_id,"", group_name, group_code, None)
-        iter_group = self.append( None, rowdata )
-        self.ngroups = grp_id+1
-        self._slicetree_groups = None  # Invalidate sliced tree.
-        self.emit("ngroups-changed", self.ngroups)
-        return grp_id
+    def add_mode (self, mode_name, mode_code=None):
+        """Add another mode available for selection."""
+        mode_id = len(self)
+        rowdata = (mode_id,"", mode_name, mode_code, None)
+        iter_mode = self.append( None, rowdata )
+        self.nmodes = mode_id+1
+        self._slicetree_modes = None  # Invalidate sliced tree.
+        self.emit("mode-names-changed", self.modes)
+        return mode_id
 
     def add_layer (self, layer_name=None, layer_code=None):
         """Add another layer available for selection."""
@@ -407,23 +407,23 @@ class BindTreeStore (Gtk.TreeStore):
         iter_layer = self.append( iter_global, rowdata )
         self.nlayers = lyr_id+1
         self._slicetree_layers = None  # Invalidate sliced tree.
-        # TODO: handle 'row-added' to propagate to all other groups.
+        # TODO: handle 'row-added' to propagate to all other modes.
 
-        grpiter = self.get_iter_first()
-        grpiter = self.iter_next(grpiter)
-        while grpiter:
-            lyriter = self.append( grpiter, rowdata )
-            grpiter = self.iter_next(grpiter)
+        modeiter = self.get_iter_first()
+        modeiter = self.iter_next(modeiter)
+        while modeiter:
+            lyriter = self.append( modeiter, rowdata )
+            modeiter = self.iter_next(modeiter)
 
         #self.emit("nlayers-changed", 0, self.nlayers)
         self.emit("layer-names-changed", self.layers, 0)
         return lyr_id
 
-    def rename_group (self, group_id, group_name, group_code=None):
-        path_target = Gtk.TreePath([group_id])
-        self[path_target][2] = group_name
-        self[path_target][3] = group_code
-        self._slicetree_groups = None  # Invalidate sliced tree.
+    def rename_mode (self, mode_id, mode_name, mode_code=None):
+        path_target = Gtk.TreePath([mode_id])
+        self[path_target][2] = mode_name
+        self[path_target][3] = mode_code
+        self._slicetree_modes = None  # Invalidate sliced tree.
 
     def rename_layer (self, layer_id, layer_name, layer_code=None):
         path_global = Gtk.TreePath([0])
@@ -432,32 +432,32 @@ class BindTreeStore (Gtk.TreeStore):
         self[path_target][3] = layer_code
         self._slicetree_layers = None  # Invalidate sliced tree.
 
-    def del_group (self, group_id):
-        """Delete group by id; cannot delete 0."""
-        if group_id == 0:
-            raise ValueError("Cannot delete global group (consider clear_group()?)")
-        path_target = Gtk.TreePath([group_id])
+    def del_mode (self, mode_id):
+        """Delete mode by id; cannot delete 0."""
+        if mode_id == 0:
+            raise ValueError("Cannot delete global mode (consider clear_mode()?)")
+        path_target = Gtk.TreePath([mode_id])
         iter_target = self.get_iter(path_target)
         self.remove(iter_target)
-        self.ngroups -= 1
-        self._slicetree_groups = None  # Invalidate sliced tree.
+        self.nmodes -= 1
+        self._slicetree_modes = None  # Invalidate sliced tree.
 
     def del_layer (self, layer_id):
         """Delete layer by id; cannot delete last remaining layer."""
-        group_id = 0
-        layers = self.iter_n_children(Gkt.TreePath([group_id]))
+        mode_id = 0
+        layers = self.iter_n_children(Gkt.TreePath([mode_id]))
         if len(layers) == 1:
             raise ValueError("Cannot delete final remaining layer (consider clear_layer()?)")
-        path_target = Gtk.TreePath([group_id,layer_id])
+        path_target = Gtk.TreePath([mode_id,layer_id])
         iter_target = self.get_iter(path_target)
         self.remove(iter_target)
-        # TODO: handle 'row-deleted' to propagate to all other groups.
+        # TODO: handle 'row-deleted' to propagate to all other modes.
         self.nlayers -= 1
         self._slicetree_layers = None  # Invalidate sliced tree.
 
-    def clear_layer (self, group_id, layer_id):
+    def clear_layer (self, mode_id, layer_id):
         """Remove all binds in layer."""
-        path_layer = Gtk.TreePath([group_id,layer_id])
+        path_layer = Gtk.TreePath([mode_id,layer_id])
         iter_layer = self.get_iter(path_layer)
         row_layer = self[path_layer]
         # Delete all binds.
@@ -468,71 +468,71 @@ class BindTreeStore (Gtk.TreeStore):
         # Invalidate dict.
         row_layer[4].clear()
 
-    def clear_group (self, group_id):
+    def clear_mode (self, mode_id):
         """Erase all binds, remove all non-first layers."""
-        path_group = Gtk.TreePath([group_id])
-        iter_group = self.get_iter(path_group)
-        row_group = self[path_group]
+        path_mode = Gtk.TreePath([mode_id])
+        iter_mode = self.get_iter(path_mode)
+        row_mode = self[path_mode]
         # Remove non-first layers.
-        iter_layer = self.iter_children(iter_group)
+        iter_layer = self.iter_children(iter_mode)
         iter_target = self.iter_next(iter_layer)
         if iter_target:
             while self.remove(iter_target):
                 pass
         # Clear first layer.
-        self.clear_layer(group_id, 0)
+        self.clear_layer(mode_id, 0)
         self._slicetree_layers = None  # Invalidate sliced tree.
         self.nlayers = 1
 
     def clear_bindstore (self):
-        """Erase everything, reset groups and layers."""
+        """Erase everything, reset modes and layers."""
         iter_first = self.get_iter_first()
         if not iter_first:
             self.setup_sanity()
             return
-        # Remove non-first groups.
+        # Remove non-first modes.
         iter_target = self.iter_next(iter_first)
         if iter_target:
             while self.remove(iter_target):
                 pass
-        # Clear first group.
-        self.clear_group(0)
-        self._slicetree_groups = None  # Invalidate sliced tree.
+        # Clear first mode.
+        self.clear_mode(0)
+        self._slicetree_modes = None  # Invalidate sliced tree.
         self._slicetree_layers = None  # Invalidate sliced tree.
-        self.ngroups = 1
-        # Rename first group and first layer.
+        self.nmodes = 1
+        # Rename first mode and first layer.
         try:
             self[0] = (0,"", "GLOBAL", "GLOBAL", None)
             self[(0,0)] = (0,"", "base", None, None)
         except KeyError:
             pass
-        self.emit("group-names-changed", self.groups)
+        self.emit("mode-names-changed", self.modes)
         self.emit("layer-names-changed", self.layers, 0)
         self.emit("bind-changed", 0, 0, "", "", "")
 
-    def find_group (self, group_name):
-        """Convert group name to group id; returns -1 if no match."""
-        groupid = 0
-        groups = self.groups
-        for groupid in len(groups):
-            if groups[groupd][2] == group_name:
-                return groupid
+    def find_mode (self, mode_name):
+        """Convert mode name to mode id; returns -1 if no match."""
+        modeid = 0
+        modes = self.modes
+        for modeid in len(modes):
+            if modes[moded][2] == mode_name:
+                return modeid
         return -1
 
-    def get_bind (self, groupid, layerid, hiasym, default=None):
-        """Get bind specified by group, layer, and keysym,
+    def get_bind (self, modeid, layerid, hiasym, default=None):
+        """Get bind specified by mode, layer, and keysym,
 returns BindValue."""
         try:
-            row_group = self[groupid]
+            row_mode = self[modeid]
         except IndexError as e:
-            if groupid < self.ngroups:
+            if modeid < self.nmodes:
                 return default
             else:
                 raise e
         try:
-            row_layer = self[[groupid,layerid]]
+            row_layer = self[[modeid,layerid]]
         except IndexError as e:
-            if groupid < self.nlayers:
+            if modeid < self.nlayers:
                 return default
             else:
                 raise e
@@ -546,8 +546,8 @@ returns BindValue."""
             return default
         return BindTreeValue(row_bind[2], row_bind[3])
 
-    def put_bind (self, groupid, layerid, hiasym, cmdtitle_or_bindvalue, cmdcode=None):
-        """Assign binding to hiasym in specified groupid and layerid."""
+    def put_bind (self, modeid, layerid, hiasym, cmdtitle_or_bindvalue, cmdcode=None):
+        """Assign binding to hiasym in specified modeid and layerid."""
         bindvalue = None
         cmdtitle = None
         if isinstance(cmdtitle_or_bindvalue, BindTreeValue):
@@ -557,8 +557,8 @@ returns BindValue."""
         else:
             cmdtitle = cmdtitle_or_bindvalue
             bindvalue = BindTreeValue(cmdtitle_or_bindvalue, cmdcode)
-        row_group = self[groupid]
-        row_layer = self[[groupid,layerid]]
+        row_mode = self[modeid]
+        row_layer = self[[modeid,layerid]]
         row_bind = None
         for probe in row_layer.iterchildren():
             if probe[1] == hiasym:
@@ -575,19 +575,19 @@ returns BindValue."""
         else:
             row_bind[2] = cmdtitle
             row_bind[3] = cmdcode
-        self.emit("bind-changed", groupid, layerid, hiasym, cmdtitle, cmdcode)
+        self.emit("bind-changed", modeid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
     set_bind = put_bind
 
     def iter_binds (self):
-        """Iterate through all binds in store, yielding tuples (group_id:int, layer_id:int, hiasym:str, cmdtitle:str, cmdcode:str)"""
-        grpid = 0
+        """Iterate through all binds in store, yielding tuples (mode_id:int, layer_id:int, hiasym:str, cmdtitle:str, cmdcode:str)"""
+        modeid = 0
         lyrid = 0
         symid = 0
-        for row_group in self:
-            iter_group = row_group.iter
-            layers = self.iter_children(iter_group)
+        for row_mode in self:
+            iter_mode = row_mode.iter
+            layers = self.iter_children(iter_mode)
             lyrid = 0
             for row_layer in layers:
                 iter_layer = row_layer.iter
@@ -597,10 +597,10 @@ returns BindValue."""
                     hiasym = row_bind[1]
                     cmdtitle = row_bind[2]
                     cmdcode = row_bind[3]
-                    yield (grpid, lyrid, hiasym, cmdtitle, cmdcode)
+                    yield (modeid, lyrid, hiasym, cmdtitle, cmdcode)
                     symid += 1
                 lyrid += 1
-            grpid += 1
+            modeid += 1
         return
 
     def clear (self):
@@ -628,7 +628,7 @@ returns BindValue."""
             iter_add = treemodel.append(anchoriter, rowdata)
             if subprime:
                 self.deserialize_tree(subprime, treemodel, iter_add)
-        self._slicetree_groups = None
+        self._slicetree_modes = None
         self._slicetree_layers = None
         return
 
@@ -639,7 +639,7 @@ returns BindValue."""
         bindstore = primitives['data']
         Gtk.TreeStore.clear(self)
         self.deserialize_tree(bindstore, self, None)
-        self.emit("group-names-changed", self.groups)
+        self.emit("mode-names-changed", self.modes)
         self.emit("layer-names-changed", self.layers, 0)
         self.emit("bind-changed", 0, 0, "", "", "")
         return
@@ -653,7 +653,7 @@ returns BindValue."""
 
     __gsignals__ = AbbrevSignals([
         ("layer-names-changed", object, int),
-        ("group-names-changed", object),
+        ("mode-names-changed", object),
         ("bind-changed", int, int, str, str, str),
 
         # DEPRECATED
@@ -734,7 +734,7 @@ class HiaView (GObject.Object):
 
     device_name = GObject.Property(type=str, default="")
     device_details = GObject.Property(type=object)  # instance of LayoutStore, references self.layouts[].
-    group = GObject.Property(type=int, default=0)
+    mode = GObject.Property(type=int, default=0)
     layer = GObject.Property(type=int, default=0)
     nvislayers = GObject.Property(type=int, default=1)  # iter wrapper to _nvislayers bitvector.
     _vislayers = BitVector(1)
@@ -764,9 +764,8 @@ class HiaView (GObject.Object):
         return self.bindstore.nlayers
 
     @GObject.Property(type=object)
-    def ngroups (self):
-        #return self.axes.iter_n_children(None)
-        return self.bindstore.ngroups
+    def nmodes (self):
+        return self.bindstore.nmodes
 
 
 
@@ -780,7 +779,7 @@ class HiaView (GObject.Object):
     def setup_properties (self):
         self.connect('notify::device-name', self.on_notify_device_name)
         self.connect('notify::device-details', self.on_notify_device_details)
-        self.connect('notify::group', self.on_notify_group)
+        self.connect('notify::mode', self.on_notify_mode)
         self.connect('notify::layer', self.on_notify_layer)
         #self.connect('notify::vislayers', self.on_notify_vislayers)
         self.connect('notify::bindstore', self.on_notify_bindstore)
@@ -816,17 +815,15 @@ class HiaView (GObject.Object):
     def on_notify_device_details (self, inst, param):
         self.emit("device-changed", self.device_name)
         return
-    def on_notify_group (self, inst, param):
-        self.emit("group-changed", self.group)
+    def on_notify_mode (self, inst, param):
+        self.emit("mode-changed", self.mode)
     def on_notify_layer (self, inst, param):
         self.emit("layer-changed", self.layer)
     def on_notify_bindstore (self, inst, param):
         bindstore = self.bindstore
         bindstore.connect("bind-changed", self.on_bindstore_bind_changed)
-        bindstore.connect('group-names-changed', self.on_bindstore_group_names_changed)
+        bindstore.connect('mode-names-changed', self.on_bindstore_mode_names_changed)
         bindstore.connect('layer-names-changed', self.on_bindstore_layer_names_changed)
-        #bindstore.connect("ngroups-changed", self.on_bindstore_ngroups_changed)
-        #bindstore.connect("nlayers-changed", self.on_bindstore_nlayers_changed)
         self.emit("bindstore-changed", self.bindstore)
     def on_notify_layouts (self, inst, param):
         if not self.layouts:
@@ -841,9 +838,9 @@ class HiaView (GObject.Object):
     def on_notify_nvislayers (self, inst, param):
         self.emit("layer-changed", self.layer)
 
-    def on_bindstore_group_names_changed (self, bindstore, mdl):
-        self.emit("group-names-changed", mdl)
-    def on_bindstore_layer_names_changed (self, bindstore, mdl, groupid):
+    def on_bindstore_mode_names_changed (self, bindstore, mdl):
+        self.emit("mode-names-changed", mdl)
+    def on_bindstore_layer_names_changed (self, bindstore, mdl, modeid):
         # Auto-resize vislayers to new number of layers.
         vislayers = self.vislayers[:]
         nlayers = self.nlayers
@@ -853,19 +850,17 @@ class HiaView (GObject.Object):
         if len(vislayers) > nlayers:
             vislayers = vislayers[:nlayers]
         self.vislayers = vislayers
-        self.emit("layer-names-changed", mdl, groupid)
-    def on_bindstore_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
-        self.emit("bind-changed", groupid, layerid, hiasym, newtitle, newcode)
-    def on_bindstore_ngroups_changed (self, bindstore, ngroups):
-        self.emit("ngroups-changed", ngroups)
-#    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
-#        return
+        self.emit("layer-names-changed", mdl, modeid)
+    def on_bindstore_bind_changed (self, bindstore, modeid, layerid, hiasym, newtitle, newcode):
+        self.emit("bind-changed", modeid, layerid, hiasym, newtitle, newcode)
+#    def on_bindstore_nmodes_changed (self, bindstore, nmodes):
+#        self.emit("nmodes-changed", nmodes)
 
     __gsignals__ = {
         # change in selected device (layout) name
         str("device-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (str,)),
-        # change in selected group.
-        str("group-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
+        # change in selected mode.
+        str("mode-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
         # change in selected layer.
         str("layer-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int,)),
         # content of vislayers changed.
@@ -875,12 +870,12 @@ class HiaView (GObject.Object):
         # new instance of HiaLayouts assigned
         str("layouts-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (object,)),
         # Relay bindstore.
-        # bind-changed(group,layer,hiasym,newtitle,newcode)
+        # bind-changed(mode,layer,hiasym,newtitle,newcode)
         str("bind-changed"): ( GObject.SIGNAL_RUN_FIRST, None, (int, int, str, str, str)),
-        str("ngroups-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
-        str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
+#        str("nmodes-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int,) ),
+#        str("nlayers-changed"): (GObject.SIGNAL_RUN_FIRST, None, (int, int) ),
 
-        str("group-names-changed"): (GObject.SIGNAL_RUN_FIRST, None, (object,) ),
+        str("mode-names-changed"): (GObject.SIGNAL_RUN_FIRST, None, (object,) ),
         str("layer-names-changed"): (GObject.SIGNAL_RUN_FIRST, None, (object, int) ),
     }
 
@@ -1054,19 +1049,19 @@ class HiaControl (GObject.Object):
 
     @HiaSimpleAction(param_type="s", init_state=None, stock_id=None)
     def act_pick_device (self, action, param):
-        """Pick HiaGroup
-Specify HiaGroup to make focus"""
+        """Pick HiaDevice
+Specify HiaDevice to make focus"""
         self.view.device_name = param.get_string()
         # TODO: try interpret as int?
         logger.info("Using device %r" % self.view.device_name)
         return
 
     @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
-    def act_pick_group (self, action, param):
-        """Pick HiaGroup
-Specify HiaGroup to make focus"""
-        self.view.group = param.get_int32()
-        logger.info("Focusing group %r" % self.view.group)
+    def act_pick_mode (self, action, param):
+        """Pick HiaMode
+Specify HiaMode to make focus"""
+        self.view.mode = param.get_int32()
+        logger.info("Focusing mode %r" % self.view.mode)
         return
 
     @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -1102,29 +1097,29 @@ Specify HiaLayer to make focus."""
 
     @HiaSimpleAction(param_type="(iisss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
-        (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
-        self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
+        (modeid, layerid, hiasym, cmdtitle, cmdcode) = param
+        self.view.bindstore.set_bind(modeid, layerid, hiasym, cmdtitle, cmdcode)
         logger.info("Assigned bind %r" % hiasym)
         return
 
     @HiaSimpleAction(param_type="(sss)", init_state=None, stock_id=None)
     def act_assign_bind (self, action, param):
         (hiasym, cmdtitle, cmdcode) = param
-        (groupid, layerid) = (self.view.group, self.view.layer)
-        self.assign_bind_explicit(groupid, layerid, hiasym, cmdtitle, cmdcode)
+        (modeid, layerid) = (self.view.mode, self.view.layer)
+        self.assign_bind_explicit(modeid, layerid, hiasym, cmdtitle, cmdcode)
         return
 
     @HiaSimpleAction("(iis)")
     def act_erase_bind_explicit (self, action, param):
-        (groupid, layerid, hiasym) = param
-        self.view.bindstore.set_bind(groupid, layerid, hiasym, None, None)
+        (modeid, layerid, hiasym) = param
+        self.view.bindstore.set_bind(modeid, layerid, hiasym, None, None)
         return
 
     @HiaSimpleAction("s")
     def act_erase_bind (self, action, param):
         hiasym = param.get_string()
-        (groupid, layerid) = (self.view.group, self.view.layer)
-        self.erase_bind_explicit(groupid, layerid, hiasym)
+        (modeid, layerid) = (self.view.mode, self.view.layer)
+        self.erase_bind_explicit(modeid, layerid, hiasym)
         logger.info("Erased bind %r" % hiasym)
         return
 
@@ -1132,16 +1127,16 @@ Specify HiaLayer to make focus."""
     def act_exchange_binds_explicit (self, action, param):
         """Exchange binds between syms, compleat path specifications.
 """
-        (groupA, layerA, symA, groupB, layerB, symB) = param
-        bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
-        bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
+        (modeA, layerA, symA, modeB, layerB, symB) = param
+        bvA = self.view.bindstore.get_bind(modeA, layerA, symA)
+        bvB = self.view.bindstore.get_bind(modeB, layerB, symB)
         cmdtitleA, cmdtitleB, cmdcodeA, cmdcodeB = "", "", "", ""
         if bvA:
             cmdtitleA, cmdcodeA = bvA.cmdtitle, bvA.cmdcode
         if bvB:
             cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
-        self.view.bindstore.set_bind(groupA, layerA, symA, cmdtitleB, cmdcodeB)
-        self.view.bindstore.set_bind(groupB, layerB, symB, cmdtitleA, cmdcodeA)
+        self.view.bindstore.set_bind(modeA, layerA, symA, cmdtitleB, cmdcodeB)
+        self.view.bindstore.set_bind(modeB, layerB, symB, cmdtitleA, cmdcodeA)
         logger.info("Swapped binds %r and %r" % (symA, symB))
         return
 
@@ -1150,16 +1145,16 @@ Specify HiaLayer to make focus."""
         """Exchange binds between syms.
 """
         symA, symB = param
-        groupA = groupB = self.view.group
+        modeA = modeB = self.view.mode
         layerA = layerB = self.view.layer
-        self.exchange_binds_explicit(groupA,layerA,symA, groupB,layerB,symB)
+        self.exchange_binds_explicit(modeA,layerA,symA, modeB,layerB,symB)
         return
 
     @HiaSimpleAction("(iisiis)")
     def act_exchange_clusters_explicit (self, action, param):
-        (groupA, layerA, symA, groupB, layerB, symB) = param
-#        bvA = self.view.bindstore.get_bind(groupA, layerA, symA)
-#        bvB = self.view.bindstore.get_bind(groupB, layerB, symB)
+        (modeA, layerA, symA, modeB, layerB, symB) = param
+#        bvA = self.view.bindstore.get_bind(modeA, layerA, symA)
+#        bvB = self.view.bindstore.get_bind(modeB, layerB, symB)
         #hiaA = (self.groupwin).planner.ui.sel_sym.hiachildren(symA)
         win = self.groupwin
         planner = win.planner
@@ -1168,10 +1163,10 @@ Specify HiaLayer to make focus."""
         hiaA = sel_sym.hiachildren[symA]
         hiaB = sel_sym.hiachildren[symB]
 
-        def resolve_bind (grp, lyr, sym):
-            bv = bindstore.get_bind(grp, lyr, sym)
+        def resolve_bind (mode, lyr, sym):
+            bv = bindstore.get_bind(mode, lyr, sym)
             if bv: return bv
-            bv = bindstore.get_bind(grp, 0, sym)
+            bv = bindstore.get_bind(mode, 0, sym)
             if bv: return bv
             bv = bindstore.get_bind(0, lyr, sym)
             if bv: return bv
@@ -1180,36 +1175,36 @@ Specify HiaLayer to make focus."""
 
         # temp is snapshot of A
         temp = []
-        bvA = resolve_bind(groupA, layerA, symA)
+        bvA = resolve_bind(modeA, layerA, symA)
         temp.append( (symA, bvA) )
         for subsymA in hiaA.hiachildren:
             subhiaA = hiaA.hiachildren[subsymA]
-            temp.append( (subsymA, bindstore.get_bind(groupA, layerA, subsymA)) )
+            temp.append( (subsymA, bindstore.get_bind(modeA, layerA, subsymA)) )
 
         # Transfer B into A
-        #bvB = bindstore.get_bind(groupB, layerB, symB)
-        bvB = resolve_bind(groupB, layerB, symB)
+        #bvB = bindstore.get_bind(modeB, layerB, symB)
+        bvB = resolve_bind(modeB, layerB, symB)
         if bvB:
             cmdtitle, cmdcode = bvB.cmdtitle, bvB.cmdcode
         else:
             cmdtitle, cmdcode = "", ""
-        bindstore.set_bind(groupA, layerA, symA, cmdtitle, cmdcode)
+        bindstore.set_bind(modeA, layerA, symA, cmdtitle, cmdcode)
         for subsymB in hiaB.hiachildren:
             suffix = subsymB[len(symB):]
             subhiaB = hiaB.hiachildren[subsymB]
             subsymA = "{}{}".format(symA, suffix)
-            bvB = bindstore.get_bind(groupB, layerB, subsymB)
+            bvB = bindstore.get_bind(modeB, layerB, subsymB)
             if bvB:
                 cmdtitle, cmdcode = bvB.cmdtitle, bvB.cmdcode
             else:
                 cmdtitle, cmdcode = "", ""
-            bindstore.set_bind(groupA, layerA, subsymA, cmdtitle, cmdcode)
+            bindstore.set_bind(modeA, layerA, subsymA, cmdtitle, cmdcode)
 
         # Transfer temp into B
         for sym,val in temp:
             suffix = sym[len(symA):]
             subsymB = "{}{}".format(symB, suffix)
-            bindstore.set_bind(groupB, layerB, subsymB, val)
+            bindstore.set_bind(modeB, layerB, subsymB, val)
 
         logger.info("Swapped clusters %r and %r" % (symA, symB))
         return
@@ -1224,19 +1219,19 @@ Erases all bindings.
         return
 
     @HiaSimpleAction("(s*)")  # (sms)
-    def act_add_group (self, action, param):
-        (group_name, group_code) = param
-        self.view.bindstore.add_group(group_name, group_code)
+    def act_add_mode (self, action, param):
+        (mode_name, mode_code) = param
+        self.view.bindstore.add_mode(mode_name, mode_code)
 
     @HiaSimpleAction("(is*)")  # (tsms)
-    def act_rename_group (self, action, param):
-        (groupid, group_name, group_code) = param
-        self.view.bindstore.rename_group(groupid, group_name, group_code)
+    def act_rename_mode (self, action, param):
+        (modeid, mode_name, mode_code) = param
+        self.view.bindstore.rename_mode(modeid, mode_name, mode_code)
 
     @HiaSimpleAction("i")
-    def act_del_group (self, action, param):
-        groupid = param
-        self.view.bindstore.del_group(groupid)
+    def act_del_mode (self, action, param):
+        modeid = param
+        self.view.bindstore.del_mode(modeid)
 
     @HiaSimpleAction("(s*)")  # (sms)
     def act_add_layer (self, action, param):
@@ -1359,10 +1354,10 @@ class HiaBind (object):
                 # defer to first layer
                 dispval = "<i>{}</i>".format(lbl)
             elif self.redirects == 2:
-                # deferred to first group, current layer.
+                # deferred to first mode, current layer.
                 dispval = "<b>{}</b>".format(lbl)
             elif self.redirects == 3:
-                # deferred to first group, first layer.
+                # deferred to first mode, first layer.
                 dispval = "<b><i>{}</i></b>".format(lbl)
             else:
                 dispval = "<small><b>{}</b></small>".format(lbl)
@@ -1418,7 +1413,7 @@ For HiaCluster, affects what layout to use.
         val = self.view
         val.connect("bind-changed", self.on_bind_changed)
         val.connect("bindstore-changed", self.on_bindstore_changed)
-        val.connect("group-changed", self.on_group_changed)
+        val.connect("mode-changed", self.on_mode_changed)
         val.connect("layer-changed", self.on_layer_changed)
         val.connect("vislayers-changed", self.on_vislayers_changed)
 
@@ -1441,7 +1436,7 @@ For HiaCluster, affects what layout to use.
         return
     def on_bind_changed (self, bindstore, hiasym, newtitle, newcode):
         pass
-    def on_group_changed (self, hiaview, newgrp):
+    def on_mode_changed (self, hiaview, newmode):
         pass
     def on_layer_changed (self, hiaview, newlyr):
         pass
@@ -1452,10 +1447,10 @@ For HiaCluster, affects what layout to use.
         """Return list of HiaBind (one per layer)."""
         retval = []
         for lid in range(self.bindstore.nlayers):
-            grpid = self.view.group
+            modeid = self.view.mode
             redirections = [
-                (grpid, lid),
-                (grpid, 0),
+                (modeid, lid),
+                (modeid, 0),
                 (0, lid),
                 (0, 0) ]
             hiabind = None
@@ -1508,7 +1503,7 @@ Drag-and-Drop
   * to CmdPackView = erase bind
   * to other HiaTop = swap bind
   * to Layer Selector = swap bind across layer
-  * to Group Selector = swap bind across group
+  * to Mode Selector = swap bind across mode
 * as destination:
   * from CmdPackView = set/copy bind
   * from other HiaTop = swap bind
@@ -1572,7 +1567,7 @@ Drag-and-Drop
     def setup_signals (self):
         """Set up widget signals within key top."""
         self.ui.button.connect("clicked", self.on_button_clicked)
-        self.view.connect("group-changed", self.on_group_changed)
+        self.view.connect("mode-changed", self.on_mode_changed)
         self.view.connect("layer-changed", self.on_layer_changed)
         self.view.connect("vislayers-changed", self.on_vislayers_changed)
         return
@@ -1683,10 +1678,10 @@ Drag-and-Drop
         self.update_widgets()
         return
 
-    def on_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
+    def on_bind_changed (self, bindstore, modeid, layerid, hiasym, newtitle, newcode):
         bindlist = self.get_bindlist()
         self.binddisp = bindlist
-    def on_group_changed (self, hiaview, newgrp):
+    def on_mode_changed (self, hiaview, newmode):
         bindlist = self.get_bindlist()
         self.binddisp = bindlist
     def on_layer_changed (self, hiaview, newlyr):
@@ -2273,7 +2268,7 @@ class HiaSelectorSym (Gtk.Stack):
     def on_notify_view (self, inst, param):
         self.view.connect("vislayers-changed", self.on_view_vislayers_changed)
         self.view.connect("layer-changed", self.on_view_layer_changed)
-        self.view.connect("group-changed", self.on_view_group_changed)
+        self.view.connect("mode-changed", self.on_view_mode_changed)
         self.set_vislayers(self.view.vislayers)
         self.set_layer(self.view.layer)
         return
@@ -2331,7 +2326,7 @@ class HiaSelectorSym (Gtk.Stack):
                 grid.attach(hw, x, y, w, h)
             if y > max_row:
                 max_row = y
-            bv = self.view.bindstore.get_bind(self.view.group, self.view.layer, hiasym)
+            bv = self.view.bindstore.get_bind(self.view.mode, self.view.layer, hiasym)
             if bv:
                 hw.layout_name = bv.cmdtitle
         for y in range(max_row):
@@ -2383,7 +2378,7 @@ class HiaSelectorSym (Gtk.Stack):
 #            colI = Gtk.TreeViewColumn(titleI, cellI, markup=i+1)
             colI = Gtk.TreeViewColumn()
             colI.set_expand(True)
-            headerI = Gtk.Label(titleI)
+            headerI = Gtk.Label(label=titleI)
             headerI.show()
             colI.set_widget(headerI)
             colI.pack_start(cellI, True)
@@ -2436,7 +2431,7 @@ class HiaSelectorSym (Gtk.Stack):
     def on_sym_selected (self, w, hiasym):
         self.emit("sym-selected", hiasym)
 
-    def on_bind_changed (self, bindstore, grp, lyr, hiasym, newtitle, newcode):
+    def on_bind_changed (self, bindstore, mode, lyr, hiasym, newtitle, newcode):
         bindpath = None
         for bindrow in self.listmodel:
             if bindrow[0] == hiasym:
@@ -2447,7 +2442,7 @@ class HiaSelectorSym (Gtk.Stack):
                     bindrow[i+1] = bindlist[i]
         self.ui.listview.queue_draw()
 
-    def set_group (self, layer_id):
+    def set_mode (self, layer_id):
         self.rebuild_listmodel()
         self.rebuild_listview()
         return
@@ -2483,8 +2478,8 @@ class HiaSelectorSym (Gtk.Stack):
                 pass
         return
 
-    def on_view_group_changed (self, view, group_id):
-        self.set_group(group_id)
+    def on_view_mode_changed (self, view, mode_id):
+        self.set_mode(mode_id)
     def on_view_layer_changed (self, view, layer_id):
         self.set_layer(layer_id)
     def on_view_vislayers_changed (self, view, vislayers):
@@ -2663,8 +2658,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_menu_activate_layout (self, *args):
         pass
 
-    def on_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
-        # TODO: check current group and layer.
+    def on_bind_changed (self, bindstore, modeid, layerid, hiasym, newtitle, newcode):
+        # TODO: check current mode and layer.
         if hiasym == self.hiasym:
             if not newtitle:
                 bindlist = self.get_bindlist()
@@ -2672,9 +2667,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             self.layout_name = newtitle
             self.label = "{} <{}>".format(self.hiasym, self.layout_name)
         if hiasym in self.hiachildren:
-            self.ui.sel_sym.on_bind_changed(bindstore, groupid, layerid, hiasym, newtitle, newcode)
+            self.ui.sel_sym.on_bind_changed(bindstore, modeid, layerid, hiasym, newtitle, newcode)
         return
-    def on_group_changed (self, hiaview, newgrp):
+    def on_mode_changed (self, hiaview, newmode):
         return
     def on_layer_changed (self, hiaview, newlyr):
         bindlist = self.get_bindlist()
@@ -2709,9 +2704,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             # Swap across layers.
             othersym = str(seldata.get_data().decode())
             bindstore = self.view.bindstore
-            group = self.view.group
+            mode = self.view.mode
             layer = self.view.layer
-            self.controller.exchange_clusters_explicit(group,layer,self.hiasym, group,layer,othersym)
+            self.controller.exchange_clusters_explicit(mode,layer,self.hiasym, mode,layer,othersym)
             return
 
 #    __gsignals__ = dict(HiaBindable._gsignals)
@@ -2801,7 +2796,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
             self.ui.top.remove(ch)
         self.buttons = []
         self.labels = []
-        group = None
+        mode = None
         namelist = self.get_axislist()
         btn_id = 0
 
@@ -2825,14 +2820,13 @@ Convenience property 'names' to access/mutate with python list-of-str.
             #name = listrow[0]
             name = listrow[2]
             code = listrow[3]
-            #b = Gtk.RadioButton(group=group, label=name)
-            b = Gtk.RadioButton(group=group)
+            b = Gtk.RadioButton(group=mode)
             b.cmdcode = code
             d = Gtk.Label()
             d.set_markup(name)
             b.add(d)
             if not self.buttons:
-                group = b
+                mode = b
             if btn_id == oldval:
                 # Restore old value.
                 b.set_active(True)
@@ -2865,55 +2859,54 @@ Convenience property 'names' to access/mutate with python list-of-str.
         return 0
 
 
-class HiaSelectorGroup (HiaSelectorRadio):
+class HiaSelectorMode (HiaSelectorRadio):
     EXPAND_MEMBERS = False
     PADDING = 16
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Mode", controller)
-    def get_active_radio (self): return self.view.group
+    def get_active_radio (self): return self.view.mode
     def get_axislist (self):
-        submodel = self.view.bindstore.groups
+        submodel = self.view.bindstore.modes
         return submodel
     def on_notify_view (self, inst, param):
-        self.view.connect("group-changed", self.on_group_changed)
-        self.view.connect("group-names-changed", self.on_group_names_changed)
+        self.view.connect("mode-changed", self.on_mode_changed)
+        self.view.connect("mode-names-changed", self.on_mode_names_changed)
         try:
             self.update_widget()
         except AttributeError:
             pass
-    def on_group_changed (self, view, groupid):
-        w = self.buttons[groupid]
+    def on_mode_changed (self, view, modeid):
+        w = self.buttons[modeid]
         w.set_active(True)
-    def on_group_names_changed (self, view, mdl):
+    def on_mode_names_changed (self, view, mdl):
         self.update_widgets()
     def on_button_clicked (self, w, ofs=None):
         if w.get_active():
-            #self.view.group = int(ofs)
-            self.controller.pick_group(int(ofs))
+            self.controller.pick_mode(int(ofs))
         return
 
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
-        # dropped on group.
+        # dropped on mode.
         btn = w
         nth = self.buttons.index(btn)
         if nth < 0:
             # Invalid destination.
             return
-        dstgroup = nth
+        dstmode = nth
         if info == HiaDnd.SWAP:
-            # Swap across groups.
+            # Swap across modes.
             hiasym = str(seldata.get_data().decode())
-            srcgroup = self.controller.view.group
-            dstgroup = nth
+            srcmode = self.controller.view.mode
+            dstmode = nth
             layer = self.controller.view.layer
-            self.controller.exchange_binds_explicit(srcgroup, layer, hiasym,  dstgroup, layer, hiasym)
+            self.controller.exchange_binds_explicit(srcmode, layer, hiasym,  dstmode, layer, hiasym)
             return
         elif info == HiaDnd.CLUSTER_SWAP:
             hiasym = str(seldata.get_data().decode())
-            srcgroup = self.controller.view.group
-            dstgroup = nth
+            srcmode = self.controller.view.mode
+            dstmode = nth
             layer = self.controller.view.layer
-            self.controller.exchange_clusters_explicit(srcgroup, layer, hiasym,  dstgroup, layer, hiasym)
+            self.controller.exchange_clusters_explicit(srcmode, layer, hiasym,  dstmode, layer, hiasym)
             return
 
 
@@ -2943,8 +2936,8 @@ class HiaSelectorLayer (HiaSelectorRadio):
             #self.view.layer = int(ofs)
             self.controller.pick_layer(int(ofs))
         return
-    def on_layer_names_changed (self, view, mdl, groupid):
-        # TODO: check groupid?
+    def on_layer_names_changed (self, view, mdl, modeid):
+        # TODO: check modeid?
         self.update_widgets()
 
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
@@ -2969,15 +2962,15 @@ class HiaSelectorLayer (HiaSelectorRadio):
             hiasym = str(seldata.get_data().decode())
             srclayer = self.controller.view.layer
             dstlayer = nth
-            group = self.controller.view.group
-            self.controller.exchange_binds_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
+            mode = self.controller.view.mode
+            self.controller.exchange_binds_explicit(mode, srclayer, hiasym,  mode, dstlayer, hiasym)
             return
         elif info == HiaDnd.CLUSTER_SWAP:
             hiasym = str(seldata.get_data().decode())
             srclayer = self.controller.view.layer
             dstlayer = nth
-            group = self.controller.view.group
-            self.controller.exchange_clusters_explicit(group, srclayer, hiasym,  group, dstlayer, hiasym)
+            mode = self.controller.view.mode
+            self.controller.exchange_clusters_explicit(mode, srclayer, hiasym,  mode, dstlayer, hiasym)
 
 
 # Intended to be named HiaSelectorLayout, but spelling too similar to *Layer
@@ -3083,7 +3076,7 @@ class CommandPackStore (Gtk.TreeStore):
         Gtk.TreeStore.__init__(self, int, str, str, str)
         self._cursor = None
         self.uri = None             # Original source URI, if applicable.
-        self.modelist = []          # List of names for modes/groups.
+        self.modelist = []          # List of names for modes.
         self.packname = packname    # Name of pack, used in window title.
         # Default initial: unbind
         Gtk.TreeStore.append(self, None, (0, "", "(unbind)", ""))
@@ -3434,19 +3427,19 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 
         self.ui.custombox = Gtk.VBox()
         self.ui.customtitle_line = Gtk.HBox()
-        self.ui.customtitle_label = Gtk.Label("Title: ")
+        self.ui.customtitle_label = Gtk.Label(label="Title: ")
         self.ui.customtitle_inp = Gtk.Entry()
         self.ui.customtitle_inp.set_width_chars(10)
         self.ui.customtitle_line.pack_start(self.ui.customtitle_label, False, False, 0)
         self.ui.customtitle_line.pack_start(self.ui.customtitle_inp, True, True, 0)
         self.ui.customcode_line = Gtk.HBox()
-        self.ui.customcode_label = Gtk.Label("Code: ")
+        self.ui.customcode_label = Gtk.Label(label="Code: ")
         self.ui.customcode_inp = Gtk.Entry()
         self.ui.customcode_inp.set_width_chars(8)
         self.ui.customcode_line.pack_start(self.ui.customcode_label, False, False, 0)
         self.ui.customcode_line.pack_start(self.ui.customcode_inp, True, True, 0)
         self.ui.customadd_line = Gtk.HBox()
-        self.ui.customadd_btn = Gtk.Button("Add Custom")
+        self.ui.customadd_btn = Gtk.Button(label="Add Custom")
         self.ui.customadd_line.pack_start(self.ui.customadd_btn, False, False, 0)
         self.ui.custombox.pack_start(self.ui.customtitle_line, False, False, 0)
         self.ui.custombox.pack_start(self.ui.customcode_line, False, False, 0)
@@ -3621,7 +3614,7 @@ class HiaPlanner (Gtk.HPaned):
         for children in [
                 # self.ui.sel_cmd,
                 self.ui.sel_device,
-                self.ui.sel_group,
+                self.ui.sel_mode,
                 self.ui.sel_layer,
                 self.ui.sel_sym,
                 ]:
@@ -3650,7 +3643,7 @@ class HiaPlanner (Gtk.HPaned):
 
         self.ui.sel_cmd = HiaSelectorCommand(self.cmdpack)
         self.ui.sel_device = HiaSelectorDevice(self.controller)
-        self.ui.sel_group = HiaSelectorGroup(self.controller)
+        self.ui.sel_mode = HiaSelectorMode(self.controller)
         self.ui.sel_layer = HiaSelectorLayer(self.controller)
         self.ui.sel_sym = HiaSelectorSym(self.controller)
 
@@ -3659,7 +3652,7 @@ class HiaPlanner (Gtk.HPaned):
 
         self.ui.rhs = Gtk.VBox()
         self.ui.rhs.pack_start(self.ui.sel_device, False, False, 0)
-        self.ui.rhs.pack_start(self.ui.sel_group, False, False, 0)
+        self.ui.rhs.pack_start(self.ui.sel_mode, False, False, 0)
         self.ui.rhs.pack_start(self.ui.sel_layer, False, False, 0)
         self.ui.rhs.pack_start(self.ui.sel_sym, False, True, 0)
 
@@ -3770,7 +3763,7 @@ class AppControl (HiaControl):
     def act_new_file (self, inst, param):
         self.view.bindstore.clear_bindstore()
         self.pick_device(self.view.layouts[0][0])
-        self.pick_group(0)
+        self.pick_mode(0)
         self.pick_layer(0)
         self.add_layershifter()
         self.add_layershifter()
@@ -3794,10 +3787,10 @@ class AppControl (HiaControl):
             no_dev = (self.view.device_details is None) or (len(self.view.device_details) == 0)
             if selectors and no_dev:
                 dn = selectors.get("device", None)
-                gn = selectors.get("group", None)
+                gn = selectors.get("mode", None)
                 ln = selectors.get("layer", None)
                 if dn is not None: self.pick_device(dn)
-                if gn is not None: self.pick_group(gn)
+                if gn is not None: self.pick_mode(gn)
                 if ln is not None: self.pick_layer(ln)
         logger.info("Opened file %r" % (pathname,))
         return
@@ -3808,14 +3801,14 @@ class AppControl (HiaControl):
         whole = {}
 
         whole['version'] = 3
-        # group names
-        whole['groups'] = [ row[2] for row in self.view.bindstore.groups ]
+        # mode names
+        whole['modes'] = [ row[2] for row in self.view.bindstore.modes ]
         # layer names
         whole['layers'] = [ row[2] for row in self.view.bindstore.layers ]
 
         whole['selectors'] = {
             'device': self.view.device_name,
-            'group': self.view.group,
+            'mode': self.view.mode,
             'layer': self.view.layer,
         }
 
@@ -4096,13 +4089,13 @@ Holds app-wide GAction.
         for srcidx in range(len(modelist)):
             modenum = srcidx+1
             modename = modelist[srcidx]
-            if modenum < len(self.controller.view.bindstore.groups):
+            if modenum < len(self.controller.view.bindstore.modes):
                 # rename
-                self.controller.rename_group(modenum, modename, modename)
+                self.controller.rename_mode(modenum, modename, modename)
             else:
                 # add.
-                self.controller.add_group(modename, modename)
-        self.planner.ui.sel_group.update_widgets()
+                self.controller.add_mode(modename, modename)
+        self.planner.ui.sel_mode.update_widgets()
         return
 
     def logger (self, severity, msg):

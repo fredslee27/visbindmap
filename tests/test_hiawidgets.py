@@ -24,6 +24,7 @@ class TestHiaWidgets (skel.TestSkel):
         self.controller = hialayout.AppControl(self.hiaview)
         self.w = Gtk.Window(title="TestHiaWidget")
         self.controller.insert_actions_into_widget(self.w)
+        hialayout.logger.threshold = hialayout.logger.warn
         return
 
     @staticmethod
@@ -47,9 +48,9 @@ class TestHiaWidgets (skel.TestSkel):
             box.vislayers_delta += 1
         def on_device_changed (w, devid):
             pass
-        def on_group_changed (w, groupid):
+        def on_mode_changed (w, modeid):
             pass
-        def on_layer_changed (w, groupid, layerid):
+        def on_layer_changed (w, modeid, layerid):
             pass
         def on_bind_changed (w, hiasym, newtitle, newcode):
             pass
@@ -237,8 +238,8 @@ class TestHiaWidgets (skel.TestSkel):
     def test_hiaselectors (self):
         self.hiaview.layouts = self.all_layouts
 
-        self.bindstore.add_group("Menu")
-        self.bindstore.add_group("Game")
+        self.bindstore.add_mode("Menu")
+        self.bindstore.add_mode("Game")
         self.bindstore.add_layer("1")
         self.bindstore.add_layer("2")
         self.bindstore.add_layer("3")
@@ -247,7 +248,7 @@ class TestHiaWidgets (skel.TestSkel):
         gensel.get_axislist = lambda: [ (0,'','one','',None), (0,'','two','',None), (0,'','three','',None) ]
         gensel.update_widgets()
 
-        grpsel = hialayout.HiaSelectorGroup(self.controller)
+        grpsel = hialayout.HiaSelectorMode(self.controller)
         lyrsel = hialayout.HiaSelectorLayer(self.controller)
         devsel = hialayout.HiaSelectorDevice(self.controller)
         box = Gtk.VBox()
@@ -265,28 +266,28 @@ class TestHiaWidgets (skel.TestSkel):
         def on_device_changed (self, newdev):
             box.ddev += 1
 
-        def on_group_changed (self, newgrp):
+        def on_mode_changed (self, newgrp):
             box.dgrp += 1
 
         def on_layer_changed (self, newlyr):
             box.dlyr += 1
 
         self.hiaview.connect("device-changed", on_device_changed)
-        self.hiaview.connect("group-changed", on_group_changed)
+        self.hiaview.connect("mode-changed", on_mode_changed)
         self.hiaview.connect("layer-changed", on_layer_changed)
 
         def script ():
             self.w.show_all()
             self.assertEqual(len(grpsel.buttons), 3)
             yield 0.1
-            #print("to use group 1")
+            #print("to use mode 1")
             grpsel.buttons[1].clicked()
-            self.assertEqual(self.hiaview.group, 1)
+            self.assertEqual(self.hiaview.mode, 1)
             self.assertEqual(box.dgrp, 1)
             yield 0.1
-            #print("to use group 0")
+            #print("to use mode 0")
             grpsel.buttons[0].clicked()
-            self.assertEqual(self.hiaview.group, 0)
+            self.assertEqual(self.hiaview.mode, 0)
             self.assertEqual(box.dgrp, 2)
             yield 0.1
             #print("to use layer 2")
