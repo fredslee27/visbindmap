@@ -341,12 +341,14 @@ class BindTreeStore (Gtk.TreeStore):
         path_target = Gtk.TreePath([group_id])
         self[path_target][2] = group_name
         self[path_target][3] = group_code
+        self._slicetree_groups = None  # Invalidate sliced tree.
 
     def rename_layer (self, layer_id, layer_name, layer_code=None):
         path_global = Gtk.TreePath([0])
         path_target = Gtk.TreePath([0, layer_id])
         self[path_target][2] = layer_name
         self[path_target][3] = layer_code
+        self._slicetree_layers = None  # Invalidate sliced tree.
 
     def del_group (self, group_id):
         """Delete group by id; cannot delete 0."""
@@ -398,6 +400,7 @@ class BindTreeStore (Gtk.TreeStore):
         # Clear first layer.
         self.clear_layer(group_id, 0)
         self._slicetree_layers = None  # Invalidate sliced tree.
+        self.nlayers = 1
 
     def clear_bindstore (self):
         """Erase everything, reset groups and layers."""
@@ -413,12 +416,17 @@ class BindTreeStore (Gtk.TreeStore):
         # Clear first group.
         self.clear_group(0)
         self._slicetree_groups = None  # Invalidate sliced tree.
+        self._slicetree_layers = None  # Invalidate sliced tree.
+        self.ngroups = 1
         # Rename first group and first layer.
         try:
             self[0] = (0,"", "GLOBAL", "GLOBAL", None)
             self[(0,0)] = (0,"", "base", None, None)
         except KeyError:
             pass
+        self.emit("group-names-changed", self.groups)
+        self.emit("layer-names-changed", self.layers, 0)
+        self.emit("bind-changed", 0, 0, "", "", "")
 
     def find_group (self, group_name):
         """Convert group name to group id; returns -1 if no match."""
@@ -428,34 +436,6 @@ class BindTreeStore (Gtk.TreeStore):
             if groups[groupd][2] == group_name:
                 return groupid
         return -1
-
-    def _decompose_shifters (self, layernum):
-        shifters = []
-        val = layernum
-        n = 0
-        while val > 0:
-            if (val & 1):
-                shifters.append(n)
-            val >>= 1
-            n += 1
-        return shifters
-
-    def add_layershifter (self):
-        """Add layers to accomodate one more layer shifter key, automatically create names and bind codes."""
-        path_global = Gtk.TreePath.new_first()
-        iter_global = self.get_iter(path_global)
-        count = self.iter_n_children(iter_global)
-        layernum = count
-        for one_more in range(count):
-            shifters = self._decompose_shifters(layernum)
-            shiftertag = " + ".join([ "^{}".format(x+1) for x in shifters ])
-            label = "{} ({})".format(layernum, shiftertag)
-            code = shiftertag if not "+" in shiftertag else None
-            self.add_layer(label, code)
-            layernum += 1
-        self.nlayers = layernum
-        self._slicetree_layers = None  # Invalidate sliced tree.
-        return
 
     def get_bind (self, groupid, layerid, hiasym, default=None):
         """Get bind specified by group, layer, and keysym,
@@ -579,7 +559,7 @@ returns BindValue."""
         self.deserialize_tree(bindstore, self, None)
         self.emit("group-names-changed", self.groups)
         self.emit("layer-names-changed", self.layers, 0)
-        self.emit("bind-changed", 0, 0, "*", "*", "*")
+        self.emit("bind-changed", 0, 0, "", "", "")
         return
 
     def snapshot (self):
@@ -782,23 +762,22 @@ class HiaView (GObject.Object):
     def on_bindstore_group_names_changed (self, bindstore, mdl):
         self.emit("group-names-changed", mdl)
     def on_bindstore_layer_names_changed (self, bindstore, mdl, groupid):
-        self.emit("layer-names-changed", mdl, groupid)
-    def on_bindstore_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
-        self.emit("bind-changed", groupid, layerid, hiasym, newtitle, newcode)
-    def on_bindstore_ngroups_changed (self, bindstore, ngroups):
-        self.emit("ngroups-changed", ngroups)
-    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
-        return
         # Auto-resize vislayers to new number of layers.
         vislayers = self.vislayers[:]
+        nlayers = self.nlayers
         if len(vislayers) < nlayers:
             delta = nlayers - len(vislayers)
             vislayers.extend([False] * delta)
         if len(vislayers) > nlayers:
             vislayers = vislayers[:nlayers]
-        #self.set_vislayers(vislayers)
         self.vislayers = vislayers
-        self.emit("nlayers-changed", groupid, nlayers)
+        self.emit("layer-names-changed", mdl, groupid)
+    def on_bindstore_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
+        self.emit("bind-changed", groupid, layerid, hiasym, newtitle, newcode)
+    def on_bindstore_ngroups_changed (self, bindstore, ngroups):
+        self.emit("ngroups-changed", ngroups)
+#    def on_bindstore_nlayers_changed (self, bindstore, groupid, nlayers):
+#        return
 
     __gsignals__ = {
         # change in selected device (layout) name
@@ -1176,6 +1155,29 @@ Erases all bindings.
     def act_rename_layer (self, action, param):
         (layerid, layer_name, layer_code) = param
         self.view.bindstore.rename_layer(layerid, layer_name, layer_code)
+
+    @HiaSimpleAction()
+    def act_add_layershifter (self, action, param):
+        def _decompose_shifters (layernum):
+            shifters = []
+            val = layernum
+            n = 0
+            while val > 0:
+                if (val & 1):
+                    shifters.append(n)
+                val >>= 1
+                n += 1
+            return shifters
+        count = self.view.nlayers
+        layernum = count
+        for one_more in range(count):
+            shifters = _decompose_shifters(layernum)
+            shiftertag = " + ".join([ "^{}".format(x+1) for x in shifters ])
+            label = "{} ({})".format(layernum, shiftertag)
+            code = shiftertag if not "+" in shiftertag else None
+            self.add_layer(label, code)
+            layernum += 1
+        return
 
     @HiaSimpleAction("i")
     def act_del_layer (self, action, param):
@@ -3632,6 +3634,13 @@ class AppControl (HiaControl):
     @HiaSimpleAction()
     def act_new_file (self, inst, param):
         print("clearing working board")
+        self.view.bindstore.clear_bindstore()
+        self.pick_device(self.view.layouts[0][0])
+        self.pick_group(0)
+        self.pick_layer(0)
+        self.add_layershifter()
+        self.add_layershifter()
+        self.add_layershifter()
 
     @HiaSimpleAction("s")
     def act_open_file (self, inst, param):
@@ -3692,9 +3701,9 @@ class AppControl (HiaControl):
         if dirty:
             dlg = Gtk.MessageDialog(transient_for=self.groupwin, title="Erase working board", flags=Gtk.DialogFlags.MODAL, type=Gtk.MessageType.QUESTION, buttons=Gtk.ButtonsType.YES_NO, text="Detected unsaved changes.\nForce erasing the working data you see?")
             response = dlg.run()
+            dlg.hide()
             if response == Gtk.ResponseType.YES:
                 self.new_file()
-            dlg.hide()
             dlg.destroy()
 
     @HiaSimpleAction()
@@ -3803,7 +3812,7 @@ Holds app-wide GAction.
         self.setup_signals()
 
     def setup_widgets (self):
-        self.set_size_request(640,480)
+        self.set_size_request(1280,720)
         self.set_title("HID Bind Planner")
         self.vbox = Gtk.VBox()
         self.controller.insert_actions_into_widget(self)
@@ -3952,11 +3961,6 @@ class HiaApplication (Gtk.Application):
         layouts.build_from_legacy_store()
         hiaview = HiaView(bindstore, layouts)
         controller = AppControl(hiaview)  # HiaControl(hiaview)
-        controller.add_group("Menu", "Menu")
-        controller.add_group("Game", "Game")
-        controller.add_layer("1", None)
-        controller.add_layer("2", "2")
-        controller.add_layer("3", None)
         self.controller = controller
 
         self.controller.actions.lookup_action('ragequit').connect("activate", lambda *a: self.quit())
@@ -3988,6 +3992,7 @@ class HiaApplication (Gtk.Application):
         if not self.mainw:
             self.mainw = HiaAppWindow(self, controller=self.controller)
         self.mainw.present()
+        self.controller.new_file()
         self.controller.load_commandpack("")
         return
 
