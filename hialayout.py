@@ -19,11 +19,93 @@ import kbd_desc
 
 
 
+PACKAGE="BindPlanner"
+VERSION="0.1"
+ABOUT = {
+    'program-name': "HID Bind Planner",
+    'copyright': 'Copyright 2017',
+    'version': VERSION,
+    'license-type': Gtk.License.GPL_2_0,
+}
+
+
 
 def _crash ():
     print("*** CRASHING")
     sys.exit(99)
 
+
+
+
+###########
+# Logging #
+###########
+
+class Logger (object):
+    FATAL=0     # Continued operation impossible.
+    ERROR=1     # Continued operation yields very wrong result.
+    WARN=2      # Operation may continue with unexpected results.
+    INFO=3      # Operational within nominal parameters.
+    DEBUG=4     # spam.
+
+    _threshold = INFO
+    _domain = "none"
+    _observers = None
+
+    def get_threshold (self):
+        return self._threshold
+    def set_threshold (self, val):
+        mapped = {
+            self.fatal: Logger.FATAL,
+            self.error: Logger.ERROR,
+            self.warn: Logger.WARN,
+            self.info: Logger.INFO,
+            self.debug: Logger.DEBUG,
+            Logger.fatal: Logger.FATAL,
+            Logger.error: Logger.ERROR,
+            Logger.warn: Logger.WARN,
+            Logger.info: Logger.INFO,
+            Logger.debug: Logger.DEBUG,
+        }
+        if val in mapped:
+            self._threshold = mapped[val]
+        else:
+            self._threshold = val
+    threshold = property(get_threshold, set_threshold)
+
+    def __init__ (self, domain, threshold=None):
+        self._domain = domain
+        if threshold is not None:
+            self.threshold = threshold
+        self._observers = []
+
+    def add_observer (self, obj):
+        self._observers.append(obj)
+    def remove_observer (self, obj):
+        self._observers.remove(obj)
+
+    def msg (self, severity, *args):
+        cooked = " ".join(args)
+        if severity <= self.threshold:
+            print(cooked)
+        for ob in self._observers:
+            try:
+                ob.logger
+            except AttributeError:
+                continue
+            ob.logger(severity, cooked)
+    def fatal (self, *args):
+        return self.msg(self.FATAL, *args)
+    def error (self, *args):
+        return self.msg(self.ERROR, *args)
+    def warn (self, *args):
+        return self.msg(self.WARN, *args)
+    def info (self, *args):
+        return self.msg(self.INFO, *args)
+    def debug (self, *args):
+        return self.msg(self.DEBUG, *args)
+
+logger = Logger("all", Logger.INFO)
 
 
 
@@ -976,6 +1058,7 @@ class HiaControl (GObject.Object):
 Specify HiaGroup to make focus"""
         self.view.device_name = param.get_string()
         # TODO: try interpret as int?
+        logger.info("Using device %r" % self.view.device_name)
         return
 
     @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -983,6 +1066,7 @@ Specify HiaGroup to make focus"""
         """Pick HiaGroup
 Specify HiaGroup to make focus"""
         self.view.group = param.get_int32()
+        logger.info("Focusing group %r" % self.view.group)
         return
 
     @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -990,6 +1074,7 @@ Specify HiaGroup to make focus"""
         """Pick HiaLayer
 Specify HiaLayer to make focus."""
         self.view.layer = param.get_int32()
+        logger.info("Focusing layer %r" % self.view.layer)
         return
 
     @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -1005,6 +1090,7 @@ Specify HiaLayer to make focus."""
 """
         hiasym = param.get_string()
         self.view.active_sym = hiasym
+        logger.info("Focusing hiasym %r" % hiasym)
         return
 
 #    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -1018,6 +1104,7 @@ Specify HiaLayer to make focus."""
     def act_assign_bind_explicit (self, action, param):
         (groupid, layerid, hiasym, cmdtitle, cmdcode) = param
         self.view.bindstore.set_bind(groupid, layerid, hiasym, cmdtitle, cmdcode)
+        logger.info("Assigned bind %r" % hiasym)
         return
 
     @HiaSimpleAction(param_type="(sss)", init_state=None, stock_id=None)
@@ -1038,6 +1125,7 @@ Specify HiaLayer to make focus."""
         hiasym = param.get_string()
         (groupid, layerid) = (self.view.group, self.view.layer)
         self.erase_bind_explicit(groupid, layerid, hiasym)
+        logger.info("Erased bind %r" % hiasym)
         return
 
     @HiaSimpleAction("(iisiis)")
@@ -1054,6 +1142,7 @@ Specify HiaLayer to make focus."""
             cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
         self.view.bindstore.set_bind(groupA, layerA, symA, cmdtitleB, cmdcodeB)
         self.view.bindstore.set_bind(groupB, layerB, symB, cmdtitleA, cmdcodeA)
+        logger.info("Swapped binds %r and %r" % (symA, symB))
         return
 
     @HiaSimpleAction("(ss)")
@@ -1121,6 +1210,8 @@ Specify HiaLayer to make focus."""
             suffix = sym[len(symA):]
             subsymB = "{}{}".format(symB, suffix)
             bindstore.set_bind(groupB, layerB, subsymB, val)
+
+        logger.info("Swapped clusters %r and %r" % (symA, symB))
         return
 
     @HiaSimpleAction()
@@ -1129,6 +1220,7 @@ Specify HiaLayer to make focus."""
 Erases all bindings.
 """
         self.view.bindstore.clear_bindstore()
+        logger.info("Cleared BindStore")
         return
 
     @HiaSimpleAction("(s*)")  # (sms)
@@ -2930,7 +3022,7 @@ class HiaSelectorDevice (Gtk.HBox):
         inp_dev.pack_start(self.ui.render0, 0)
         inp_dev.add_attribute(self.ui.render0, 'text', 0)
         inp_dev.set_active(0)
-        self.controller.pick_device('(none)')
+        #self.controller.pick_device('(none)')
         self.ui.inp_dev = inp_dev
 
         self.pack_start(self.ui.lbl, False, False, 0)
@@ -3331,8 +3423,31 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         for col in self.ui.treecols:
             self.ui.treeview.append_column(col0)
 
+        self.ui.custombox = Gtk.VBox()
+        self.ui.customtitle_line = Gtk.HBox()
+        self.ui.customtitle_label = Gtk.Label("Title: ")
+        self.ui.customtitle_inp = Gtk.Entry()
+        self.ui.customtitle_inp.set_width_chars(10)
+        self.ui.customtitle_line.pack_start(self.ui.customtitle_label, False, False, 0)
+        self.ui.customtitle_line.pack_start(self.ui.customtitle_inp, True, True, 0)
+        self.ui.customcode_line = Gtk.HBox()
+        self.ui.customcode_label = Gtk.Label("Code: ")
+        self.ui.customcode_inp = Gtk.Entry()
+        self.ui.customcode_inp.set_width_chars(8)
+        self.ui.customcode_line.pack_start(self.ui.customcode_label, False, False, 0)
+        self.ui.customcode_line.pack_start(self.ui.customcode_inp, True, True, 0)
+        self.ui.customadd_line = Gtk.HBox()
+        self.ui.customadd_btn = Gtk.Button("Add Custom")
+        self.ui.customadd_line.pack_start(self.ui.customadd_btn, False, False, 0)
+        self.ui.custombox.pack_start(self.ui.customtitle_line, False, False, 0)
+        self.ui.custombox.pack_start(self.ui.customcode_line, False, False, 0)
+        self.ui.custombox.pack_start(self.ui.customadd_line, False, False, 0)
+
         self.ui.sclwin.add(self.ui.treeview)
-        self.add(self.ui.sclwin)
+        #self.add(self.ui.sclwin)
+        self.pack_start(self.ui.sclwin, True, True, 0)
+        self.pack_start(Gtk.HSeparator(), False, False, 0)
+        self.pack_start(self.ui.custombox, False, False, 0)
         self.show_all()
 
         self.props.has_tooltip = True
@@ -3405,8 +3520,14 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         if not paramval.is_of_type(GLib.VariantType('s')):
             return
         uri = paramval.get_string()
-        feed = CommandPackFeed.open(uri)
+        try:
+            feed = CommandPackFeed.open(uri)
+        except NameError:
+            logger.warn("Could not load command pack %r" % uri)
+            return
         pack = feed.read()
+        if uri:
+            logger.info("Loaded command pack %r" % uri)
         self.model = pack
         return
 
@@ -3624,16 +3745,17 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction()
     def act_ragequit (self, inst, param):
+        # Hooked into GtkApplication elsewhere.
         pass
 
     @HiaSimpleAction("b")
     def act_quit (self, inst, param):
+        # TODO: check dirtiness to present confirmation dialog.
         pass
 
 
     @HiaSimpleAction()
     def act_new_file (self, inst, param):
-        print("clearing working board")
         self.view.bindstore.clear_bindstore()
         self.pick_device(self.view.layouts[0][0])
         self.pick_group(0)
@@ -3641,6 +3763,8 @@ class AppControl (HiaControl):
         self.add_layershifter()
         self.add_layershifter()
         self.add_layershifter()
+        logger.info("New file")
+        return
 
     @HiaSimpleAction("s")
     def act_open_file (self, inst, param):
@@ -3663,12 +3787,12 @@ class AppControl (HiaControl):
                 if dn is not None: self.pick_device(dn)
                 if gn is not None: self.pick_group(gn)
                 if ln is not None: self.pick_layer(ln)
+        logger.info("Opened file %r" % (pathname,))
         return
 
     @HiaSimpleAction("s")
     def act_save_file (self, inst, param):
         pathname = param.get_string()
-        print("saving to file '%s'..." % pathname)
         whole = {}
 
         whole['version'] = 3
@@ -3686,11 +3810,11 @@ class AppControl (HiaControl):
         whole['bindstore'] = self.view.bindstore.snapshot()
         del whole['bindstore']['__class__']
 
-        print("whole = %r" % (whole,))
         f = open(pathname, "wt")
         json.dump(whole, f, indent=4)
         f.close()
-        print("saved")
+        logger.info("Saved file %r" % (pathname,))
+        return
 
     @HiaSimpleAction()
     def act_ask_file_new (self, inst, param):
@@ -3705,6 +3829,7 @@ class AppControl (HiaControl):
             if response == Gtk.ResponseType.YES:
                 self.new_file()
             dlg.destroy()
+        return
 
     @HiaSimpleAction()
     def act_ask_file_open (self, inst, param):
@@ -3781,6 +3906,16 @@ class AppControl (HiaControl):
     def act_view_layers (self, inst, param):
         m = param.get_int32()
         self.view.nvislayers = m
+        logger.info("Viewing %d layers at a time" % m)
+
+    @HiaSimpleAction()
+    def act_reset_panes (self, inst, param):
+        # TODO: calculate width and heights based on default typeface.
+        ex, lineheight = 8, 12
+        # command-picker width 24ex.
+        self.groupwin.planner.set_position(24*ex)
+        logger.info("Reset pane sizes")
+        return
 
     @HiaSimpleAction()
     def act_help_help (self, inst, param):
@@ -3788,7 +3923,10 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction()
     def act_about (self, inst, param):
-        pass
+        dlg = Gtk.AboutDialog(transient_for=self.groupwin, **ABOUT)
+        dlg.run()
+        dlg.hide()
+        return
 
 
 
@@ -3821,6 +3959,8 @@ Holds app-wide GAction.
 
         self.statusbar = Gtk.Statusbar()
         self.statusbar.push(self.statusbar.get_context_id("status"), "Ready.")
+        self.statusctx = self.statusbar.get_context_id("main")
+        logger.add_observer(self)
 
         self.setup_menubar()
 
@@ -3830,6 +3970,22 @@ Holds app-wide GAction.
         self.add(self.vbox)
         self.show_all()
 
+        filter_all = Gtk.FileFilter()
+        filter_all.set_name("All files (*)")
+        filter_all.add_pattern("*")
+
+        filter_cfg = Gtk.FileFilter()
+        filter_cfg.set_name("Plan File (*.cfg)")
+        filter_cfg.add_pattern("*.cfg")
+
+        filter_sqlite3 = Gtk.FileFilter()
+        filter_sqlite3.set_name("SQLite3 (*.sqlite3)")
+        filter_sqlite3.add_pattern("*.sqlite3")
+
+        filter_sql = Gtk.FileFilter()
+        filter_sql.set_name("Raw SQL (*.sql)")
+        filter_sql.add_pattern("*.sql")
+
         title = "Load Command Pack"
         action = Gtk.FileChooserAction.OPEN
         buttons = [
@@ -3838,6 +3994,9 @@ Holds app-wide GAction.
             ]
         self.dlg_cmdpack = Gtk.FileChooserDialog(title=title, transient_for=self, action=action)
         self.dlg_cmdpack.add_buttons(*buttons)
+        self.dlg_cmdpack.add_filter(filter_sqlite3)
+        self.dlg_cmdpack.add_filter(filter_sql)
+        self.dlg_cmdpack.add_filter(filter_all)
 
         title = "Save File"
         action = Gtk.FileChooserAction.SAVE
@@ -3845,8 +4004,11 @@ Holds app-wide GAction.
             Gtk.STOCK_SAVE, Gtk.ResponseType.ACCEPT,
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             ]
+        filters = Gtk.FileFilter()
         self.dlg_save = Gtk.FileChooserDialog(title=title, transient_for=self, action=action)
         self.dlg_save.add_buttons(*buttons)
+        self.dlg_save.add_filter(filter_cfg)
+        self.dlg_save.add_filter(filter_all)
 
         title = "Open File"
         action = Gtk.FileChooserAction.OPEN
@@ -3854,8 +4016,11 @@ Holds app-wide GAction.
             Gtk.STOCK_OPEN, Gtk.ResponseType.ACCEPT,
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
             ]
-        self.dlg_open = Gtk.FileChooserDialog(title=title, transient_for=self, action=action)
+        filters = Gtk.FileFilter()
+        self.dlg_open = Gtk.FileChooserDialog(title=title, transient_for=self, action=action, )
         self.dlg_open.add_buttons(*buttons)
+        self.dlg_open.add_filter(filter_cfg)
+        self.dlg_open.add_filter(filter_all)
 
         return
 
@@ -3894,6 +4059,8 @@ Holds app-wide GAction.
                 ('_2 Layers', ("view_layers", "i", 2)),
                 ('_4 Layers', ("view_layers", "i", 4)),
                 ('_8 Layers', ("view_layers", "i", 8)),
+                None,
+                ('_Reset Panes', "reset_panes"),
                 ]),
             ('_Help', [
                 ('_Contents', "help_help"),
@@ -3925,6 +4092,9 @@ Holds app-wide GAction.
                 self.controller.add_group(modename, modename)
         self.planner.ui.sel_group.update_widgets()
         return
+
+    def logger (self, severity, msg):
+        self.statusbar.push(self.statusctx, msg)
 
 
 

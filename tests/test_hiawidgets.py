@@ -227,7 +227,7 @@ class TestHiaWidgets (skel.TestSkel):
             self.w.set_size_request(200,200)
             self.w.show_all()
             yield 2
-            hiacluster.ui.sel_sym.ui.top.set_visible_child_name("tabular")
+            hiacluster.ui.sel_sym.set_visible_child_name("tabular")
             self.bindstore.set_bind(0,0,'CL#','RadialMenu10')
             yield 5
 
@@ -312,7 +312,8 @@ class TestHiaWidgets (skel.TestSkel):
             #self.hiaview.bindstore.nlayers = 8
             #while self.hiaview.bindstore.nlayers < 8:
             #    self.hiaview.bindstore.add_layer()
-            self.hiaview.bindstore.add_layershifter()
+            #self.hiaview.bindstore.add_layershifter()
+            self.controller.add_layershifter()
             yield 0.1
             self.assertEqual(len(lyrsel.buttons), 8)
             self.assertEqual(lyrsel.labels[7].get_label(), "7 (^1 + ^2 + ^3)")
@@ -339,7 +340,7 @@ class TestHiaWidgets (skel.TestSkel):
             yield 1
             picker.ui.sel_device.ui.inp_dev.set_active(1)
             self.assertEqual(self.hiaview.device_name, "keypad")
-            probe = picker.ui.sel_bind.ui.grid.get_child_at(0,2)
+            probe = picker.ui.sel_sym.ui.grid.get_child_at(0,2)
             self.assertIsNotNone(probe)
             self.assertEqual(probe.hiasym, "KP_4")
             yield 1
