@@ -2331,7 +2331,7 @@ class HiaSelectorSym (Gtk.Stack):
                 max_row = y
             bv = self.view.bindstore.get_bind(self.view.mode, self.view.layer, hiasym)
             if bv:
-                hw.layout_name = bv.cmdtitle
+                hw.cluster_type = bv
         for y in range(max_row):
             if not grid.get_child_at(0, y):
                 filler = Gtk.HBox()
@@ -2544,23 +2544,21 @@ class HiaCluster (HiaBindable):
 Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 """
 
-    layout_name = GObject.Property(type=str)    # active clustered_layout name
+    cluster_type = GObject.Property(type=object)    # BindValue
 
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
 
-        self.connect("notify::layout-name", self.on_notify_layout_name)
+        self.connect("notify::cluster-type", self.on_notify_cluster_type)
 
         # Instantiated per HiaCluster instance due to self.hiasym prefix.
         self._clustered_layouts = ClusteredLayouts(self.hiasym)
-        # Initial layout.
-        bindlist = self.get_bindlist()
-        layoutname = bindlist[self.view.layer].cmdtitle
-        self.layout_name = layoutname
 
         self.setup_widgets()
         self.setup_signals()
         self.setup_dnd()
+
+        self.update_cluster_type()
 
     @GObject.Property(type=object)
     def hiachildren (self):
@@ -2570,22 +2568,16 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             return None
 
     def get_extended_label_markup (self):
-        if not self.layout_name:
-            #layoutname = self._clustered_layouts[0][0]  # "Empty".
-            layoutname = "?"
+        cluster_type = self.cluster_type
+        cmdtitle = cluster_type.cmdtitle if cluster_type else None
+        if cmdtitle:
+            markup = self.cluster_type.get_markup_str()
         else:
-            layoutname = self.layout_name
-        return " {} &lt;{}&gt;".format(self.hiasym, layoutname)
+            markup = GLib.markup_escape_text("?")
+        return " {} &lt;{}&gt;".format(self.hiasym, markup)
 
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""
-        menudesc = [
-            ("One Button", self.on_menu_activate_layout, "OneButton"),
-            ("Scroll Wheel", self.on_menu_activate_layout, "ScrollWheel"),
-            ("Joystick", self.on_menu_activate_layout, "Joystick"),
-            ("D-Pad", self.on_menu_activate_layout, "DirectionPad"),
-            ]
-
         self.ui.mnu_layout = self._clustered_layouts.make_menu()
 
         name_act_listview = "view_bindlist__%s" % self.hiasym
@@ -2638,45 +2630,41 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         w.drag_dest_set(drop_dests, drop_targets, drop_actions)
         w.connect("drag-data-received", self.on_drag_data_received)
 
-    def on_notify_layout_name (self, inst, param):
-        layoutname = self.layout_name
+    def update_cluster_type (self):
+        self.cluster_type = self.get_bindlist()[self.view.layer]
+        #  cascades notify_cluster_type()
+        sel_sym = None
+        layout_name = self.cluster_type.cmdtitle
         try:
-            layout = self._clustered_layouts[layoutname][1]
+            layout = self._clustered_layouts[layout_name][1]
         except TypeError:
             layout = None
         try:
             self.ui.sel_sym
             self.ui.sel_sym.layout = layout
-            self.ui.frame_label.set_markup(self.get_extended_label_markup())
         except AttributeError:
             pass
 
-    def on_notify_label (self, inst, param):
+    def on_notify_cluster_type (self, inst, param):
         try:
             self.ui.frame_label
         except AttributeError:
             return
-        self.ui.frame_label.set_markup(self.get_extended_label_markup())
-
-    def on_menu_activate_layout (self, *args):
-        pass
+        markup = self.get_extended_label_markup()
+        self.ui.frame_label.set_markup(markup)
 
     def on_bind_changed (self, bindstore, modeid, layerid, hiasym, newtitle, newcode):
         # TODO: check current mode and layer.
         if hiasym == self.hiasym:
-            if not newtitle:
-                bindlist = self.get_bindlist()
-                newtitle = bindlist[self.view.layer].cmdtitle
-            self.layout_name = newtitle
-            self.label = "{} <{}>".format(self.hiasym, self.layout_name)
+            self.update_cluster_type()
         if hiasym in self.hiachildren:
             self.ui.sel_sym.on_bind_changed(bindstore, modeid, layerid, hiasym, newtitle, newcode)
         return
     def on_mode_changed (self, hiaview, newmode):
+        self.update_cluster_type()
         return
     def on_layer_changed (self, hiaview, newlyr):
-        bindlist = self.get_bindlist()
-        self.layout_name = bindlist[self.view.layer].cmdtitle
+        self.update_cluster_type()
         return
     def on_vislayers_changed (self, hiaview, vislayers):
         return
@@ -4134,6 +4122,7 @@ class HiaApplication (Gtk.Application):
         # app:Gio.Application
         # just after registration (app name with GNOME?)
         print("STARTUP")
+        logger.threshold = logger.warn
         bindstore = BindStore()
         layouts = HiaLayouts()
         layouts.build_from_legacy_store()
