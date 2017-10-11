@@ -1117,7 +1117,7 @@ Specify HiaLayer to make focus."""
     @HiaSimpleAction("(iis)")
     def act_erase_bind_explicit (self, action, param):
         (groupid, layerid, hiasym) = param
-        self.view.bindstore.set_bind(groupid, layerid, hiasym, "", "")
+        self.view.bindstore.set_bind(groupid, layerid, hiasym, None, None)
         return
 
     @HiaSimpleAction("s")
@@ -1465,7 +1465,7 @@ For HiaCluster, affects what layout to use.
             for ridx in range(len(redirections)):
                 (g, l) = redirections[ridx]
                 bv = self.bindstore.get_bind(g, l, self.hiasym)
-                if bv is not None:
+                if bv is not None and bv.cmdtitle:
                     redirects = ridx
                     cmdtitle = bv.cmdtitle
                     cmdcode = bv.cmdcode
@@ -1898,22 +1898,26 @@ class ClusteredLayouts (HiaLayouts):
     def make_menu (self):
         # Return a Gio.Menu describing a menu choosing an available layout.
         def detail_transformer(layoutname):
-            actname = "app.assign_bind"
-            hiasym = self.symprefix
-            cmdtitle = layoutname
-            cmdcode = layoutname
-            gvalue = GLib.Variant("(sss)", (hiasym, cmdtitle, cmdcode))
+            if not "." in layoutname:
+                actname = "app.assign_bind"
+                hiasym = self.symprefix
+                cmdtitle = layoutname
+                cmdcode = layoutname
+                gvalue = GLib.Variant("(sss)", (hiasym, cmdtitle, cmdcode))
+            else:
+                (res, actname, gvalue) = Gio.Action.parse_detailed_name(layoutname)
             return (actname, gvalue)
         MENU_DESC = [
             # (displayed_label, bind_value)  =>  menuitem set layout
             # || (displayed_label, [ nested_MENUDESC ] )  =>  submenu
-            ("_None", "Empty"),
+            ("_None", "app.erase_bind('%s')" % self.symprefix),
+            ("_Empty", "Empty"),
             ("_Single Button", "OneButton"),
             ("Scroll _Wheel", "ScrollWheel"),
             ("_D-Pad", "DirectionPad"),
             ("Button _Quad", "ButtonQuad"),
             ("Tr_ackpad", "MousePad"),
-            ("Mouse R_egion", "MouseRegion"),
+            ("_Mouse Region", "MouseRegion"),
             ("_Joystick", "Joystick"),
             ("_Gyro", "GyroTilt"),
             ("_Touch Menu", [
@@ -2567,12 +2571,13 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         except AttributeError:
             return None
 
-    def get_extended_label (self):
+    def get_extended_label_markup (self):
         if not self.layout_name:
-            layoutname = self._clustered_layouts[0][0]  # "Empty".
+            #layoutname = self._clustered_layouts[0][0]  # "Empty".
+            layoutname = "?"
         else:
             layoutname = self.layout_name
-        return " {} <{}>".format(self.hiasym, layoutname)
+        return " {} &lt;{}&gt;".format(self.hiasym, layoutname)
 
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""
@@ -2597,8 +2602,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         self.ui.frame_arranger = Gtk.MenuButton()
         self.ui.frame_arranger.set_use_popover(False)  # TODO: GSettings.
         self.ui.frame_arranger.set_menu_model(self.ui.mnu_layout)
-        label = self.get_extended_label()
-        self.ui.frame_label = Gtk.Label(label=label)
+        label = self.get_extended_label_markup()
+        self.ui.frame_label = Gtk.Label()
+        self.ui.frame_label.set_markup(label)
         self.ui.frame_title.pack_start(self.ui.frame_arranger, False, False, 0)
         self.ui.frame_title.pack_start(self.ui.frame_label, False, False, 0)
         self.ui.frame.set_label_widget(self.ui.frame_title)
@@ -2643,7 +2649,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
         try:
             self.ui.sel_sym
             self.ui.sel_sym.layout = layout
-            self.ui.frame_label.set_label(self.get_extended_label())
+            self.ui.frame_label.set_markup(self.get_extended_label_markup())
         except AttributeError:
             pass
 
@@ -2652,7 +2658,7 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             self.ui.frame_label
         except AttributeError:
             return
-        self.ui.frame_label.set_label(self.get_extended_label())
+        self.ui.frame_label.set_markup(self.get_extended_label_markup())
 
     def on_menu_activate_layout (self, *args):
         pass
@@ -2660,6 +2666,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
     def on_bind_changed (self, bindstore, groupid, layerid, hiasym, newtitle, newcode):
         # TODO: check current group and layer.
         if hiasym == self.hiasym:
+            if not newtitle:
+                bindlist = self.get_bindlist()
+                newtitle = bindlist[self.view.layer].cmdtitle
             self.layout_name = newtitle
             self.label = "{} <{}>".format(self.hiasym, self.layout_name)
         if hiasym in self.hiachildren:
@@ -3504,8 +3513,11 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         firstsel = pathsels[0]
         selrow = mdl[firstsel]
         #cmdname = selrow[1]
-        bv = BindValue(selrow[2], selrow[1])
-        bindvalue = repr(bv.snapshot())
+        if selrow[0] == 0:
+            bindvalue = ""
+        else:
+            bv = BindValue(selrow[2], selrow[1])
+            bindvalue = repr(bv.snapshot())
         if info == HiaDnd.BIND:
             # dragged from command set.
             seldata.set(seldata.get_target(), 8, bindvalue.encode())
