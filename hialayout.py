@@ -1731,8 +1731,11 @@ Drag-and-Drop
         # Drop on HiaTop
         if info == HiaDnd.BIND:
             seltext = seldata.get_data().decode()
-            bv = BindValue(ast.literal_eval(seltext))
-            self.controller.assign_bind(self.hiasym, bv.cmdtitle, bv.cmdcode)
+            if seltext:
+                bv = BindValue(ast.literal_eval(seltext))
+                self.controller.assign_bind(self.hiasym, bv.cmdtitle, bv.cmdcode)
+            else:
+                self.controller.erase_bind(self.hiasym)
             ctx.finish(True, False, 0)
         elif info == HiaDnd.SWAP:
             othersym = seldata.get_data().decode()
