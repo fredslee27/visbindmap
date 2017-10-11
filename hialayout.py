@@ -13,6 +13,7 @@ import os, sys, math
 import fcntl
 import threading
 import shlex
+import json
 
 import kbd_desc
 
@@ -573,16 +574,19 @@ returns BindValue."""
         """Deserialize binds TreeStore."""
         if primitives['__class__'] != self.__class__.__name__:
             raise TypeError("Expected restore from class {}".format(self.__class__.__name__))
-        bindstore = primitives['bindstore']
+        bindstore = primitives['data']
         Gtk.TreeStore.clear(self)
         self.deserialize_tree(bindstore, self, None)
+        self.emit("group-names-changed", self.groups)
+        self.emit("layer-names-changed", self.layers, 0)
+        self.emit("bind-changed", 0, 0, "*", "*", "*")
         return
 
     def snapshot (self):
         """Serialize binds TreeStore."""
         retval = {}
         retval['__class__'] = self.__class__.__name__
-        retval['bindstore'] = self.serialize_tree(self, None)
+        retval['data'] = self.serialize_tree(self, None)
         return retval
 
     __gsignals__ = AbbrevSignals([
@@ -3632,12 +3636,52 @@ class AppControl (HiaControl):
     @HiaSimpleAction("s")
     def act_open_file (self, inst, param):
         pathname = param.get_string()
-        print("opening file '%s'..." % pathname)
+        f = open(pathname, "rt")
+        whole = json.load(f)
+        f.close()
+        if whole['version'] == 3:
+            bs = whole.get('bindstore', None)
+            if not bs:
+                raise ValueError("invalid file format")
+            bs['__class__'] = BindTreeStore.__name__
+            self.view.bindstore.restore(bs)
+            selectors = whole.get('selectors', None)
+            no_dev = (self.view.device_details is None) or (len(self.view.device_details) == 0)
+            if selectors and no_dev:
+                dn = selectors.get("device", None)
+                gn = selectors.get("group", None)
+                ln = selectors.get("layer", None)
+                if dn is not None: self.pick_device(dn)
+                if gn is not None: self.pick_group(gn)
+                if ln is not None: self.pick_layer(ln)
+        return
 
     @HiaSimpleAction("s")
     def act_save_file (self, inst, param):
         pathname = param.get_string()
         print("saving to file '%s'..." % pathname)
+        whole = {}
+
+        whole['version'] = 3
+        # group names
+        whole['groups'] = [ row[2] for row in self.view.bindstore.groups ]
+        # layer names
+        whole['layers'] = [ row[2] for row in self.view.bindstore.layers ]
+
+        whole['selectors'] = {
+            'device': self.view.device_name,
+            'group': self.view.group,
+            'layer': self.view.layer,
+        }
+
+        whole['bindstore'] = self.view.bindstore.snapshot()
+        del whole['bindstore']['__class__']
+
+        print("whole = %r" % (whole,))
+        f = open(pathname, "wt")
+        json.dump(whole, f, indent=4)
+        f.close()
+        print("saved")
 
     @HiaSimpleAction()
     def act_ask_file_new (self, inst, param):
@@ -3662,10 +3706,10 @@ class AppControl (HiaControl):
             if dlg is None:
                 return
         response = dlg.run()
+        dlg.hide()
         if response == Gtk.ResponseType.ACCEPT:
             pathname = dlg.get_filename()
-            self.load_file(pathname)
-        dlg.hide()
+            self.open_file(pathname)
 
     @HiaSimpleAction()
     def act_ask_file_save (self, inst, param):
@@ -3683,10 +3727,10 @@ class AppControl (HiaControl):
             if dlg is None:
                 return
         response = dlg.run()
+        dlg.hide()
         if response == Gtk.ResponseType.ACCEPT:
             pathname = dlg.get_filename()
             self.save_file(pathname)
-        dlg.hide()
 
     @HiaSimpleAction()
     def act_ask_commandpack (self, inst, param):
@@ -3697,11 +3741,11 @@ class AppControl (HiaControl):
         if not dlg:
             return
         response = dlg.run()
+        dlg.hide()
         if response == Gtk.ResponseType.ACCEPT:
             pathname = dlg.get_filename()
             uri = "file://{}".format(pathname)
             self.load_commandpack(pathname)
-        dlg.hide()
 
     @HiaSimpleAction("s")
     def act_load_commandpack (self, inst, param):
