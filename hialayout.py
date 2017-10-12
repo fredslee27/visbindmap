@@ -1372,7 +1372,7 @@ class HiaBind (object):
 
 
 class HiaBindable (Gtk.HBox):
-    """Bindables store and respond to changes in BindStore.
+    """Bindables store and display a slice of the BindStore.
 For HiaTops, affects bind value to display,
 For HiaCluster, affects what layout to use.
 """
@@ -1443,28 +1443,27 @@ For HiaCluster, affects what layout to use.
     def on_vislayers_changed (self, hiavia, vislayers):
         pass
 
+    def get_binding (self, mode_id, layer_id):
+        bv = self.bindstore.get_bind(mode_id, layer_id, self.hiasym)
+        redirect, cmdtitle, cmdcode = -1, "", ""
+        if bv is not None and bv.cmdtitle:
+            # meaty value.
+            redirects = ridx
+            cmdtitle, cmdcode = bv.cmdtitle, bv.cmdcode
+        return HiaBind(redirects, cmdtitle, cmdcode)
     def get_bindlist (self):
         """Return list of HiaBind (one per layer)."""
         retval = []
-        for lid in range(self.bindstore.nlayers):
-            modeid = self.view.mode
+        for layer_id in range(self.bindstore.nlayers):
+            mode_id = self.view.mode
             redirections = [
                 (modeid, lid),
                 (modeid, 0),
                 (0, lid),
                 (0, 0) ]
             hiabind = None
-            redirects = -1
-            cmdtitle = ""
-            cmdcode = ""
             for ridx in range(len(redirections)):
-                (g, l) = redirections[ridx]
-                bv = self.bindstore.get_bind(g, l, self.hiasym)
-                if bv is not None and bv.cmdtitle:
-                    redirects = ridx
-                    cmdtitle = bv.cmdtitle
-                    cmdcode = bv.cmdcode
-                    break
+                hiabind = self.get_binding(mode_id, layer_id)
             if hiabind is None:
                 hiabind = HiaBind(redirects, cmdtitle, cmdcode)
             retval.append(hiabind)
@@ -1485,7 +1484,7 @@ For HiaCluster, affects what layout to use.
 
 
 
-class HiaTop (HiaBindable):
+class HiaTop (Gtk.Button):
     """Generalization (i.e. not specific to keyboard) of keytop.
     
 Visual:
@@ -1507,8 +1506,9 @@ Drag-and-Drop
 * as destination:
   * from CmdPackView = set/copy bind
   * from other HiaTop = swap bind
+
+Intended to be controlled directly by a HiaCluster.
 """
-    # Inherited GProperties: binddisp, view, controller, hiasym, label
 
     # CSS for styling the binddisp widgets.
     _css1 = Gtk.CssProvider()
@@ -1522,8 +1522,16 @@ Drag-and-Drop
 }
 """).encode())
 
-    def __init__ (self, controller, hiasym, label=None):
-        HiaBindable.__init__(self, controller, hiasym, label)
+    ### Inherited GProperties: binddisp, view, controller, hiasym, label
+    # Properties:
+    # binddisp : list of HiaBind, one per layer
+    binddisp = GObject.Property(type=object)    # list of HiaBind
+    vislayers = GObject.Property(type=object)   # list of bool
+    label = GObject.Property(type=str)          # key label
+    hiasym = GObject.Property(type=str)         # keysym
+
+    def __init__ (self, hiaysm, label=None):
+        Gtk.Button.__init__(self)
 
         if self.bindstore:
             self.binddisp = self.get_bindlist()
@@ -1540,7 +1548,8 @@ Drag-and-Drop
         """Set up Gtk widgets for keytop."""
         self.set_no_show_all(True)
 
-        self.ui.button = Gtk.Button()
+        #self.ui.button = Gtk.Button()
+        self.ui.button = self
         self.ui.top = Gtk.VBox()
         self.ui.lbl = Gtk.Label(label=self.label)
         self.ui.lbl.set_halign(Gtk.Align.START)
@@ -1555,7 +1564,7 @@ Drag-and-Drop
         self.ui.top.pack_start(self.ui.spacer, True, True, 0)
 
         self.ui.button.add(self.ui.top)
-        self.add(self.ui.button)
+        #self.add(self.ui.button)
 
         self.update_widgets()
         self.ui.button.show()
@@ -1566,15 +1575,7 @@ Drag-and-Drop
 
     def setup_signals (self):
         """Set up widget signals within key top."""
-        self.ui.button.connect("clicked", self.on_button_clicked)
-        self.view.connect("mode-changed", self.on_mode_changed)
-        self.view.connect("layer-changed", self.on_layer_changed)
-        self.view.connect("vislayers-changed", self.on_vislayers_changed)
         return
-
-    def on_realize (self, w):
-        self.binddisp = self.view.bindstore.get_bindlist()
-        self.update_widgets()
 
     def make_binddispline_textview (self):
         bb, bv = Gtk.TextBuffer(), Gtk.TextView()
@@ -1678,21 +1679,10 @@ Drag-and-Drop
         self.update_widgets()
         return
 
-    def on_bind_changed (self, bindstore, modeid, layerid, hiasym, newtitle, newcode):
-        bindlist = self.get_bindlist()
-        self.binddisp = bindlist
-    def on_mode_changed (self, hiaview, newmode):
-        bindlist = self.get_bindlist()
-        self.binddisp = bindlist
-    def on_layer_changed (self, hiaview, newlyr):
-        bindlist = self.get_bindlist()
-        self.binddisp = bindlist
-    def on_vislayers_changed (self, hiavia, vislayers):
-        bindlist = self.get_bindlist()
-        self.binddisp = bindlist
-    def on_button_clicked (self, w, *args):
-        self.emit("sym-selected", self.hiasym)
+    def on_notify_vislayers (self, inst, param):
+        pass
 
+# TODO: move up
     def setup_dnd (self):
         """Set up Drag-and-Drop for key top."""
         # DnD source: erase, swap.
@@ -1714,6 +1704,7 @@ Drag-and-Drop
         self.ui.button.drag_dest_set(drop_dests, drop_targets, drop_actions)
         self.ui.button.connect("drag-data-received", self.on_drag_data_received)
 
+# TODO: move up
     def on_drag_data_get (self, w, ctx, seldata, info, time, *args):
         # Drag from HiaTop
         if info == HiaDnd.UNBIND:
@@ -1727,6 +1718,7 @@ Drag-and-Drop
             seldata.set(seldata.get_target(), 8, self.hiasym.encode())
         return False
 
+# TODO: move up
     def on_drag_data_received (self, w, ctx, x, y, seldata, info, time, *args):
         # Drop on HiaTop
         if info == HiaDnd.BIND:
@@ -2539,20 +2531,32 @@ class HiaSelectorSym (Gtk.Stack):
     }
 
 
-class HiaCluster (HiaBindable):
+class HiaCluster (Gtk.Frame):
     """
-Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
+Primarily represents jointed cluster types: joystick, mouspad, button_quad, etc.
+
+Consists of:
+* one HiaTop
+* Multiple HiaCluster
 """
 
-    cluster_type = GObject.Property(type=object)    # BindValue
+    cluster_type = GObject.Property(type=object)    # instance BindValue
+    label = GObject.Property(type=str)              # pango markup
+    hiaprefix = GObject.Property(type=str)
+    controller = GObject.Property(type=object)      # instance HiaControl
+    hiachildren = GObject.Property(type=object)     # dict{str=>object}
 
     def __init__ (self, controller, hiasym, label=None):
-        HiaBindable.__init__(self, controller, hiasym, label)
+        Gtk.Frame.__init__()
 
         self.connect("notify::cluster-type", self.on_notify_cluster_type)
+        self.connect("notify::label", self.on_notify_label)
+        self.connect("notify::hiaprefix", self.on_notify_hiaprefix)
+        self.connect("notify::controller", self.on_notify_controller)
 
         # Instantiated per HiaCluster instance due to self.hiasym prefix.
         self._clustered_layouts = ClusteredLayouts(self.hiasym)
+        self.hiachildren = dict()
 
         self.setup_widgets()
         self.setup_signals()
@@ -2652,6 +2656,12 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             return
         markup = self.get_extended_label_markup()
         self.ui.frame_label.set_markup(markup)
+    def on_notify_hiaprefix (self, inst, param):
+        pass
+    def on_notify_label (self, inst, param):
+        pass
+    def on_notify_controller (self, inst, param):
+        pass
 
     def on_bind_changed (self, bindstore, modeid, layerid, hiasym, newtitle, newcode):
         # TODO: check current mode and layer.
