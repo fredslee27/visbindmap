@@ -1346,7 +1346,7 @@ class HiaBind (object):
         dispval = self.cmdtitle
         # self.cmdcode ...
         if self.cmdcode is not None:
-            lbl = GLib.markup_escape_text(str(self.cmdtitle))
+            lbl = str(GLib.markup_escape_text(str(self.cmdtitle)))
             if self.redirects == 0:
                 # on point
                 dispval = lbl
@@ -1484,6 +1484,9 @@ For HiaCluster, affects what layout to use.
 
 
 
+
+
+
 class HiaTop (Gtk.Button):
     """Generalization (i.e. not specific to keyboard) of keytop.
     
@@ -1601,6 +1604,7 @@ Intended to be controlled directly by a HiaCluster.
 
     def update_binddispline_label (self, bb, bv, markup):
         bv.set_markup(markup)
+        bv.set_width_chars(4)
 
     def update_widgets (self, binddisp=None):
         if binddisp is None:
@@ -1620,11 +1624,14 @@ Intended to be controlled directly by a HiaCluster.
                 # track the composited widgets.
                 self.ui.bindrows.append(br)
                 self.ui.bindbufs.append(bb)
+
                 self.ui.bindviews.append(bv)
                 self.ui.layernums.append(lyr)
                 # row is [[lyr:Label][bv:TextView]], with a horizontal rule in between eachrow.
                 br.pack_start(lyr, False, False, 0)
-                br.pack_start(bv, True, True, 0)
+                bw = Gtk.ScrolledWindow()
+                bw.add(bv)
+                br.pack_start(bw, True, True, 0)
                 hrule = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
                 self.ui.hrules.append(hrule)
                 self.ui.top.pack_start(hrule, False, False, 0)
@@ -2321,9 +2328,12 @@ class HiaSelectorSym (Gtk.Stack):
                 grid.attach(hw, x, y, w, h)
             if y > max_row:
                 max_row = y
-            bv = self.view.bindstore.get_bind(self.view.mode, self.view.layer, hiasym)
-            if bv:
-                hw.cluster_type = bv
+#            bv = self.view.bindstore.get_bind(self.view.mode, self.view.layer, hiasym)
+#            if bv:
+#                hw.cluster_type = bv
+            hb = hw.get_bindlist()[self.view.layer]
+            if hb:
+                hw.cluster_type = hb
         for y in range(max_row):
             if not grid.get_child_at(0, y):
                 filler = Gtk.HBox()
@@ -2564,20 +2574,13 @@ Consists of:
 
         self.update_cluster_type()
 
-    @GObject.Property(type=object)
-    def hiachildren (self):
-        try:
-            return self.ui.sel_sym.hiachildren
-        except AttributeError:
-            return None
-
     def get_extended_label_markup (self):
         cluster_type = self.cluster_type
         cmdtitle = cluster_type.cmdtitle if cluster_type else None
         if cmdtitle:
             markup = self.cluster_type.get_markup_str()
         else:
-            markup = GLib.markup_escape_text("?")
+            markup = str(GLib.markup_escape_text("?"))
         return " {} &lt;{}&gt;".format(self.hiasym, markup)
 
     def setup_widgets (self):
