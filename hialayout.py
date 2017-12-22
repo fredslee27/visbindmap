@@ -282,18 +282,27 @@ class AListStore (Gtk.ListStore):
         # Exhaustive search.
         finditer = self.get_iter_first()
         while finditer:
-            data = self.get(finditer, 0)[0]
+            data = Gtk.ListStore.__getitem__(self, finditer)[0]
             if data == k:
                 return finditer
             finditer = self.iter_next(finditer)
         return None
+
+    def get (self, k, *args):
+        treeiter = self.find(k)
+        if treeiter:
+            return Gtk.ListStore.__getitem__(self, treeiter)
+        try:
+            return Gtk.ListStore.get(self, k, *args)
+        except TypeError:
+            return args
 
     def __getitem__ (self, k):
         treeiter = self.find(k)
         if treeiter:
             return Gtk.ListStore.__getitem__(self, treeiter)
         # Delegate to super().__getitem__
-        return Gtk.ListStore.__getitem__(self,k)
+        return Gtk.ListStore.__getitem__(self, k)
 
     def __setitem__ (self, k, v):
         listiter = None
@@ -812,6 +821,7 @@ class HiaView (GObject.Object):
     def __init__ (self, bindstore=None, layouts=None):
         GObject.Object.__init__(self)
         self.setup_properties()
+        self.hialabels = AListStore(str,str)
         self.bindstore = bindstore
         self.layouts = layouts
         self.setup_signals()
@@ -1124,8 +1134,9 @@ Specify HiaLayer to make focus."""
         """Pick HiaSym by name.
 """
         hiasym = param.get_string()
+        hialabel = self.view.hialabel.get(hiasym, hiasym)[0]
         self.view.active_sym = hiasym
-        logger.info("Focusing hiasym %r" % hiasym)
+        logger.info("Focusing hiasym {} ({})".format(hialabel, hiasym))
         return
 
 #    @HiaSimpleAction(param_type="i", init_state=None, stock_id=None)
@@ -1138,8 +1149,9 @@ Specify HiaLayer to make focus."""
     @HiaSimpleAction(param_type="(iisss)", init_state=None, stock_id=None)
     def act_assign_bind_explicit (self, action, param):
         (modeid, layerid, hiasym, cmdtitle, cmdcode) = param
+        hialabel = self.view.hialabels.get(hiasym, hiasym)[1]
         self.view.bindstore.set_bind(modeid, layerid, hiasym, cmdtitle, cmdcode)
-        logger.info("Assigned bind {} = '{}'".format(hiasym, cmdtitle))
+        logger.info("Assigned bind {} ({}) = '{}'".format(hialabel, hiasym, cmdtitle))
         return
 
     @HiaSimpleAction(param_type="(sss)", init_state=None, stock_id=None)
@@ -1570,7 +1582,8 @@ Drag-and-Drop
         else:
             self.binddisp = [ HiaBind(-1, ""), ]
         self.hiasym = str(hiasym)
-        self.label = str(label if label is not None else hiasym)
+        lbl = controller.view.hialabels.get(self.hiasym, self.hiasym)[1]
+        self.label = str(lbl)
 
         self.setup_widgets()
         self.setup_signals()
@@ -2328,6 +2341,7 @@ class HiaSelectorSym (Gtk.Stack):
         self.hiachildren = {}
 
     def make_hiawidget_cluster (self, hiasym, hialabel):
+        self.controller.view.hialabels[hiasym] = hialabel
         retval = HiaCluster(self.controller, hiasym, hialabel)
         retval.connect("bind-assigned", self.on_bind_assigned)
         retval.connect("bind-swapped", self.on_bind_swapped)
@@ -2336,6 +2350,7 @@ class HiaSelectorSym (Gtk.Stack):
         retval.show()
         return retval
     def make_hiawidget_key (self, hiasym, hialabel):
+        self.controller.view.hialabels[hiasym] = hialabel
         retval = HiaTop(self.controller, hiasym, hialabel)
         retval.connect("bind-assigned", self.on_bind_assigned)
         retval.connect("bind-swapped", self.on_bind_swapped)
@@ -2614,7 +2629,9 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
             markup = self.cluster_type.get_markup_str()
         else:
             markup = GLib.markup_escape_text("?")
-        return " {} &lt;{}&gt;".format(self.hiasym, markup)
+        lbl = self.controller.view.hialabels.get(self.hiasym, self.hiasym)[1]
+        hialabel = str(lbl)
+        return " {} &lt;{}&gt;".format(hialabel, markup)
 
     def setup_widgets (self):
         """Set up Gtk widgets within clustered control."""

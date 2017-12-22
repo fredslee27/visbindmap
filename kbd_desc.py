@@ -663,8 +663,8 @@ KBD = {
       ( 1, 6, 'A/4', 'L2 soft'),
       ( 1, 6, None),
 
-      ( 4, 18, 'LP#', "LP#", "cluster"),
-      ( 4, 18, 'RP#', "RP#", "cluster"),
+      ( 4, 18, 'LP#', "LPad", "cluster"),
+      ( 4, 18, 'RP#', "RPad", "cluster"),
 
       ( 1, 6, None),
       ( 1, 6, 'A/5', 'R2 soft'),
@@ -688,10 +688,10 @@ KBD = {
       ( 1, 6, 'B/11', 'R1'),
       ],
     [
-      ( 4, 18, 'DP#', "DP#", "cluster"),
+      ( 4, 18, 'DP#', "D-PAD", "cluster"),
       ( 1, 18, None),
       ( 1, 18, None),
-      ( 4, 18, 'B#', "B#", "cluster"),
+      ( 4, 18, 'B#', "Buttons", "cluster"),
       ],
     [
       ( 1, 60, None),
@@ -700,16 +700,16 @@ KBD = {
       ( 1, 18, None),
       ( 1, 6, None),
       ( 1, 3, None),
-      ( 5, 18, 'GY#', "GY#", "cluster"),
+      ( 5, 18, 'GY#', "GYRO", "cluster"),
       ],
     [
       ( 1, 60, None),
       ],
     [
       ( 1, 9, None),
-      ( 4, 18, 'L#', "L#", "cluster"),
+      ( 4, 18, 'L#', "LS", "cluster"),
       ( 4, 18, None),
-      ( 4, 18, 'R#', "R#", "cluster"),
+      ( 4, 18, 'R#', "RS", "cluster"),
       ],
     [
       ( 1, 60, None),
