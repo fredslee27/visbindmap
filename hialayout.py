@@ -272,6 +272,45 @@ Also takes an optional dict acceptable for __gsignals__, added onto the return v
 # BindStore data model #
 ########################
 
+# Associative List - look up by path or key (first column).
+# TODO: caching dict
+class AListStore (Gtk.ListStore):
+    def __init__ (self, *columns):
+        Gtk.ListStore.__init__(self, *columns)
+
+    def find (self, k):
+        # Exhaustive search.
+        finditer = self.get_iter_first()
+        while finditer:
+            data = self.get(finditer, 0)[0]
+            if data == k:
+                return finditer
+            finditer = self.iter_next(finditer)
+        return None
+
+    def __getitem__ (self, k):
+        treeiter = self.find(k)
+        if treeiter:
+            return Gtk.ListStore.__getitem__(self, treeiter)
+        # Delegate to super().__getitem__
+        return Gtk.ListStore.__getitem__(self,k)
+
+    def __setitem__ (self, k, v):
+        listiter = None
+        entry = (k,)+v if type(v) is tuple else (k,)+(v,)
+        treeiter = self.find(k)
+        if treeiter:
+            for colnum in range(self.get_n_columns()):
+                Gtk.ListStore.set(self, treeiter, colnum, entry[colnum])
+        # Delegate to super().__setitem__
+        try:
+            int(k)
+            Gtk.ListStore.__setitem__(self, k, v)
+        except (ValueError, TypeError):
+            # Not a path; presume key.
+            self.append(entry)
+
+
 # named tuple?
 class BindTreeValue (object):
     def __init__ (self, cmdtitle, cmdcode=None):
@@ -530,7 +569,7 @@ returns BindValue."""
             else:
                 raise e
         try:
-            row_layer = self[[modeid,layerid]]
+            row_layer = self[(modeid,layerid)]
         except IndexError as e:
             if modeid < self.nlayers:
                 return default
@@ -558,7 +597,7 @@ returns BindValue."""
             cmdtitle = cmdtitle_or_bindvalue
             bindvalue = BindTreeValue(cmdtitle_or_bindvalue, cmdcode)
         row_mode = self[modeid]
-        row_layer = self[[modeid,layerid]]
+        row_layer = self[(modeid,layerid)]
         row_bind = None
         for probe in row_layer.iterchildren():
             if probe[1] == hiasym:
@@ -739,6 +778,7 @@ class HiaView (GObject.Object):
     nvislayers = GObject.Property(type=int, default=1)  # iter wrapper to _nvislayers bitvector.
     _vislayers = BitVector(1)
     bindstore = GObject.Property(type=object)   # instance of BindStore.
+    hialabels = GObject.Property(type=object)   # AListStore(name:str, display_label:str)
     layouts = GObject.Property(type=object)     # ListStore(name:str,LayoutStore:object)
     active_sym = GObject.Property(type=str)     # currently selected HiaTop
 
@@ -1099,7 +1139,7 @@ Specify HiaLayer to make focus."""
     def act_assign_bind_explicit (self, action, param):
         (modeid, layerid, hiasym, cmdtitle, cmdcode) = param
         self.view.bindstore.set_bind(modeid, layerid, hiasym, cmdtitle, cmdcode)
-        logger.info("Assigned bind %r" % hiasym)
+        logger.info("Assigned bind {} = '{}'".format(hiasym, cmdtitle))
         return
 
     @HiaSimpleAction(param_type="(sss)", init_state=None, stock_id=None)
