@@ -1134,7 +1134,7 @@ Specify HiaLayer to make focus."""
         """Pick HiaSym by name.
 """
         hiasym = param.get_string()
-        hialabel = self.view.hialabel.get(hiasym, hiasym)[0]
+        hialabel = self.view.hialabels.get(hiasym, hiasym)[0]
         self.view.active_sym = hiasym
         logger.info("Focusing hiasym {} ({})".format(hialabel, hiasym))
         return

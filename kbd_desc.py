@@ -3,7 +3,7 @@
 KBD = {
    '(none)': [ [ ] ],
 
-  # Tuples are: (label, height[cells], width[cells])
+  # Tuples are: (height[cells], width[cells], sym_code, label)
   'mouse': [  # list of list
     [ # row 1
       ( 1, 6, None),
