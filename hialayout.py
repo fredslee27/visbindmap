@@ -1134,7 +1134,7 @@ Specify HiaLayer to make focus."""
         """Pick HiaSym by name.
 """
         hiasym = param.get_string()
-        hialabel = self.view.hialabels.get(hiasym, hiasym)[0]
+        hialabel = self.view.hialabels.get(hiasym, hiasym)[1]
         self.view.active_sym = hiasym
         logger.info("Focusing hiasym {} ({})".format(hialabel, hiasym))
         return
@@ -1170,9 +1170,10 @@ Specify HiaLayer to make focus."""
     @HiaSimpleAction("s")
     def act_erase_bind (self, action, param):
         hiasym = param.get_string()
+        hialabel = self.view.hialabels.get(hiasym, hiasym)[1]
         (modeid, layerid) = (self.view.mode, self.view.layer)
         self.erase_bind_explicit(modeid, layerid, hiasym)
-        logger.info("Erased bind %r" % hiasym)
+        logger.info("Erased bind {} ({})".format(hialabel, hiasym))
         return
 
     @HiaSimpleAction("(iisiis)")
@@ -1182,6 +1183,8 @@ Specify HiaLayer to make focus."""
         (modeA, layerA, symA, modeB, layerB, symB) = param
         bvA = self.view.bindstore.get_bind(modeA, layerA, symA)
         bvB = self.view.bindstore.get_bind(modeB, layerB, symB)
+        labelA = self.view.hialabels.get(symA, symA)[1]
+        labelB = self.view.hialabels.get(symB, symB)[1]
         cmdtitleA, cmdtitleB, cmdcodeA, cmdcodeB = "", "", "", ""
         if bvA:
             cmdtitleA, cmdcodeA = bvA.cmdtitle, bvA.cmdcode
@@ -1189,7 +1192,7 @@ Specify HiaLayer to make focus."""
             cmdtitleB, cmdcodeB = bvB.cmdtitle, bvB.cmdcode
         self.view.bindstore.set_bind(modeA, layerA, symA, cmdtitleB, cmdcodeB)
         self.view.bindstore.set_bind(modeB, layerB, symB, cmdtitleA, cmdcodeA)
-        logger.info("Swapped binds %r and %r" % (symA, symB))
+        logger.info("Swapped binds {} ({}) and {} ({})".format(labelA, symA, labelB, symB))
         return
 
     @HiaSimpleAction("(ss)")
@@ -1258,7 +1261,10 @@ Specify HiaLayer to make focus."""
             subsymB = "{}{}".format(symB, suffix)
             bindstore.set_bind(modeB, layerB, subsymB, val)
 
-        logger.info("Swapped clusters %r and %r" % (symA, symB))
+        labelA = planner.view.hialabels.get(symA, symA)[1]
+        labelB = planner.view.hialabels.get(symB, symB)[1]
+
+        logger.info("Swapped clusters {} ({}) and {} ({})".format(labelA, symA, labelB, symB))
         return
 
     @HiaSimpleAction()
