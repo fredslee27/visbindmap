@@ -3785,6 +3785,84 @@ class HiaWindow (Gtk.Window):
 
 
 
+###############
+# Preferences #
+###############
+
+class AppPreferencesBacking_GioSettings (object):
+    """AppPreferences storage backend using GioSettings."""
+    pass
+
+class AppPreferencesBacking_GFile (object):
+    """AppPreferences storage backend using GioSettings."""
+    pass
+
+class AppPreferences (dict):
+    """Adapter to persistent storage, GConf vs Gio.Settings."""
+    def push (self):
+        """Save to storage."""
+        pass
+    def pull (self):
+        """Load from storage."""
+        pass
+
+class AppPreferencesDialog (Gtk.Dialog):
+    def __init__ (self, parent=None):
+        Gtk.Dialog.__init__(self, parent=parent)
+        self.setup_widgets()
+
+    def build_yesno (self, lbl, prefkey):
+        yesno_inp = Gtk.CheckButton(lbl)
+        yesno_inp.connect('toggled', self.on_yesno_toggle, prefkey)
+        row = Gtk.HBox()
+        row.pack_start(yesno_inp, False, False, 0)
+        return row
+
+    def build_capture (self, lbl, prefkey):
+        capture_inp = Gtk.Button(lbl)
+        capture_inp.connect('clicked', self.on_capture_clicked, prefkey)
+        capture_lbl = Gtk.Label()
+        capture_lbl.set_markup("<i>(none)</i>")
+        row = Gtk.HBox()
+        row.pack_start(capture_inp, False, False, 2)
+        row.pack_start(capture_lbl, False, False, 2)
+        return row
+
+    def on_yesno_toggle (self, w, prefkey, *args):
+        pass
+
+    def on_capture_clicked (self, w, prefkey, *args):
+        pass
+
+    def setup_widgets (self):
+        self.set_title("Preferences")
+        row_knowwhat = self.build_yesno("Suppress tooltips (Advanced Mode)", 'knowwhat')
+
+        frame_initial = Gtk.Frame()
+        frame_initial.set_label("Initial Sets")
+        frame_box = Gtk.VBox()
+        row_device = self.build_capture("Device", 'device0')
+        row_layout = self.build_capture("Layout", 'layout0')
+        row_cmdset = self.build_capture("Command Pack", 'cmdset0')
+        frame_initial.add(frame_box)
+        frame_box.pack_start(row_device, False, False, 2)
+        frame_box.pack_start(row_layout, False, False, 2)
+        frame_box.pack_start(row_cmdset, False, False, 2)
+
+        row_nuke = self.build_yesno("Clear all preferences", 'nukeprefs')
+
+        spacer = Gtk.HBox()
+        layout = self.get_content_area()
+        layout.pack_start(row_knowwhat, False, False, 0)
+        layout.pack_start(frame_initial, False, False, 0)
+        layout.pack_start(row_nuke, False, False, 0)
+        layout.pack_start(spacer, True, True, 0)
+        layout.show_all()
+        self.add_buttons("_OK", Gtk.ResponseType.OK,
+                         "_Cancel", Gtk.ResponseType.CANCEL)
+        return
+
+
 ##################
 # GtkApplication #
 ##################
@@ -3959,6 +4037,9 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction()
     def act_preferences (self, inst, param):
+        dlg = self.groupwin.dlg_prefs
+        response = dlg.run()
+        dlg.hide()
         pass
 
     @HiaSimpleAction("i")
@@ -4080,6 +4161,8 @@ Holds app-wide GAction.
         self.dlg_open.add_buttons(*buttons)
         self.dlg_open.add_filter(filter_cfg)
         self.dlg_open.add_filter(filter_all)
+
+        self.dlg_prefs = AppPreferencesDialog(self)
 
         return
 
