@@ -490,6 +490,22 @@ class BindTreeStore (Gtk.TreeStore):
         self.nmodes -= 1
         self._slicetree_modes = None  # Invalidate sliced tree.
 
+    def normalize_mode (self, mode_id):
+        """Ensure all the necessary layers exist for given mode."""
+        if mode_id > 0:
+            # Copy layers skeleton from mode 0.
+            here = self.get_iter([mode_id])
+            mode0 = self[0]
+            extant = self.iter_children(here)
+            for layer_iter in mode0.iterchildren():
+                placeholder = (layer_iter[0], None, None, None, None)
+                if not extant:
+                    self.append(here, placeholder)
+                else:
+                    self[extant][0] = layer_iter[0]
+                    extant = self.iter_next(extant)
+        return
+
     def del_layer (self, layer_id):
         """Delete layer by id; cannot delete last remaining layer."""
         mode_id = 0
@@ -579,7 +595,7 @@ returns BindValue."""
                 raise e
         try:
             row_layer = self[(modeid,layerid)]
-        except IndexError as e:
+        except (IndexError, TypeError) as e:
             if modeid < self.nlayers:
                 return default
             else:
@@ -606,7 +622,13 @@ returns BindValue."""
             cmdtitle = cmdtitle_or_bindvalue
             bindvalue = BindTreeValue(cmdtitle_or_bindvalue, cmdcode)
         row_mode = self[modeid]
-        row_layer = self[(modeid,layerid)]
+        try:
+            row_layer = self[(modeid,layerid)]
+        except TypeError as e:
+            # Layer not exist?
+            self.normalize_mode(modeid)
+            # Try again (throw w/e happens)
+            row_layer = self[(modeid,layerid)]
         row_bind = None
         for probe in row_layer.iterchildren():
             if probe[1] == hiasym:
@@ -3989,6 +4011,26 @@ class AppControl (HiaControl):
 
 
 
+class HiaAppDebugView (Gtk.Window):
+    """Debug view of BindTreeStore."""
+    def __init__ (self, parentwin, mdl):
+        Gtk.Window.__init__(self, parent=parentwin)
+        self.view = Gtk.TreeView()
+        self.view.set_model(mdl)
+
+        cell0 = Gtk.CellRendererText()
+        col0 = Gtk.TreeViewColumn("seq", cell0, text=0)
+        col1 = Gtk.TreeViewColumn("key", cell0, text=1)
+        col2 = Gtk.TreeViewColumn("label", cell0, text=2)
+        col3 = Gtk.TreeViewColumn("code", cell0, text=3)
+        self.view.append_column(col0)
+        self.view.append_column(col1)
+        self.view.append_column(col2)
+        self.view.append_column(col3)
+
+        self.add(self.view)
+        self.show_all()
+
 
 class HiaAppWindow (Gtk.ApplicationWindow):
     """Main application window.
@@ -4007,6 +4049,8 @@ Holds app-wide GAction.
 
         self.setup_widgets()
         self.setup_signals()
+
+#        self.dbg = HiaAppDebugView(self, controller.view.bindstore)
 
     def setup_widgets (self):
         self.set_size_request(1280,720)
