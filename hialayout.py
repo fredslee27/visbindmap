@@ -2849,10 +2849,19 @@ Convenience property 'names' to access/mutate with python list-of-str.
         #self.set_label(self._title)
         self.set_label(self.title)
         self.ui.top = Gtk.HBox()
+        self.ui.scrl = Gtk.ScrolledWindow(None,None)
+        try:
+            # Gtk3.22+: propagate natural height
+            self.ui.scrl.props.propagate_natural_height = True
+        except AttributeError:
+            # fallback: fixed sensible(?) value
+            self.ui.scrl.set_min_content_height(24)
 
         self.update_widgets()
 
-        self.add(self.ui.top)
+        #self.add(self.ui.top)
+        self.ui.scrl.add(self.ui.top)
+        self.add(self.ui.scrl)
         self.show_all()
         return
 
