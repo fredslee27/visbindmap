@@ -2849,6 +2849,7 @@ Convenience property 'names' to access/mutate with python list-of-str.
         #self.set_label(self._title)
         self.set_label(self.title)
         self.ui.top = Gtk.HBox()
+        # Keep in scrolled window instead of a drop list due to drag-and-drop across modes||layers.
         self.ui.scrl = Gtk.ScrolledWindow(None,None)
         try:
             # Gtk3.22+: propagate natural height
