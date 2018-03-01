@@ -596,7 +596,7 @@ returns BindValue."""
         try:
             row_layer = self[(modeid,layerid)]
         except (IndexError, TypeError) as e:
-            if modeid < self.nlayers:
+            if modeid < self.nmodes:
                 return default
             else:
                 raise e
