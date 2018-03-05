@@ -800,7 +800,7 @@ class BitVector (object):
 
 
 class HiaView (GObject.Object):
-    """Hia-planning data; M in MVC."""
+    """Hia-planning data; V in MVC."""
 
     device_name = GObject.Property(type=str, default="")
     device_details = GObject.Property(type=object)  # instance of LayoutStore, references self.layouts[].
@@ -840,12 +840,13 @@ class HiaView (GObject.Object):
 
 
 
-    def __init__ (self, bindstore=None, layouts=None):
+    def __init__ (self, bindstore=None, layouts=None, tooltipper=None):
         GObject.Object.__init__(self)
         self.setup_properties()
         self.hialabels = AListStore(str,str)
         self.bindstore = bindstore
         self.layouts = layouts
+        self.tooltipper = tooltipper
         self.setup_signals()
 
     def setup_properties (self):
@@ -860,6 +861,10 @@ class HiaView (GObject.Object):
 
     def setup_signals (self):
         pass
+
+    def hook_tooltips (self, gtkobj):
+        if self.tooltipper:
+            self.tooltipper.hook_tooltips(gtkobj)
 
     def on_notify_device_name (self, inst, param):
         details = None
@@ -1604,6 +1609,8 @@ Drag-and-Drop
 
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
+        self.set_name("hia-top-{}".format(hiasym))
+        controller.view.hook_tooltips(self)
 
         if self.bindstore:
             self.binddisp = self.get_bindlist()
@@ -2631,6 +2638,8 @@ Represent the jointed cluster types, e.g. joystick, mousepad, button_quad, etc.
 
     def __init__ (self, controller, hiasym, label=None):
         HiaBindable.__init__(self, controller, hiasym, label)
+        self.set_name("hia-cluster-{}".format(hiasym))
+        controller.view.hook_tooltips(self)
 
         self.connect("notify::cluster-type", self.on_notify_cluster_type)
 
@@ -2950,6 +2959,8 @@ class HiaSelectorMode (HiaSelectorRadio):
     PADDING = 16
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Mode", controller)
+        self.set_name("hia-selector-mode")
+        controller.view.hook_tooltips(self)
     def get_active_radio (self): return self.view.mode
     def get_axislist (self):
         submodel = self.view.bindstore.modes
@@ -3000,6 +3011,8 @@ class HiaSelectorLayer (HiaSelectorRadio):
     EXPAND_MEMBERS = True
     def __init__ (self, controller):
         HiaSelectorRadio.__init__(self, "Layer", controller)
+        self.set_name("hia-selector-layer")
+        controller.view.hook_tooltips(self)
     def get_active_radio (self): return self.view.layer
     def get_axislist (self):
         submodel = self.view.bindstore.layers
@@ -3066,11 +3079,14 @@ class HiaSelectorDevice (Gtk.HBox):
 
     def __init__ (self, controller):
         Gtk.HBox.__init__(self)
+        self.set_name("hia-selector-device")
+        controller.view.hook_tooltips(self)
 
         self.connect("notify::view", self.on_notify_view)
         self.connect("notify::controller", self.on_notify_controller)
 
         self.controller = controller
+        controller.view.hook_tooltips(self)
         #self.view = view
 
         self.setup_widgets()
@@ -3472,8 +3488,11 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
     model = GObject.Property(type=object)       # CommandPackStore
 
     # Expected to rarely change, so model signals are ignored and instead set_model triggers refreshing view.
-    def __init__ (self, mdl):
+    def __init__ (self, mdl, controller=None):
         Gtk.VBox.__init__(self)
+        self.set_name("hia-selector-command")
+        controller.view.hook_tooltips(self)
+        self.controller = controller
         self.connect("notify::model", self.on_notify_model)
 
         if mdl:
@@ -3499,6 +3518,8 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 
         # TreeView
         self.ui.treeview = Gtk.TreeView(model=self.model)
+        self.ui.treeview.set_name("hia-selector-command-treeview")
+        if self.controller: self.controller.view.hook_tooltips(self.ui.treeview)
         self.ui.treeview.set_search_column(2)
         # TreeViewColumns
         self.ui.treecols = []
@@ -3513,12 +3534,16 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
 
         self.ui.custombox = Gtk.VBox()
         self.ui.customtitle_line = Gtk.HBox()
+        self.ui.customtitle_line.set_name("hia-command-custom-title")
+        if self.controller: self.controller.view.hook_tooltips(self.ui.customtitle_line)
         self.ui.customtitle_label = Gtk.Label(label="Title: ")
         self.ui.customtitle_inp = Gtk.Entry()
         self.ui.customtitle_inp.set_width_chars(10)
         self.ui.customtitle_line.pack_start(self.ui.customtitle_label, False, False, 0)
         self.ui.customtitle_line.pack_start(self.ui.customtitle_inp, True, True, 0)
         self.ui.customcode_line = Gtk.HBox()
+        self.ui.customcode_line.set_name("hia-command-custom-code")
+        if self.controller: self.controller.view.hook_tooltips(self.ui.customcode_line)
         self.ui.customcode_label = Gtk.Label(label="Code: ")
         self.ui.customcode_inp = Gtk.Entry()
         self.ui.customcode_inp.set_width_chars(8)
@@ -3526,6 +3551,8 @@ static method 'make_model()' for generating a suitable TreeStore expected by thi
         self.ui.customcode_line.pack_start(self.ui.customcode_inp, True, True, 0)
         self.ui.customadd_line = Gtk.HBox()
         self.ui.customadd_btn = Gtk.Button(label="Add Custom")
+        self.ui.customadd_btn.set_name("hia-command-custom-add")
+        if self.controller: self.controller.view.hook_tooltips(self.ui.customadd_btn)
         self.ui.customadd_line.pack_start(self.ui.customadd_btn, False, False, 0)
         self.ui.custombox.pack_start(self.ui.customtitle_line, False, False, 0)
         self.ui.custombox.pack_start(self.ui.customcode_line, False, False, 0)
@@ -3659,6 +3686,8 @@ class HiaPlanner (Gtk.HPaned):
 
     def __init__ (self, cmdpack=None, controller=None):
         Gtk.HPaned.__init__(self)
+        self.set_name("hia-planner")
+        controller.view.hook_tooltips(self)
 
         self.setup_properties()
 
@@ -3727,7 +3756,7 @@ class HiaPlanner (Gtk.HPaned):
         class ui: pass
         self.ui = ui
 
-        self.ui.sel_cmd = HiaSelectorCommand(self.cmdpack)
+        self.ui.sel_cmd = HiaSelectorCommand(self.cmdpack, self.controller)
         self.ui.sel_device = HiaSelectorDevice(self.controller)
         self.ui.sel_mode = HiaSelectorMode(self.controller)
         self.ui.sel_layer = HiaSelectorLayer(self.controller)
@@ -3797,6 +3826,7 @@ class HiaPlanner (Gtk.HPaned):
 class HiaWindow (Gtk.Window):
     def __init__ (self):
         Gtk.Window.__init__(self)
+        self.set_name("hia-window-standalone")
         self.set_size_request(640, 480)
         #bindstore = BindStore()
         #layouts = HiaLayouts()
@@ -3824,6 +3854,7 @@ class HiaWindow (Gtk.Window):
 
 @HiaSimpleActionInstall
 class AppControl (HiaControl):
+    """Collection of GtkAction-based control for the GtkApplication instance."""
 
     # Inherited properties: actions, hiaview
 
@@ -4020,6 +4051,55 @@ class AppControl (HiaControl):
         return
 
 
+class HiaTooltipSummoner (object):
+    """Singleton instance for handlng tooltip viewing."""
+    def __init__ (self):
+        self.subjects = []
+
+    def hook_tooltips (self, gtkobj):
+        """Set up GtkWidget for tooltips."""
+        gtkobj.set_property("has-tooltip", True)
+        gtkobj.connect("query-tooltip", self.on_tooltip)
+
+    def resolve_tooltip (self, widget_name):
+        BUILTIN = {
+            "hia-selector-device": """\
+A 'Device' is a collection of HID (Human-Computer Interface Device) elements represented as clickable buttons.
+The buttons are visually arranged in an approximate representation of the corresponding physical device.
+""",
+            "hia-selector-mode": """\
+Modes are sets of bindings and their layers that take effecting depending on application behavior.
+Typical cases include vi(1) command and input modes, game while playing vs while navigating menus or map.
+""",
+            "hia-selector-layer": """\
+Layers are separate bindings that take effect depending on other bind actions, typically a shifter key such as Shift or Control.
+""",
+            "hia-selector-command-treeview": """\
+The collection of commands available for binding.
+Commands may be dragged and dropped to and from device elements.
+Drag from this picker to an element to assign a command.
+Drag from an element to this picker to remove a binding.
+""",
+            "hia-command-custom-title": "displayed name for custom command.",
+            "hia-command-custom-code": "export/converter code for custom command.",
+            "hia-command-custom-add": "click to add custom command."
+        }
+        try:
+            return BUILTIN[widget_name]
+        except KeyError:
+            return None
+
+    def on_tooltip (self, w, x, y, kb_mode, tooltip, *args):
+        try:
+            widget_name = w.get_name()
+        except AttributeError:
+            return False
+        tip = self.resolve_tooltip(widget_name)
+        if tip:
+            tooltip.set_markup(tip)
+            return True
+        return False
+
 
 class HiaAppDebugView (Gtk.Window):
     """Debug view of BindTreeStore."""
@@ -4054,6 +4134,8 @@ Holds app-wide GAction.
 
     def __init__ (self, app, controller=None):
         Gtk.ApplicationWindow.__init__(self, application=app)
+        self.set_name("hia-window")
+        controller.view.hook_tooltips(self)
 
         self.controller = controller
 
@@ -4234,6 +4316,7 @@ class HiaApplication (Gtk.Application):
         self.connect("startup", self.on_startup)
         self.connect("notify::stdin", self.on_notify_stdin)
         self.mainw = None
+        self.tooltipper = HiaTooltipSummoner()
 
     def on_startup (self, app):
         # app:Gio.Application
@@ -4243,7 +4326,8 @@ class HiaApplication (Gtk.Application):
         bindstore = BindStore()
         layouts = HiaLayouts()
         layouts.build_from_legacy_store()
-        hiaview = HiaView(bindstore, layouts)
+        self.tooltipper = HiaTooltipSummoner()
+        hiaview = HiaView(bindstore, layouts, self.tooltipper)
         controller = AppControl(hiaview)  # HiaControl(hiaview)
         self.controller = controller
 
