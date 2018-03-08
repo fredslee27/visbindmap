@@ -3869,8 +3869,10 @@ class AppPreferences (dict):
         pass
 
 class AppPreferencesDialog (Gtk.Dialog):
+    """Dialog box for Preferences.  Initial state is set from outside, and the outside object is responsible for extracting user settings back out from the dialog box."""
     def __init__ (self, parent=None):
         Gtk.Dialog.__init__(self, parent=parent)
+        self.fields = {}
         self.setup_widgets()
 
     def build_yesno (self, lbl, prefkey):
@@ -3878,6 +3880,7 @@ class AppPreferencesDialog (Gtk.Dialog):
         yesno_inp.connect('toggled', self.on_yesno_toggle, prefkey)
         row = Gtk.HBox()
         row.pack_start(yesno_inp, False, False, 0)
+        self.fields[prefkey] = yesno_inp
         return row
 
     def build_capture (self, lbl, prefkey):
@@ -3888,13 +3891,19 @@ class AppPreferencesDialog (Gtk.Dialog):
         row = Gtk.HBox()
         row.pack_start(capture_inp, False, False, 2)
         row.pack_start(capture_lbl, False, False, 2)
+        self.fields[prefkey] = capture_lbl
         return row
 
     def on_yesno_toggle (self, w, prefkey, *args):
-        pass
+        val = w.get_active()
+        if val:
+            self.fields[prefkey] = True
+        else:
+            self.fields[prefkey] = False
+        return
 
     def on_capture_clicked (self, w, prefkey, *args):
-        pass
+        return
 
     def setup_widgets (self):
         self.set_title("Preferences")
@@ -4084,26 +4093,32 @@ class AppControl (HiaControl):
     @HiaSimpleAction("s")
     def act_load_commandpack (self, inst, param):
         # also run in parallel: HiaSelectorCommand.on_act_load_commandpack
-        pass
+        return
 
     @HiaSimpleAction()
     def act_edit_copy (self, inst, param):
-        pass
+        return
 
     @HiaSimpleAction()
     def act_edit_cut (self, inst, param):
-        pass
+        return
 
     @HiaSimpleAction()
     def act_edit_paste (self, inst, param):
-        pass
+        return
 
     @HiaSimpleAction()
     def act_preferences (self, inst, param):
         dlg = self.groupwin.dlg_prefs
-        response = dlg.run()
-        dlg.hide()
+        # Inject current setings into dlg.fields.
         pass
+        response = dlg.run()
+        if response in (Gtk.ResponseType.OK, Gtk.ResponseType.ACCEPT):
+            # Extract new settings from dialog box.
+            knowwhat = dlg.fields.get('knowwhat', False)
+            print("extracted knowwhat = {}".format(knowwhat))
+        dlg.hide()
+        return
 
     @HiaSimpleAction("i")
     def act_view_layers (self, inst, param):
@@ -4122,7 +4137,7 @@ class AppControl (HiaControl):
 
     @HiaSimpleAction()
     def act_help_help (self, inst, param):
-        pass
+        return
 
     @HiaSimpleAction()
     def act_about (self, inst, param):
@@ -4399,7 +4414,6 @@ class HiaApplication (Gtk.Application):
         self.connect("startup", self.on_startup)
         self.connect("notify::stdin", self.on_notify_stdin)
         self.mainw = None
-        self.tooltipper = HiaTooltipSummoner()
 
     def on_startup (self, app):
         # app:Gio.Application
@@ -4413,6 +4427,7 @@ class HiaApplication (Gtk.Application):
         hiaview = HiaView(bindstore, layouts, self.tooltipper)
         controller = AppControl(hiaview)  # HiaControl(hiaview)
         self.controller = controller
+        self.tooltipper = HiaTooltipSummoner()
 
         self.controller.actions.lookup_action('ragequit').connect("activate", lambda *a: self.quit())
 
